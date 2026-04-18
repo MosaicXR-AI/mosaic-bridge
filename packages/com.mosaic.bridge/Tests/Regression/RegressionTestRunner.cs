@@ -87,8 +87,16 @@ namespace Mosaic.Bridge.Tests.Regression
             if (fixturePath == "<fixtures-dir-missing>")
                 Assert.Fail("Fixtures directory was not found at: " + FixturesPath);
 
-            Assert.AreEqual(BridgeState.Running, BridgeBootstrap.State,
-                "BridgeBootstrap must be Running. Start the Unity bridge before running regression tests.");
+            // Skip gracefully if the bridge isn't running. Regression tests make real HTTP calls
+            // to the bridge and can't do anything useful without a live listener. An Assert.Ignore
+            // surfaces as a yellow "skipped" in Test Runner rather than a red "failure" — clearer
+            // signal that this is an environment issue, not a code defect.
+            if (BridgeBootstrap.State != BridgeState.Running)
+            {
+                Assert.Ignore(
+                    "Bridge is not running. Start the Unity bridge before running regression tests.");
+                return;
+            }
 
             // 1. Load and parse fixture
             string json = File.ReadAllText(fixturePath);

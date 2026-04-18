@@ -1,0 +1,29 @@
+{
+  "fixture": "gameobject_create_with_parent",
+  "tool": "mosaic_gameobject_create",
+  "category": "gameobject",
+  "description": "Creates a GameObject parented under another GameObject",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": {
+        "name": "ParentObject_Regression"
+      },
+      "storeAs": "parent"
+    }
+  ],
+  "parameters": {
+    "name": "ChildObject_Regression",
+    "parentName": "ParentObject_Regression"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Name", "InstanceId"],
+    "dataChecks": {
+      "Name": "ChildObject_Regression"
+    }
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["core"]
+}

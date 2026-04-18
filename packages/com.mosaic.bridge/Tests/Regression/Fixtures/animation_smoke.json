@@ -1,0 +1,10 @@
+{
+  "fixture": "animation_smoke",
+  "tool": "mosaic_animation_clip",
+  "category": "animation",
+  "description": "Smoke test for animation/clip — info action on nonexistent clip returns failure",
+  "parameters": { "Action": "info", "Path": "Assets/NonExistent.anim" },
+  "expectations": { "success": false, "statusCode": 404 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

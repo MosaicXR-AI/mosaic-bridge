@@ -1,0 +1,13 @@
+{
+  "fixture": "editor_smoke",
+  "tool": "mosaic_editor_refresh",
+  "category": "editor",
+  "description": "Smoke test for editor/refresh — triggers AssetDatabase.Refresh",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

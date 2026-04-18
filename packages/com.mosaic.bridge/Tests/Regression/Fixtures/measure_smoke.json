@@ -1,0 +1,18 @@
+{
+  "fixture": "measure_smoke",
+  "tool": "mosaic_measure_distance",
+  "category": "measure",
+  "description": "Smoke test for measure/distance — two explicit points",
+  "parameters": {
+    "PointA": [0, 0, 0],
+    "PointB": [3, 4, 0],
+    "Mode": "point_to_point",
+    "Unit": "meters"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

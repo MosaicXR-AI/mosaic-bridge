@@ -1,0 +1,15 @@
+{
+  "fixture": "editor_playmode_smoke",
+  "tool": "mosaic_editor_play-mode",
+  "category": "editor",
+  "description": "Smoke test for editor/play-mode — stop action (safe in edit mode)",
+  "parameters": {
+    "Action": "stop"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -1,0 +1,16 @@
+{
+  "fixture": "asset_list",
+  "tool": "mosaic_asset_list",
+  "category": "asset",
+  "description": "Lists assets in the project with default parameters",
+  "parameters": {
+    "path": "Assets"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Assets", "Count", "TotalCount"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

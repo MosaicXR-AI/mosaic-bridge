@@ -1,0 +1,14 @@
+{
+  "fixture": "sceneview_smoke",
+  "tool": "mosaic_sceneview_info",
+  "category": "sceneview",
+  "description": "Smoke test: queries the SceneView camera state",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Position", "Rotation", "Pivot", "Size"]
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

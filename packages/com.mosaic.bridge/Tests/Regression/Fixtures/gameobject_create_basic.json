@@ -1,0 +1,19 @@
+{
+  "fixture": "gameobject_create_basic",
+  "tool": "mosaic_gameobject_create",
+  "category": "gameobject",
+  "description": "Creates a basic GameObject with default settings",
+  "parameters": {
+    "name": "TestObject_Regression"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Name", "InstanceId"],
+    "dataChecks": {
+      "Name": "TestObject_Regression"
+    }
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke", "core"]
+}

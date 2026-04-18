@@ -1,0 +1,13 @@
+{
+  "fixture": "simulation_smoke",
+  "tool": "mosaic_simulation_boids",
+  "category": "simulation",
+  "description": "Smoke test: scaffolds a boids simulation with defaults",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

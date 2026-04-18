@@ -1,0 +1,13 @@
+{
+  "fixture": "taglayer_smoke",
+  "tool": "mosaic_taglayer_tag",
+  "category": "taglayer",
+  "description": "Smoke test for taglayer/tag — lists available tags",
+  "parameters": { "Action": "list" },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

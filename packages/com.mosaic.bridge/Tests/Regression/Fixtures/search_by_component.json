@@ -1,0 +1,16 @@
+{
+  "fixture": "search_by_component",
+  "tool": "mosaic_search_by_component",
+  "category": "search",
+  "description": "Searches for GameObjects that have a specific component type",
+  "parameters": {
+    "componentType": "Camera"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Matches", "Count"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

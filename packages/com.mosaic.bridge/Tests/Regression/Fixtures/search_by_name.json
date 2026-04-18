@@ -1,0 +1,25 @@
+{
+  "fixture": "search_by_name",
+  "tool": "mosaic_search_by_name",
+  "category": "search",
+  "description": "Searches for GameObjects by name pattern",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": {
+        "name": "SearchTarget_Regression"
+      },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "pattern": "SearchTarget_Regression"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Matches", "TotalFound"]
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke", "core"]
+}

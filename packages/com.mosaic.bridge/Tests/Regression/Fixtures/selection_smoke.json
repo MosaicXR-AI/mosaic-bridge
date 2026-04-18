@@ -1,0 +1,13 @@
+{
+  "fixture": "selection_smoke",
+  "tool": "mosaic_selection_get",
+  "category": "selection",
+  "description": "Smoke test for selection category",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

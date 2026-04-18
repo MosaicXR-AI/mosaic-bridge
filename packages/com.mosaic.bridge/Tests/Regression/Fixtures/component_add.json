@@ -1,0 +1,26 @@
+{
+  "fixture": "component_add",
+  "tool": "mosaic_component_add",
+  "category": "component",
+  "description": "Adds a Rigidbody component to an existing GameObject",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": {
+        "name": "ComponentTarget_Regression"
+      },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "gameObjectName": "ComponentTarget_Regression",
+    "componentType": "Rigidbody"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["ComponentType"]
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke", "core"]
+}

@@ -1,0 +1,13 @@
+{
+  "fixture": "material_smoke",
+  "tool": "mosaic_material_create",
+  "category": "material",
+  "description": "Smoke test for material/create with URP shader",
+  "parameters": {"name": "RegressionTestMat", "path": "Assets/RegressionTestMat.mat", "shader": "Universal Render Pipeline/Lit"},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

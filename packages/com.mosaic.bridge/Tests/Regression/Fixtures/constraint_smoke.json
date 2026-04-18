@@ -1,0 +1,24 @@
+{
+  "fixture": "constraint_smoke",
+  "tool": "mosaic_constraint_add",
+  "category": "constraint",
+  "description": "Smoke test: adds a PositionConstraint to a freshly created GameObject",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": { "name": "ConstraintSmokeTarget" },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "name": "ConstraintSmokeTarget",
+    "type": "Position"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["GameObjectName", "ConstraintType", "ComponentType"]
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke"]
+}

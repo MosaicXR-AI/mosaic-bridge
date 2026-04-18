@@ -1,0 +1,16 @@
+{
+  "fixture": "compute_smoke",
+  "tool": "mosaic_compute_dispatch",
+  "category": "compute",
+  "description": "Smoke test: attempts to dispatch a non-existent compute shader (expects failure)",
+  "parameters": {
+    "shaderPath": "Assets/NonExistent/smoke_compute.compute"
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -1,0 +1,16 @@
+{
+  "fixture": "script_read",
+  "tool": "mosaic_script_read",
+  "category": "script",
+  "description": "Reads the contents of a C# script file by asset path",
+  "parameters": {
+    "path": "Packages/com.mosaic.bridge/Editor/Core/Discovery/ToolRegistry.cs"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Content", "Path"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

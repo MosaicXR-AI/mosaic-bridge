@@ -1,0 +1,59 @@
+{
+  "$schema": "../_schema/constants.schema.json",
+  "version": "1.0.0",
+  "source": "NIST CODATA 2022 (https://physics.nist.gov/cuu/Constants/)",
+  "lastUpdated": "2026-04-10",
+  "license": "Public Domain (NIST data is not copyrightable)",
+  "constants": {
+    "gravity_earth": {
+      "value": 9.80665,
+      "unit": "m/s^2",
+      "description": "Standard acceleration of gravity on Earth (CODATA value)",
+      "unityDefault": -9.81,
+      "usage": "Physics.gravity.y for vertical gravity",
+      "source": "NIST CODATA 2022"
+    },
+    "gravity_moon": {
+      "value": 1.62,
+      "unit": "m/s^2",
+      "description": "Surface gravity of the Moon",
+      "usage": "Lunar simulation gravity setting"
+    },
+    "gravity_mars": {
+      "value": 3.721,
+      "unit": "m/s^2",
+      "description": "Surface gravity of Mars",
+      "usage": "Mars simulation gravity setting"
+    },
+    "speed_of_sound_air": {
+      "value": 343.0,
+      "unit": "m/s",
+      "description": "Speed of sound in dry air at 20 degrees Celsius",
+      "usage": "Audio Doppler calculations, ballistics"
+    },
+    "speed_of_light": {
+      "value": 299792458.0,
+      "unit": "m/s",
+      "description": "Speed of light in vacuum (exact)",
+      "source": "NIST CODATA 2022"
+    },
+    "water_density": {
+      "value": 997.0,
+      "unit": "kg/m^3",
+      "description": "Density of pure water at 25 degrees Celsius",
+      "usage": "Buoyancy calculations, fluid simulation"
+    },
+    "air_density_sea_level": {
+      "value": 1.225,
+      "unit": "kg/m^3",
+      "description": "Density of air at sea level, 15 degrees Celsius, standard pressure",
+      "usage": "Aerodynamic drag calculations"
+    },
+    "atmospheric_pressure_sea_level": {
+      "value": 101325.0,
+      "unit": "Pa",
+      "description": "Standard atmospheric pressure at sea level",
+      "usage": "Pressure-based simulation"
+    }
+  }
+}

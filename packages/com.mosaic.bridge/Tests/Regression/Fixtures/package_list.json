@@ -1,0 +1,16 @@
+{
+  "fixture": "package_list",
+  "tool": "mosaic_package_list",
+  "category": "package",
+  "description": "Lists all installed packages in the project",
+  "parameters": {
+    "OfflineMode": true
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Packages", "Count"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

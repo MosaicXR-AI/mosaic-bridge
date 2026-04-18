@@ -1,0 +1,17 @@
+{
+  "fixture": "ui_smoke",
+  "tool": "mosaic_ui_create_canvas",
+  "category": "ui",
+  "description": "Creates a default Canvas with CanvasScaler and GraphicRaycaster",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Name", "InstanceId", "RenderMode"],
+    "dataChecks": {
+      "RenderMode": "Overlay"
+    }
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke"]
+}

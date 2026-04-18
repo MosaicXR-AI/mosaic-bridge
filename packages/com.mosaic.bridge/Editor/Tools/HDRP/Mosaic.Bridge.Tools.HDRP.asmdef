@@ -1,0 +1,28 @@
+{
+    "name": "Mosaic.Bridge.Tools.HDRP",
+    "rootNamespace": "Mosaic.Bridge.Tools.HDRP",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Unity.RenderPipelines.HighDefinition.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.high-definition",
+            "expression": "17.0.0",
+            "define": "MOSAIC_HAS_HDRP"
+        }
+    ],
+    "noEngineReferences": false
+}

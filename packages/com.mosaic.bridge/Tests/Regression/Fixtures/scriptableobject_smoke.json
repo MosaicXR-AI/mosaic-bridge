@@ -1,0 +1,13 @@
+{
+  "fixture": "scriptableobject_smoke",
+  "tool": "mosaic_scriptableobject_list-types",
+  "category": "scriptableobject",
+  "description": "Smoke test for scriptableobject/list-types returns available SO subclasses",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

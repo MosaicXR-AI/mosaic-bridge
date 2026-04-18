@@ -1,0 +1,21 @@
+{
+  "fixture": "chart_smoke",
+  "tool": "mosaic_chart_scatter",
+  "category": "chart",
+  "description": "Smoke test for chart/scatter — simple 3-point scatter",
+  "parameters": {
+    "Points": [
+      { "Position": [0, 0, 0] },
+      { "Position": [1, 1, 0] },
+      { "Position": [2, 0, 1] }
+    ],
+    "ShowAxes": false,
+    "ShowGrid": false
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

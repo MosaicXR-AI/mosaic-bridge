@@ -1,0 +1,19 @@
+{
+  "fixture": "particle_smoke",
+  "tool": "mosaic_particle_create",
+  "category": "particle",
+  "description": "Smoke test for particle/create with default settings",
+  "parameters": {
+    "Name": "TestParticle"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Name", "InstanceId"],
+    "dataChecks": {
+      "Name": "TestParticle"
+    }
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke"]
+}

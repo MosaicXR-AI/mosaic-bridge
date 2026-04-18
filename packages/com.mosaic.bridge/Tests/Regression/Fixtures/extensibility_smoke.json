@@ -1,0 +1,13 @@
+{
+  "fixture": "extensibility_smoke",
+  "tool": "mosaic_extensibility_list_custom_tools",
+  "category": "extensibility",
+  "description": "Smoke test for extensibility/list_custom_tools — lists user-registered tools",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

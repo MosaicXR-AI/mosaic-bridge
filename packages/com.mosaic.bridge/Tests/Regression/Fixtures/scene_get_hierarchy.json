@@ -1,0 +1,14 @@
+{
+  "fixture": "scene_get_hierarchy",
+  "tool": "mosaic_scene_get_hierarchy",
+  "category": "scene",
+  "description": "Retrieves the full scene hierarchy tree",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Roots"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

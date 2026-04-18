@@ -1,0 +1,16 @@
+{
+  "fixture": "process_smoke",
+  "tool": "mosaic_process_state-set",
+  "category": "process",
+  "description": "Smoke test for process/state-set — requires a target; expects NOT_FOUND for missing target",
+  "parameters": {
+    "TargetGameObject": "__NonExistentSmokeTarget__",
+    "State": "running"
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

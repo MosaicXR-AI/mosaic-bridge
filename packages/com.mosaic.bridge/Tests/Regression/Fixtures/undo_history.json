@@ -1,0 +1,14 @@
+{
+  "fixture": "undo_history",
+  "tool": "mosaic_undo_history",
+  "category": "undo",
+  "description": "Retrieves the current undo/redo state",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["CurrentUndoAction", "CanUndo", "CanRedo"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

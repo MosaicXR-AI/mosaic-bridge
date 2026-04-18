@@ -1,0 +1,24 @@
+{
+  "fixture": "gameobject_delete",
+  "tool": "mosaic_gameobject_delete",
+  "category": "gameobject",
+  "description": "Deletes an existing GameObject by name",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": {
+        "name": "DeleteTarget_Regression"
+      },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "name": "DeleteTarget_Regression"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core", "destructive"]
+}

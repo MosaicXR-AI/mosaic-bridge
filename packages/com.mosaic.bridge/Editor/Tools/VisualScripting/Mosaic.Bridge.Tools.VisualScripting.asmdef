@@ -1,0 +1,28 @@
+{
+    "name": "Mosaic.Bridge.Tools.VisualScripting",
+    "rootNamespace": "Mosaic.Bridge.Tools.VisualScripting",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Unity.VisualScripting.Core",
+        "Unity.VisualScripting.Flow"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.visualscripting",
+            "expression": "1.8.0",
+            "define": "MOSAIC_HAS_VISUALSCRIPTING"
+        }
+    ],
+    "noEngineReferences": false
+}

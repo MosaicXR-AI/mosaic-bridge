@@ -1,0 +1,27 @@
+{
+    "name": "Mosaic.Bridge.Tools.TextMeshPro",
+    "rootNamespace": "Mosaic.Bridge.Tools.TextMeshPro",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "MOSAIC_HAS_TMP"
+        }
+    ],
+    "noEngineReferences": false
+}

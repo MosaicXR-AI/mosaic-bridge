@@ -1,0 +1,19 @@
+{
+  "fixture": "analysis_smoke",
+  "tool": "mosaic_analysis_solar",
+  "category": "analysis",
+  "description": "Smoke test for analysis/solar — current sun position at default NYC noon",
+  "parameters": {
+    "Latitude": 40.7,
+    "Longitude": -74.0,
+    "Date": "2026-06-21",
+    "TimeOfDay": 12.0,
+    "TimeZone": -5.0
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

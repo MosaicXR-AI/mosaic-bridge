@@ -1,0 +1,14 @@
+{
+  "fixture": "navigation_smoke",
+  "tool": "mosaic_navigation_info",
+  "category": "navigation",
+  "description": "Smoke test for navigation/info — returns NavMesh state without requiring any setup",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["HasBakedNavMesh", "AgentCount", "ObstacleCount", "Areas"]
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -1,0 +1,17 @@
+{
+  "fixture": "physics_smoke",
+  "tool": "mosaic_physics_raycast",
+  "category": "physics",
+  "description": "Smoke test for physics/raycast — cast a ray downward and verify response structure",
+  "parameters": {
+    "Origin": [0, 10, 0],
+    "Direction": [0, -1, 0],
+    "MaxDistance": 100
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

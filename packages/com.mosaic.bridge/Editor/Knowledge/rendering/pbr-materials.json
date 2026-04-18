@@ -1,0 +1,107 @@
+{
+  "$schema": "../_schema/pbr-materials.schema.json",
+  "version": "1.0.0",
+  "source": "PhysicallyBased API v2 (https://api.physicallybased.info/) and standard PBR references",
+  "lastUpdated": "2026-04-10",
+  "license": "CC0 1.0 Universal (Public Domain)",
+  "notes": "Albedo values are linear sRGB (0.0-1.0). Roughness uses the Disney/Unity convention (0=smooth mirror, 1=fully rough). Metalness is binary in physically-based rendering: 0 for non-metals, 1 for metals.",
+  "materials": {
+    "wood_oak": {
+      "albedo": [0.42, 0.33, 0.24],
+      "albedoRange": { "min": 0.35, "max": 0.55 },
+      "roughness": 0.75,
+      "roughnessRange": { "min": 0.6, "max": 0.9 },
+      "metalness": 0.0,
+      "ior": 1.516,
+      "densityKgPerM3": 600,
+      "description": "Polished oak wood surface",
+      "source": "PhysicallyBased API",
+      "unityNotes": "For a 1m^3 wooden cube prop, mass = 600 kg. Often too heavy for character interaction; consider scaling down or using a kinematic Rigidbody."
+    },
+    "wood_pine": {
+      "albedo": [0.55, 0.42, 0.28],
+      "roughness": 0.78,
+      "metalness": 0.0,
+      "ior": 1.516,
+      "densityKgPerM3": 400,
+      "description": "Polished pine wood surface (lighter than oak)",
+      "source": "PhysicallyBased API"
+    },
+    "steel_polished": {
+      "albedo": [0.77, 0.78, 0.78],
+      "roughness": 0.15,
+      "roughnessRange": { "min": 0.05, "max": 0.3 },
+      "metalness": 1.0,
+      "ior": 2.5,
+      "densityKgPerM3": 7850,
+      "description": "Polished stainless steel surface",
+      "source": "PhysicallyBased API",
+      "unityNotes": "High density means even small steel objects are heavy. A 0.3m steel cube is ~212 kg."
+    },
+    "iron_rusted": {
+      "albedo": [0.32, 0.18, 0.12],
+      "roughness": 0.85,
+      "metalness": 0.85,
+      "ior": 2.93,
+      "densityKgPerM3": 7800,
+      "description": "Rusted iron surface (partial metalness due to rust oxide layer)",
+      "source": "PhysicallyBased API"
+    },
+    "gold_polished": {
+      "albedo": [1.0, 0.766, 0.336],
+      "roughness": 0.05,
+      "metalness": 1.0,
+      "ior": 0.27,
+      "densityKgPerM3": 19320,
+      "description": "Polished gold surface — highest metalness reflectance",
+      "source": "PhysicallyBased API"
+    },
+    "rubber_black": {
+      "albedo": [0.06, 0.06, 0.06],
+      "roughness": 0.85,
+      "metalness": 0.0,
+      "ior": 1.519,
+      "densityKgPerM3": 1100,
+      "description": "Black rubber surface",
+      "source": "PhysicallyBased API",
+      "unityNotes": "Use for tires, soft body simulations. High friction PhysicMaterial recommended."
+    },
+    "plastic_glossy": {
+      "albedo": [0.5, 0.5, 0.5],
+      "roughness": 0.2,
+      "metalness": 0.0,
+      "ior": 1.46,
+      "densityKgPerM3": 1380,
+      "description": "Glossy plastic surface (PVC-like)",
+      "source": "PhysicallyBased API"
+    },
+    "concrete": {
+      "albedo": [0.51, 0.5, 0.49],
+      "roughness": 0.95,
+      "metalness": 0.0,
+      "ior": 1.5,
+      "densityKgPerM3": 2400,
+      "description": "Aged concrete surface",
+      "source": "PhysicallyBased API"
+    },
+    "glass_clear": {
+      "albedo": [0.04, 0.04, 0.04],
+      "roughness": 0.0,
+      "metalness": 0.0,
+      "ior": 1.5,
+      "densityKgPerM3": 2500,
+      "description": "Clear glass — note low albedo since most light is transmitted, not reflected",
+      "source": "PhysicallyBased API",
+      "unityNotes": "Use a transparent shader. Standard PBR opaque shader will look wrong for glass."
+    },
+    "fabric_cotton": {
+      "albedo": [0.7, 0.7, 0.7],
+      "roughness": 0.95,
+      "metalness": 0.0,
+      "ior": 1.45,
+      "densityKgPerM3": 80,
+      "description": "Cotton fabric (white)",
+      "source": "PhysicallyBased API"
+    }
+  }
+}

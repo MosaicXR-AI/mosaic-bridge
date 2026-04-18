@@ -1,0 +1,13 @@
+{
+  "fixture": "graphics_smoke",
+  "tool": "mosaic_graphics_render-info",
+  "category": "graphics",
+  "description": "Smoke test for graphics/render-info — returns render pipeline and graphics settings",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -1,0 +1,16 @@
+{
+  "fixture": "view_smoke",
+  "tool": "mosaic_view_explode",
+  "category": "view",
+  "description": "Smoke test for view/explode — expects NOT_FOUND for missing root",
+  "parameters": {
+    "RootGameObject": "__NonExistentSmokeRoot__",
+    "ExplosionFactor": 1.0
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

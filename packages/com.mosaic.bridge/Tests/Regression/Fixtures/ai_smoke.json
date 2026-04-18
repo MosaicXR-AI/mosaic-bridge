@@ -1,0 +1,19 @@
+{
+  "fixture": "ai_smoke",
+  "tool": "mosaic_ai_pathfind-jps",
+  "category": "ai",
+  "description": "Smoke test for ai/pathfind-jps — simple grid pathfinding returns success with path",
+  "parameters": {
+    "GridWidth": 5,
+    "GridHeight": 5,
+    "Start": [0, 0],
+    "End": [4, 4]
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Success", "NodesExplored"]
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

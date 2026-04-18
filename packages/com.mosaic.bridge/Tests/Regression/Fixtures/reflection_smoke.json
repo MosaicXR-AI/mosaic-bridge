@@ -1,0 +1,16 @@
+{
+  "fixture": "reflection_smoke",
+  "tool": "mosaic_reflection_get-types",
+  "category": "reflection",
+  "description": "Smoke test for reflection/get_types — lists types matching a filter",
+  "parameters": {
+    "NameFilter": "MonoBehaviour",
+    "AssemblyFilter": "UnityEngine"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

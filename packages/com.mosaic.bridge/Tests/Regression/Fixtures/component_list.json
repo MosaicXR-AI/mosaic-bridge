@@ -1,0 +1,25 @@
+{
+  "fixture": "component_list",
+  "tool": "mosaic_component_list",
+  "category": "component",
+  "description": "Lists all components on a GameObject (default Transform is always present)",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": {
+        "name": "ComponentList_Regression"
+      },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "gameObjectName": "ComponentList_Regression"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Components"]
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke", "core"]
+}

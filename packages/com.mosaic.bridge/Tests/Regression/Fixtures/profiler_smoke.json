@@ -1,0 +1,13 @@
+{
+  "fixture": "profiler_smoke",
+  "tool": "mosaic_profiler_stats",
+  "category": "profiler",
+  "description": "Smoke test for profiler/stats — returns memory statistics",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

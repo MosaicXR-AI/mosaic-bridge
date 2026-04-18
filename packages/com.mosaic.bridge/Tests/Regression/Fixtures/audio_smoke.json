@@ -1,0 +1,13 @@
+{
+  "fixture": "audio_smoke",
+  "tool": "mosaic_audio_info",
+  "category": "audio",
+  "description": "Smoke test for audio/info — queries scene audio state with no parameters",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

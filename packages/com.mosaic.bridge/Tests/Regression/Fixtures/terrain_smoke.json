@@ -1,0 +1,22 @@
+{
+  "fixture": "terrain_smoke",
+  "tool": "mosaic_terrain_create",
+  "category": "terrain",
+  "description": "Creates a basic terrain with default-ish settings",
+  "parameters": {
+    "Name": "TestTerrain",
+    "Width": 100,
+    "Length": 100,
+    "Height": 50
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["InstanceId", "Name", "Width", "Length", "Height", "TerrainDataAssetPath"],
+    "dataChecks": {
+      "Name": "TestTerrain"
+    }
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke"]
+}

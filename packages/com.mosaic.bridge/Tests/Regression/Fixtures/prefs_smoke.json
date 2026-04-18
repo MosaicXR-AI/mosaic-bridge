@@ -1,0 +1,17 @@
+{
+  "fixture": "prefs_smoke",
+  "tool": "mosaic_prefs_editor",
+  "category": "prefs",
+  "description": "Smoke test: gets an EditorPrefs key (non-existent key returns gracefully)",
+  "parameters": {
+    "key": "MosaicBridge_Regression_NonExistent",
+    "action": "get"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Action", "Key", "Existed"]
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

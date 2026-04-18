@@ -1,0 +1,16 @@
+{
+  "fixture": "texture_smoke",
+  "tool": "mosaic_texture_set-import-settings",
+  "category": "texture",
+  "description": "Smoke test: attempts to set import settings on a non-existent texture (expects failure)",
+  "parameters": {
+    "assetPath": "Assets/NonExistent/smoke_texture.png"
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

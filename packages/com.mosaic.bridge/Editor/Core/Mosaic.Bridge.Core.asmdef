@@ -1,0 +1,19 @@
+{
+    "name": "Mosaic.Bridge.Core",
+    "rootNamespace": "Mosaic.Bridge.Core",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Unity.Newtonsoft.Json"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

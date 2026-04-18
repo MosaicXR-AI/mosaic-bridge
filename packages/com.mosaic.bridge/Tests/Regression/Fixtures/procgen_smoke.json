@@ -1,0 +1,15 @@
+{
+  "fixture": "procgen_smoke",
+  "tool": "mosaic_procgen_poisson-sample",
+  "category": "procgen",
+  "description": "Smoke test: Poisson disc sampling with default params",
+  "parameters": {
+    "radius": 5.0
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -1,0 +1,13 @@
+{
+  "fixture": "test_smoke",
+  "tool": "mosaic_test_readonly",
+  "category": "test",
+  "description": "Smoke test for test/readonly — returns simple success, no data fields",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

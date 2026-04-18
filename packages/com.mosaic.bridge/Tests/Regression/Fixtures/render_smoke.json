@@ -1,0 +1,13 @@
+{
+  "fixture": "render_smoke",
+  "tool": "mosaic_render_portal",
+  "category": "render",
+  "description": "Smoke test: scaffolds a portal rendering setup with defaults",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

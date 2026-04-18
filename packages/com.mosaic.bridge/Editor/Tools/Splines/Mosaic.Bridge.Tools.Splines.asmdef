@@ -1,0 +1,29 @@
+{
+    "name": "Mosaic.Bridge.Tools.Splines",
+    "rootNamespace": "Mosaic.Bridge.Tools.Splines",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Unity.Splines",
+        "Unity.Splines.Editor",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.splines",
+            "expression": "2.0.0",
+            "define": "MOSAIC_HAS_SPLINES"
+        }
+    ],
+    "noEngineReferences": false
+}

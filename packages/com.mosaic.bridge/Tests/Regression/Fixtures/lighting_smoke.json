@@ -1,0 +1,10 @@
+{
+  "fixture": "lighting_smoke",
+  "tool": "mosaic_lighting_info",
+  "category": "lighting",
+  "description": "Smoke test for lighting/info — returns scene lighting state",
+  "parameters": {},
+  "expectations": { "success": true, "statusCode": 200 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

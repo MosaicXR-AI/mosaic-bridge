@@ -1,0 +1,28 @@
+{
+  "name": "com.mosaic.bridge",
+  "version": "1.0.0-beta.1",
+  "displayName": "Mosaic Bridge",
+  "description": "Unity Editor MCP (Model Context Protocol) plugin. Enables AI agents to drive the Unity Editor through MCP-compliant tool calls. Free, open-source, Apache 2.0.",
+  "unity": "6000.0",
+  "documentationUrl": "https://github.com/MosaicXR-AI/mosaic-bridge",
+  "changelogUrl": "https://github.com/MosaicXR-AI/mosaic-bridge/blob/main/packages/com.mosaic.bridge/CHANGELOG.md",
+  "licensesUrl": "https://github.com/MosaicXR-AI/mosaic-bridge/blob/main/LICENSE",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "keywords": [
+    "ai",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "tools",
+    "mosaic",
+    "mosaicxr"
+  ],
+  "author": {
+    "name": "Mousa Soutari",
+    "email": "m.soutari@gmail.com",
+    "url": "https://mosaicxr.ai"
+  }
+}

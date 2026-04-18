@@ -1,0 +1,14 @@
+{
+  "fixture": "timeline_smoke",
+  "tool": "mosaic_timeline_info",
+  "category": "timeline",
+  "description": "Smoke test for timeline/info with nonexistent asset — expects 404 NOT_FOUND",
+  "parameters": {"AssetPath": "Assets/nonexistent.playable"},
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

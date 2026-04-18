@@ -1,0 +1,29 @@
+{
+    "name": "Mosaic.Bridge.Tools.URP",
+    "rootNamespace": "Mosaic.Bridge.Tools.URP",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Universal.Editor",
+        "Unity.RenderPipelines.Core.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "17.0.0",
+            "define": "MOSAIC_HAS_URP"
+        }
+    ],
+    "noEngineReferences": false
+}

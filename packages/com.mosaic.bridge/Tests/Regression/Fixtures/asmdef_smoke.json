@@ -1,0 +1,16 @@
+{
+  "fixture": "asmdef_smoke",
+  "tool": "mosaic_asmdef_manage",
+  "category": "asmdef",
+  "description": "Smoke test: lists all assembly definitions in the project",
+  "parameters": {
+    "action": "list"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Action", "AllPaths"]
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

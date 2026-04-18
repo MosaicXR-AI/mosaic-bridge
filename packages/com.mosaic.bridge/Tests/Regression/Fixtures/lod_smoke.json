@@ -1,0 +1,27 @@
+{
+  "fixture": "lod_smoke",
+  "tool": "mosaic_lod_create",
+  "category": "lod",
+  "description": "Smoke test: adds a LODGroup with two levels to a freshly created GameObject",
+  "setup": [
+    {
+      "tool": "mosaic_gameobject_create",
+      "parameters": { "name": "LodSmokeTarget" },
+      "storeAs": "target"
+    }
+  ],
+  "parameters": {
+    "name": "LodSmokeTarget",
+    "levels": [
+      { "screenHeight": 0.5 },
+      { "screenHeight": 0.1 }
+    ]
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["GameObjectName", "LodLevelCount"]
+  },
+  "cleanup": "delete_created_object",
+  "tags": ["smoke"]
+}

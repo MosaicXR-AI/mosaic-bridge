@@ -1,0 +1,13 @@
+{
+  "fixture": "meta_smoke",
+  "tool": "mosaic_meta_list_advanced_tools",
+  "category": "meta",
+  "description": "Smoke test for meta/list_advanced_tools — lists non-core tools grouped by category",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

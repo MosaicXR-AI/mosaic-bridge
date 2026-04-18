@@ -1,0 +1,13 @@
+{
+  "fixture": "camera_info",
+  "tool": "mosaic_camera_info",
+  "category": "camera",
+  "description": "Smoke test for camera/info — returns camera data from the active scene",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

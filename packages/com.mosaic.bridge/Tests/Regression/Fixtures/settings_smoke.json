@@ -1,0 +1,13 @@
+{
+  "fixture": "settings_smoke",
+  "tool": "mosaic_settings_get-player",
+  "category": "settings",
+  "description": "Smoke test for settings category",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

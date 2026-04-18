@@ -1,0 +1,13 @@
+{
+  "fixture": "health_smoke",
+  "tool": "mosaic_health_test",
+  "category": "health",
+  "description": "Smoke test for health/test — returns simple success, no data fields",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

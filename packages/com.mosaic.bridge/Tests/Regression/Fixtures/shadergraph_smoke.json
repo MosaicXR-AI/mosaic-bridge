@@ -1,0 +1,13 @@
+{
+  "fixture": "shadergraph_smoke",
+  "tool": "mosaic_shadergraph_list",
+  "category": "shadergraph",
+  "description": "Smoke test for shadergraph/list — returns success even when no ShaderGraph assets exist",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

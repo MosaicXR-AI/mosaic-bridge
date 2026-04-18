@@ -1,0 +1,14 @@
+{
+  "fixture": "scene_get_info",
+  "tool": "mosaic_scene_get_info",
+  "category": "scene",
+  "description": "Retrieves information about the current active scene",
+  "parameters": {},
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Name", "Path", "RootObjectCount"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

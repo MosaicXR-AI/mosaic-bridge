@@ -1,0 +1,16 @@
+{
+  "fixture": "console_get_errors",
+  "tool": "mosaic_console_get-errors",
+  "category": "console",
+  "description": "Retrieves errors and warnings from the Unity console",
+  "parameters": {
+    "includeWarnings": true
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200,
+    "dataFields": ["Entries"]
+  },
+  "cleanup": null,
+  "tags": ["smoke", "core"]
+}

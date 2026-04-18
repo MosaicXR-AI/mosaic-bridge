@@ -1,0 +1,71 @@
+{
+  "name": "@mosaicxr-ai/mcp-server",
+  "version": "1.0.0-beta.1",
+  "description": "MCP server for Mosaic Bridge — connects AI clients (Claude Desktop, Cursor, etc.) to the Unity Editor.",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Mousa Soutari",
+    "email": "m.soutari@gmail.com",
+    "url": "https://mosaicxr.ai"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mosaic-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.js.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MosaicXR-AI/mosaic-bridge.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://github.com/MosaicXR-AI/mosaic-bridge",
+  "bugs": {
+    "url": "https://github.com/MosaicXR-AI/mosaic-bridge/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "unity",
+    "mosaic",
+    "mosaicxr",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "preinstall": "npx --yes only-allow npm",
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ci": "npm ci",
+    "audit": "bash scripts/audit.sh",
+    "check-deps": "node scripts/check-deps.mjs",
+    "verify-lockfile": "node scripts/verify-lockfile.mjs",
+    "security": "npm run check-deps && npm run verify-lockfile && npm run audit",
+    "coverage": "bash scripts/coverage.sh",
+    "validate-contracts": "node scripts/validate-contracts.mjs",
+    "check-stale-docs": "node scripts/check-stale-docs.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^3.1.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "fixture": "prefab_smoke",
+  "tool": "mosaic_prefab_info",
+  "category": "prefab",
+  "description": "Smoke test for prefab/info with nonexistent path — expects 404 NOT_FOUND",
+  "parameters": {"path": "Assets/nonexistent.prefab"},
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

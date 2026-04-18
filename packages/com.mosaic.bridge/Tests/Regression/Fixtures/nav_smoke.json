@@ -1,0 +1,16 @@
+{
+  "fixture": "nav_smoke",
+  "tool": "mosaic_nav_fov-visualize",
+  "category": "nav",
+  "description": "Smoke test: attempts FOV visualization on a non-existent GameObject (expects failure)",
+  "parameters": {
+    "originName": "NonExistentNavTarget"
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

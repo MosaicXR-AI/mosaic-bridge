@@ -1,0 +1,16 @@
+{
+  "fixture": "input_smoke",
+  "tool": "mosaic_input_info",
+  "category": "input",
+  "description": "Smoke test for input/info returns NOT_FOUND for non-existent asset",
+  "parameters": {
+    "AssetPath": "Assets/NonExistent.inputactions"
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 404,
+    "errorCode": "NOT_FOUND"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

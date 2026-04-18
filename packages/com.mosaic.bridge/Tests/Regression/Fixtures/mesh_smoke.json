@@ -1,0 +1,17 @@
+{
+  "fixture": "mesh_smoke",
+  "tool": "mosaic_mesh_generate",
+  "category": "mesh",
+  "description": "Smoke test: attempts to generate a mesh with insufficient vertices (expects failure)",
+  "parameters": {
+    "vertices": [0, 0, 0],
+    "triangles": [0, 0, 0]
+  },
+  "expectations": {
+    "success": false,
+    "statusCode": 400,
+    "errorCode": "INVALID_PARAM"
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

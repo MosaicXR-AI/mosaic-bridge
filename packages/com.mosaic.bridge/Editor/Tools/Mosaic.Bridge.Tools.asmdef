@@ -1,0 +1,39 @@
+{
+    "name": "Mosaic.Bridge.Tools",
+    "rootNamespace": "Mosaic.Bridge.Tools",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Unity.InputSystem",
+        "Unity.Timeline",
+        "Unity.AI.Navigation",
+        "Unity.AI.Navigation.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.inputsystem",
+            "expression": "",
+            "define": "MOSAIC_HAS_INPUT_SYSTEM"
+        },
+        {
+            "name": "com.unity.timeline",
+            "expression": "",
+            "define": "MOSAIC_HAS_TIMELINE"
+        },
+        {
+            "name": "com.unity.ai.navigation",
+            "expression": "",
+            "define": "MOSAIC_HAS_NAVIGATION"
+        }
+    ],
+    "noEngineReferences": false
+}

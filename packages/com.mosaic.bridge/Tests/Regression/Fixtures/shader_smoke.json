@@ -1,0 +1,15 @@
+{
+  "fixture": "shader_smoke",
+  "tool": "mosaic_shader_create-compute",
+  "category": "shader",
+  "description": "Smoke test: scaffolds a compute shader with defaults",
+  "parameters": {
+    "name": "SmokeTestShader"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

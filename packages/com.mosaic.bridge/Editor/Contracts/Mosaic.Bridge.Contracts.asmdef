@@ -1,0 +1,16 @@
+{
+    "name": "Mosaic.Bridge.Contracts",
+    "rootNamespace": "Mosaic.Bridge.Contracts",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

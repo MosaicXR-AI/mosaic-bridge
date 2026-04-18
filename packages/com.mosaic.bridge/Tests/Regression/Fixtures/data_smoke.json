@@ -1,0 +1,22 @@
+{
+  "fixture": "data_smoke",
+  "tool": "mosaic_data_graph-layout",
+  "category": "data",
+  "description": "Smoke test for data/graph-layout — circular layout of 3 nodes",
+  "parameters": {
+    "Nodes": [
+      { "Id": "A" },
+      { "Id": "B" },
+      { "Id": "C" }
+    ],
+    "Edges": [],
+    "Algorithm": "circular",
+    "CreateVisuals": false
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

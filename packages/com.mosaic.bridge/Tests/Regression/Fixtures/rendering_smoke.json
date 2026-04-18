@@ -1,0 +1,17 @@
+{
+  "fixture": "rendering_smoke",
+  "tool": "mosaic_rendering_atmosphere-create",
+  "category": "rendering",
+  "description": "Smoke test for rendering/atmosphere-create — Preetham sky",
+  "parameters": {
+    "Model": "preetham",
+    "OutputType": "skybox_material",
+    "SavePath": "Assets/MosaicTestTemp/AtmosphereSmoke/"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

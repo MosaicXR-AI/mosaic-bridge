@@ -1,0 +1,77 @@
+{
+    "name": "Mosaic.Bridge.Tests",
+    "rootNamespace": "Mosaic.Bridge.Tests",
+    "references": [
+        "Mosaic.Bridge.Contracts",
+        "Mosaic.Bridge.Core",
+        "Mosaic.Bridge.Tools",
+        "Mosaic.Bridge.Runtime",
+        "Mosaic.Bridge.Tools.Cinemachine",
+        "Mosaic.Bridge.Tools.ProBuilder",
+        "Mosaic.Bridge.Tools.Addressables",
+        "Mosaic.Bridge.Tools.TextMeshPro",
+        "Mosaic.Bridge.Tools.URP",
+        "Mosaic.Bridge.Tools.HDRP",
+        "Mosaic.Bridge.Tools.Splines",
+        "Mosaic.Bridge.Tools.VisualScripting",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll",
+        "Newtonsoft.Json.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.cinemachine",
+            "expression": "3.0.0",
+            "define": "MOSAIC_HAS_CINEMACHINE"
+        },
+        {
+            "name": "com.unity.probuilder",
+            "expression": "6.0.0",
+            "define": "MOSAIC_HAS_PROBUILDER"
+        },
+        {
+            "name": "com.unity.addressables",
+            "expression": "2.0.0",
+            "define": "MOSAIC_HAS_ADDRESSABLES"
+        },
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "3.0.0",
+            "define": "MOSAIC_HAS_TMP"
+        },
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "17.0.0",
+            "define": "MOSAIC_HAS_URP"
+        },
+        {
+            "name": "com.unity.render-pipelines.high-definition",
+            "expression": "17.0.0",
+            "define": "MOSAIC_HAS_HDRP"
+        },
+        {
+            "name": "com.unity.splines",
+            "expression": "2.0.0",
+            "define": "MOSAIC_HAS_SPLINES"
+        },
+        {
+            "name": "com.unity.visualscripting",
+            "expression": "1.8.0",
+            "define": "MOSAIC_HAS_VISUALSCRIPTING"
+        }
+    ],
+    "noEngineReferences": false
+}

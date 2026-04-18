@@ -1,0 +1,23 @@
+{
+  "fixture": "spatial_smoke",
+  "tool": "mosaic_spatial_octree-create",
+  "category": "spatial",
+  "description": "Smoke test for spatial/octree-create — simple 3-point octree",
+  "parameters": {
+    "StructureId": "__smoke_octree__",
+    "Dimensions": 3,
+    "BoundsMin": [-10, -10, -10],
+    "BoundsMax": [10, 10, 10],
+    "Points": [
+      { "Id": "p1", "Position": [0, 0, 0] },
+      { "Id": "p2", "Position": [5, 5, 5] },
+      { "Id": "p3", "Position": [-5, -5, -5] }
+    ]
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

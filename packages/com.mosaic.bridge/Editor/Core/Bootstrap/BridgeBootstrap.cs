@@ -220,6 +220,13 @@ namespace Mosaic.Bridge.Core.Bootstrap
                 var projectPath = System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath);
                 InstanceRegistry.Register(InstanceRegistryEntry.Create(pid, Server.Port, projectHash, projectPath));
 
+                // Auto-configure Claude Code on first bridge start by writing a project-local
+                // .mcp.json file. Respects any existing .mcp.json (won't overwrite). Users can
+                // force regenerate via Tools > Mosaic Bridge > Configure Claude Code.
+                try { ClaudeCodeConfigurator.EnsureConfigOnFirstRun(Logger); }
+                catch (Exception cfgEx) { Logger?.Warn("ClaudeCodeConfigurator failed (non-fatal)",
+                    ("exception", (object)cfgEx.Message)); }
+
                 EditorApplication.quitting += OnEditorQuitting;
 
                 Logger.Info("Mosaic Bridge bootstrap complete",

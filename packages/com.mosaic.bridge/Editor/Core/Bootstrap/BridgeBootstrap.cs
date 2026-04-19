@@ -83,7 +83,11 @@ namespace Mosaic.Bridge.Core.Bootstrap
                 var consoleLogger = new UnityConsoleLogger();
                 Logger = new RedactingLogger(consoleLogger);
 
-                RuntimeDirectory = RuntimeDirectoryResolver.Resolve(Logger);
+                // Per-project runtime directory: discovery file, status, logs, and per-instance
+                // state live under {base}/{projectHash}/ so that concurrent Unity Editors on
+                // different projects do not overwrite each other's state. The global instance
+                // registry still lives at the shared base (RuntimeDirectoryResolver.GetSharedBasePath).
+                RuntimeDirectory = RuntimeDirectoryResolver.ResolveProject(Logger);
 
                 // Story 10.1: Structured JSONL file logging alongside Unity console
                 FileLog = new FileLogger(RuntimeDirectory);

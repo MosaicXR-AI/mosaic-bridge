@@ -67,7 +67,8 @@ namespace Mosaic.Bridge.Core.Runtime
 
         /// <summary>
         /// Returns the shared base path (parent of per-project directories).
-        /// Used by InstanceRegistry to store the machine-wide instance-registry.json.
+        /// Used by InstanceRegistry to store the machine-wide instance-registry.json, which is
+        /// the only file intentionally shared across concurrent Unity Editor instances.
         /// </summary>
         public static string GetSharedBasePath()
         {
@@ -75,8 +76,9 @@ namespace Mosaic.Bridge.Core.Runtime
         }
 
         /// <summary>
-        /// Returns a 16-hex-char project hash derived from Application.dataPath.
-        /// Used to scope discovery files and instance registry entries per project.
+        /// Returns a 16-hex-char project hash derived from Application.dataPath. Used to scope
+        /// per-project runtime state (discovery file, status file, logs) when multiple Unity
+        /// Editors are running simultaneously.
         /// </summary>
         public static string GetProjectHash()
         {
@@ -90,20 +92,49 @@ namespace Mosaic.Bridge.Core.Runtime
         }
 
         /// <summary>
-        /// Returns the full path to the bridge discovery file.
+        /// Returns the project-scoped runtime directory (shared base + project hash) and
+        /// creates it if it does not exist. All per-instance state (discovery file, status,
+        /// logs) must live here so that concurrent Unity Editors on different projects do
+        /// not overwrite each other's files.
         /// </summary>
-        public static string GetDiscoveryFilePath()
+        public static string ResolveProject(IMosaicLogger logger)
         {
-            return Path.Combine(Resolve(), "bridge-discovery.json");
+            var projectDir = Path.Combine(Resolve(logger), GetProjectHash());
+            if (!Directory.Exists(projectDir))
+            {
+                Directory.CreateDirectory(projectDir);
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    ChmodDirectory(projectDir, logger);
+                }
+            }
+            return projectDir;
+        }
+
+        /// <summary>Parameterless variant of <see cref="ResolveProject(IMosaicLogger)"/>.</summary>
+        public static string ResolveProject()
+        {
+            return ResolveProject(null);
         }
 
         /// <summary>
-        /// Returns the full path to the log directory, creating it if it does not exist.
+        /// Returns the full path to the bridge discovery file for the current project.
+        /// Different Unity Editors produce different paths because each hashes its own
+        /// Application.dataPath.
+        /// </summary>
+        public static string GetDiscoveryFilePath()
+        {
+            return Path.Combine(ResolveProject(), "bridge-discovery.json");
+        }
+
+        /// <summary>
+        /// Returns the full path to the log directory for the current project, creating it
+        /// if it does not exist.
         /// </summary>
         public static string GetLogDirectoryPath()
         {
-            var logDir = Path.Combine(Resolve(), "logs");
-            Directory.CreateDirectory(logDir);
+            var logDir = Path.Combine(ResolveProject(), "logs");
+            if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
             return logDir;
         }
 

@@ -198,8 +198,8 @@ async function resolveClients(opts) {
   if (opts.skipClients) return [];
   if (opts.clients && opts.clients.length > 0) return opts.clients;
   if (opts.nonInteractive) {
-    // Sensible default for --yes: all four clients.
-    return ['claude-code', 'claude-desktop', 'cursor', 'gemini'];
+    // Sensible default for --yes: all five clients.
+    return ['claude-code', 'claude-desktop', 'cursor', 'gemini', 'codex'];
   }
   const selection = await p.multiselect({
     message: 'Which MCP clients should I configure?',
@@ -213,17 +213,22 @@ async function resolveClients(opts) {
       {
         value: 'claude-desktop',
         label: 'Claude Desktop',
-        hint: 'user-global config (~/Library/Application Support/Claude/claude_desktop_config.json on macOS)',
+        hint: 'user-global (~/Library/Application Support/Claude/claude_desktop_config.json on macOS)',
       },
       {
         value: 'cursor',
         label: 'Cursor',
-        hint: 'user-global config (~/.cursor/mcp.json)',
+        hint: 'user-global (~/.cursor/mcp.json)',
       },
       {
         value: 'gemini',
         label: 'Gemini CLI',
-        hint: 'user-global config (~/.gemini/settings.json)',
+        hint: 'user-global (~/.gemini/settings.json) — hyphen-only server name required',
+      },
+      {
+        value: 'codex',
+        label: 'OpenAI Codex',
+        hint: 'user-global (~/.codex/config.toml) — TOML format',
       },
     ],
     required: false,

@@ -16,7 +16,7 @@ export async function run(argv) {
     )
     .option(
       '-c, --clients <list>',
-      'Comma-separated list of MCP clients to configure: claude-code, claude-desktop, cursor, gemini'
+      'Comma-separated list of MCP clients to configure: claude-code, claude-desktop, cursor, gemini, codex'
     )
     .option(
       '--skip-unity',
@@ -65,7 +65,7 @@ export async function run(argv) {
 
 function parseClientsList(csv) {
   if (!csv) return null;
-  const valid = new Set(['claude-code', 'claude-desktop', 'cursor', 'gemini']);
+  const valid = new Set(['claude-code', 'claude-desktop', 'cursor', 'gemini', 'codex']);
   const list = csv.split(',').map((s) => s.trim()).filter(Boolean);
   const bad = list.filter((c) => !valid.has(c));
   if (bad.length > 0) {

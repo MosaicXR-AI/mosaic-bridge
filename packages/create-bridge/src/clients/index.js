@@ -2,6 +2,7 @@ import { configureClaudeCode } from './claude-code.js';
 import { configureClaudeDesktop } from './claude-desktop.js';
 import { configureCursor } from './cursor.js';
 import { configureGemini } from './gemini.js';
+import { configureCodex } from './codex.js';
 
 /**
  * Registry of MCP clients the installer knows how to configure.
@@ -24,6 +25,7 @@ export function getClientRegistry() {
     'claude-desktop': { label: 'Claude Desktop', configure: configureClaudeDesktop },
     'cursor':         { label: 'Cursor',         configure: configureCursor        },
     'gemini':         { label: 'Gemini CLI',     configure: configureGemini        },
+    'codex':          { label: 'OpenAI Codex',   configure: configureCodex         },
   };
 }
 

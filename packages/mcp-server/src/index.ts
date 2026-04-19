@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { readDiscovery, type DiscoveryOptions } from './discovery.js';
 import { BridgeClient } from './bridge-client.js';

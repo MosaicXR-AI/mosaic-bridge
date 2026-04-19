@@ -1,6 +1,6 @@
 {
   "name": "@mosaicxr-ai/create-bridge",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "Interactive installer for Mosaic Bridge — sets up the Unity package and configures MCP for Claude Code, Claude Desktop, Cursor, and Gemini CLI.",
   "license": "Apache-2.0",
   "author": {
@@ -48,6 +48,7 @@
   "dependencies": {
     "@clack/prompts": "^0.10.0",
     "commander": "^14.0.0",
-    "picocolors": "^1.1.0"
+    "picocolors": "^1.1.0",
+    "smol-toml": "^1.6.1"
   }
 }

@@ -85,7 +85,10 @@ export function readInstanceRegistry(): InstanceRegistryEntry[] {
   if (!existsSync(path)) return [];
 
   try {
-    const raw = readFileSync(path, 'utf8');
+    // Strip UTF-8 BOM — Windows/macOS .NET File.WriteAllText() writes a BOM by default,
+    // and Node's JSON.parse does NOT auto-strip it. Without this, a registry file written
+    // by the Unity bridge fails to parse here and the auto-detect path sees 0 editors.
+    const raw = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed as InstanceRegistryEntry[];
     if (parsed && Array.isArray(parsed.instances)) return parsed.instances as InstanceRegistryEntry[];
@@ -232,7 +235,8 @@ export function readDiscovery(opts?: DiscoveryOptions): DiscoveryData {
       `and that its project's dataPath matches the --project-path you supplied (if any).`
     );
   }
-  const raw = readFileSync(path, 'utf8');
+  // Strip UTF-8 BOM (see readInstanceRegistry for the rationale).
+  const raw = readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
   const data = JSON.parse(raw) as DiscoveryData;
   if (!data.schema_version?.startsWith('1.')) {
     throw new Error(`Unsupported discovery file schema version: ${data.schema_version}`);

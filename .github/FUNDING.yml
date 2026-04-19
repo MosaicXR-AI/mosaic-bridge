@@ -1,0 +1,12 @@
+# GitHub configuration that wires up the "Sponsor" button on the repo.
+# Fill in whichever you're actually using — remove the rest.
+# Once GitHub Sponsors is approved for @MousaSoutari, uncomment that line.
+
+# github: [MousaSoutari]
+# ko_fi: mousasoutari
+# open_collective: mosaicxr
+
+# Custom sponsorship URL (enables the button immediately, before GitHub
+# Sponsors is approved). Points at the MosaicXR site; swap for a real
+# sponsor page once ready.
+custom: ['https://mosaicxr.ai']

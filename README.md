@@ -4,6 +4,8 @@
 [![Unity 2022 LTS+](https://img.shields.io/badge/Unity-2022%20LTS%2B-000?logo=unity)](https://unity.com)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-4A90E2.svg)](https://modelcontextprotocol.io/)
 [![Release](https://img.shields.io/github/v/release/MosaicXR-AI/mosaic-bridge?include_prereleases&label=release)](https://github.com/MosaicXR-AI/mosaic-bridge/releases)
+[![npm — installer](https://img.shields.io/npm/v/%40mosaicxr-ai%2Fcreate-bridge?label=create-bridge)](https://www.npmjs.com/package/@mosaicxr-ai/create-bridge)
+[![npm — mcp-server](https://img.shields.io/npm/v/%40mosaicxr-ai%2Fmcp-server?label=mcp-server)](https://www.npmjs.com/package/@mosaicxr-ai/mcp-server)
 [![GitHub stars](https://img.shields.io/github/stars/MosaicXR-AI/mosaic-bridge?style=social)](https://github.com/MosaicXR-AI/mosaic-bridge/stargazers)
 
 **AI agents that drive the Unity Editor.**
@@ -63,9 +65,40 @@ your machine.
 
 ---
 
-## Install
+## Quick install
 
-Add the Unity package via git URL in your project's `Packages/manifest.json`:
+One command. It walks you through the rest:
+
+```bash
+npx @mosaicxr-ai/create-bridge
+```
+
+The installer:
+
+1. Asks for your Unity project path (create one in Unity Hub first if you
+   haven't — any empty Unity 2022 LTS+ or Unity 6 project works)
+2. Asks which MCP client(s) to configure — Claude Code, Claude Desktop,
+   Cursor, Gemini CLI, or OpenAI Codex (any combination)
+3. Adds `com.mosaic.bridge` to the project's `Packages/manifest.json`
+4. Writes the MCP server entry into each selected client's config
+
+Then open the Unity project, wait for compile, restart your MCP client, and
+start prompting.
+
+### Non-interactive (CI / scripted)
+
+```bash
+npx @mosaicxr-ai/create-bridge \
+  --project-path /path/to/UnityProject \
+  --clients claude-code,cursor \
+  --yes
+```
+
+See `npx @mosaicxr-ai/create-bridge --help` for all flags.
+
+### Manual install (if you prefer)
+
+Add to `<UnityProject>/Packages/manifest.json`:
 
 ```json
 {
@@ -75,21 +108,18 @@ Add the Unity package via git URL in your project's `Packages/manifest.json`:
 }
 ```
 
-Clone the repo and build the MCP server:
+Then point your MCP client at:
 
-```bash
-git clone https://github.com/MosaicXR-AI/mosaic-bridge.git
-cd mosaic-bridge/packages/mcp-server
-npm install && npm run build
+```json
+{
+  "mcpServers": {
+    "mosaic-bridge": {
+      "command": "npx",
+      "args": ["-y", "@mosaicxr-ai/mcp-server", "--project-path", "/path/to/UnityProject"]
+    }
+  }
+}
 ```
-
-Open your Unity project. The bridge auto-starts, writes a `.mcp.json` to your
-project root, and — for Claude Code — auto-detects the config. Restart Claude
-Code and you're done.
-
-> **A polished `npx @mosaicxr-ai/create-bridge` installer is in progress.**
-> It will configure Claude Code, Claude Desktop, Cursor, and Gemini in one
-> interactive wizard. See the [roadmap](#roadmap).
 
 ---
 
@@ -146,18 +176,20 @@ fabricating a number.
 ## Supported MCP clients
 
 Mosaic Bridge is protocol-native — it speaks [Model Context Protocol
-2024-11-05](https://modelcontextprotocol.io/). Tested with:
+2024-11-05](https://modelcontextprotocol.io/). The installer configures all
+of these in one pass:
 
-| Client | Config file | Auto-configured? |
-|---|---|---|
-| **Claude Code** | `<project>/.mcp.json` | Yes — written on first bridge startup |
-| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | Coming via installer |
-| **Cursor** | `~/.cursor/mcp.json` or project `.cursor/mcp.json` | Coming via installer |
-| **Gemini CLI** | `~/.gemini/settings.json` | Coming via installer |
-| **Other MCP clients** | See client docs | Manual |
+| Client | Config file | Format | Auto-configured? |
+|---|---|---|---|
+| **Claude Code** | `<project>/.mcp.json` | JSON | ✅ via installer (+ auto-written by bridge on first start) |
+| **Claude Desktop** | `~/Library/Application Support/Claude/claude_desktop_config.json` | JSON | ✅ via installer |
+| **Cursor** | `~/.cursor/mcp.json` | JSON | ✅ via installer |
+| **Gemini CLI** | `~/.gemini/settings.json` | JSON | ✅ via installer |
+| **OpenAI Codex CLI** | `~/.codex/config.toml` | TOML | ✅ via installer |
+| **Windsurf, Cline, Continue.dev, others** | see each client's docs | varies | Manual today (installer roadmap: beta.3+) |
 
-Any MCP 2024-11-05 compliant client should work — these are just the ones with
-dedicated auto-config paths planned.
+Any MCP 2024-11-05 compliant client works with manual config. The auto-config
+list above is just the clients the installer knows paths/formats for today.
 
 ---
 

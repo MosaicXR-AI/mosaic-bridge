@@ -64,6 +64,18 @@ namespace Mosaic.Bridge.Core.Bootstrap
 
         static BridgeBootstrap()
         {
+            // Guard: only run in the interactive Editor process. Unity spawns helper
+            // subprocesses (AssetImportWorker, -batchmode builds, etc.) that also fire
+            // [InitializeOnLoad]. If those run the bootstrap, they (a) fight for the
+            // bridge port and (b) subscribe to EditorApplication.quitting, which then
+            // deletes the shared discovery file when the worker exits — leaving the
+            // main Editor's bridge unreachable to the MCP server.
+            if (IsHelperSubprocess())
+            {
+                // State remains Uninitialized; no handlers registered, no files written.
+                return;
+            }
+
             try
             {
                 State = BridgeState.Starting;
@@ -306,6 +318,46 @@ namespace Mosaic.Bridge.Core.Bootstrap
             // Story 10.1: Flush and close the file logger
             FileLog?.Dispose();
             FileLog = null;
+        }
+
+        /// <summary>
+        /// Returns true for Unity helper subprocesses that should NOT run the bridge bootstrap:
+        /// AssetImportWorker, -batchmode command-line sessions, -adb2 asset-db workers, etc.
+        /// Only the interactive main Editor should bind the bridge port, write the shared
+        /// discovery file, and subscribe to EditorApplication.quitting.
+        /// </summary>
+        private static bool IsHelperSubprocess()
+        {
+            // Fast path: Unity's public isBatchMode covers -batchmode, -nographics, and
+            // AssetImportWorker subprocesses (which launch in batch mode by design).
+            if (UnityEngine.Application.isBatchMode)
+                return true;
+
+            // Defense-in-depth: scan command-line args for markers of helper processes
+            // that may not be caught by isBatchMode on all Unity versions.
+            try
+            {
+                var args = Environment.GetCommandLineArgs();
+                if (args != null)
+                {
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        var a = args[i];
+                        if (string.IsNullOrEmpty(a)) continue;
+
+                        if (a.IndexOf("AssetImportWorker", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                        if (a.Equals("-adb2", StringComparison.OrdinalIgnoreCase)) return true;
+                        if (a.Equals("-batchmode", StringComparison.OrdinalIgnoreCase)) return true;
+                        if (a.Equals("-importPackage", StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+                }
+            }
+            catch
+            {
+                // If argv inspection fails we'd rather run the bootstrap than silently skip.
+            }
+
+            return false;
         }
 
         /// <summary>

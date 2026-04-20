@@ -51,6 +51,26 @@ export function hashProjectAssetsPath(assetsPath: string): string {
 }
 
 /**
+ * Canonicalizes an absolute Assets path into the form Unity's Application.dataPath
+ * uses, so the C# GetProjectHash() and the TS deriveProjectHash() agree.
+ *
+ * Unity's Application.dataPath always uses forward slashes on every platform, but
+ * Node's path.resolve/path.join emit backslashes on win32. Without this step the
+ * two sides hash different strings on Windows and the MCP server can't find the
+ * discovery file Unity wrote. Non-win32 paths are returned unchanged — backslashes
+ * are legal filename characters on Unix and must not be rewritten.
+ *
+ * Exported so cross-platform regression tests can drive the win32 branch from any
+ * test host.
+ */
+export function canonicalizeAssetsPathForHashing(
+  assetsPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === 'win32' ? assetsPath.replace(/\\/g, '/') : assetsPath;
+}
+
+/**
  * Derives a project hash from a user-supplied project path. If the path does not
  * already end with '/Assets', appends it before hashing. This handles both
  * `--project-path /path/to/project` and `--project-path /path/to/project/Assets`.
@@ -61,7 +81,7 @@ export function deriveProjectHash(projectPath: string): string {
   const assetsPath = normalized.endsWith(assetsSuffix) || normalized.endsWith('/Assets')
     ? normalized
     : join(normalized, 'Assets');
-  return hashProjectAssetsPath(assetsPath);
+  return hashProjectAssetsPath(canonicalizeAssetsPathForHashing(assetsPath));
 }
 
 /**

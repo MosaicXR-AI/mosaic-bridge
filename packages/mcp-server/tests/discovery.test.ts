@@ -13,6 +13,7 @@ import {
   deriveProjectHash,
   resolveDiscoveryFilePath,
   getSharedBasePath,
+  canonicalizeAssetsPathForHashing,
 } from '../src/discovery.js';
 
 describe('Project hash', () => {
@@ -50,6 +51,33 @@ describe('deriveProjectHash — normalizes user-supplied project path', () => {
     const h1 = deriveProjectHash('./some-project');
     const h2 = deriveProjectHash('./some-project/Assets');
     expect(h1).toBe(h2);
+  });
+});
+
+describe('canonicalizeAssetsPathForHashing — Unity cross-platform convention', () => {
+  // Unity's Application.dataPath uses forward slashes on every platform. Node's
+  // path.resolve/join on win32 produce backslashes. Before this helper existed,
+  // Unity on Windows wrote the discovery file under hash(forward-slash path) and
+  // the MCP server looked it up under hash(backslash path) — two different hashes,
+  // so "Connection closed" on every Windows install.
+  it('rewrites backslashes to forward slashes on win32', () => {
+    const winInput = 'D:\\Unityprojects\\AItest\\Assets';
+    const unityForm = 'D:/Unityprojects/AItest/Assets';
+    expect(canonicalizeAssetsPathForHashing(winInput, 'win32')).toBe(unityForm);
+  });
+
+  it('makes the win32 MCP hash match the Unity (forward-slash) hash', () => {
+    const unityDataPath = 'D:/Unityprojects/AItest/Assets';
+    const nodeResolved = 'D:\\Unityprojects\\AItest\\Assets';
+    expect(
+      hashProjectAssetsPath(canonicalizeAssetsPathForHashing(nodeResolved, 'win32')),
+    ).toBe(hashProjectAssetsPath(unityDataPath));
+  });
+
+  it('leaves backslashes untouched on unix (legal filename characters there)', () => {
+    const linuxPath = '/home/user/weird\\name/Assets';
+    expect(canonicalizeAssetsPathForHashing(linuxPath, 'linux')).toBe(linuxPath);
+    expect(canonicalizeAssetsPathForHashing(linuxPath, 'darwin')).toBe(linuxPath);
   });
 });
 

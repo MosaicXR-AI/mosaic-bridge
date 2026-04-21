@@ -9,7 +9,7 @@ namespace Mosaic.Bridge.Tools.Materials
     public static class MaterialSetPropertyTool
     {
         [MosaicTool("material/set-property",
-                    "Sets a shader property value on a material asset",
+                    "Sets a shader property value on a material asset. ValueType: float | int | color | vector | texture | bool | keyword. bool supports material flags (enableInstancing, doubleSidedGI). keyword toggles shader keywords (_EMISSION, _NORMALMAP, _ALPHATEST_ON, etc).",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<MaterialSetPropertyResult> Execute(MaterialSetPropertyParams p)
         {
@@ -28,11 +28,17 @@ namespace Mosaic.Bridge.Tools.Materials
                 return ToolResult<MaterialSetPropertyResult>.Fail(
                     $"Material not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
 
-            if (!mat.HasProperty(p.Property))
+            // Material-level flags + keyword ops bypass HasProperty because they
+            // aren't shader properties — they're flags on the Material object itself.
+            var valueType = p.ValueType.ToLowerInvariant();
+            var isMaterialFlag = valueType == "bool" && IsKnownMaterialFlag(p.Property);
+            var isKeywordOp    = valueType == "keyword";
+
+            if (!isMaterialFlag && !isKeywordOp && !mat.HasProperty(p.Property))
                 return ToolResult<MaterialSetPropertyResult>.Fail(
                     $"Material shader does not have property '{p.Property}'", ErrorCodes.NOT_FOUND);
 
-            switch (p.ValueType.ToLowerInvariant())
+            switch (valueType)
             {
                 case "float":
                     mat.SetFloat(p.Property, p.FloatValue);
@@ -40,6 +46,22 @@ namespace Mosaic.Bridge.Tools.Materials
 
                 case "int":
                     mat.SetInt(p.Property, p.IntValue);
+                    break;
+
+                case "bool":
+                    // Material flags (enableInstancing, doubleSidedGI). Fall through
+                    // to generic shader property if not a known flag (some custom
+                    // shader-graph bools may live as floats).
+                    if (!ApplyMaterialFlag(mat, p.Property, p.BoolValue))
+                    {
+                        // Fallback: write 1/0 to a float shader property.
+                        mat.SetFloat(p.Property, p.BoolValue ? 1f : 0f);
+                    }
+                    break;
+
+                case "keyword":
+                    if (p.BoolValue) mat.EnableKeyword(p.Property);
+                    else             mat.DisableKeyword(p.Property);
                     break;
 
                 case "color":
@@ -82,7 +104,7 @@ namespace Mosaic.Bridge.Tools.Materials
 
                 default:
                     return ToolResult<MaterialSetPropertyResult>.Fail(
-                        $"Unknown ValueType '{p.ValueType}'. Expected: float, int, color, vector, texture",
+                        $"Unknown ValueType '{p.ValueType}'. Expected: float, int, color, vector, texture, bool, keyword",
                         ErrorCodes.INVALID_PARAM);
             }
 
@@ -96,6 +118,33 @@ namespace Mosaic.Bridge.Tools.Materials
                 ValueType = p.ValueType,
                 Applied   = true
             });
+        }
+
+        private static bool IsKnownMaterialFlag(string propertyName)
+        {
+            switch (propertyName)
+            {
+                case "enableInstancing":
+                case "doubleSidedGI":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool ApplyMaterialFlag(Material mat, string propertyName, bool value)
+        {
+            switch (propertyName)
+            {
+                case "enableInstancing":
+                    mat.enableInstancing = value;
+                    return true;
+                case "doubleSidedGI":
+                    mat.doubleSidedGI = value;
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

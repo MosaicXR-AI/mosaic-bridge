@@ -27,9 +27,9 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 Name = "TestSpline",
                 Knots = new[]
                 {
-                    new SplineCreateParams.KnotData { Position = new float[] { 0, 0, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 5, 2, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 10, 0, 5 } }
+                    new SplineKnotData { Position = new float[] { 0, 0, 0 } },
+                    new SplineKnotData { Position = new float[] { 5, 2, 0 } },
+                    new SplineKnotData { Position = new float[] { 10, 0, 5 } }
                 }
             });
             Assert.IsTrue(result.Success, result.Error);
@@ -45,9 +45,9 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 Name = "TestSpline2",
                 Knots = new[]
                 {
-                    new SplineCreateParams.KnotData { Position = new float[] { 0, 0, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 5, 0, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 5, 0, 5 } }
+                    new SplineKnotData { Position = new float[] { 0, 0, 0 } },
+                    new SplineKnotData { Position = new float[] { 5, 0, 0 } },
+                    new SplineKnotData { Position = new float[] { 5, 0, 5 } }
                 },
                 Closed = true
             });
@@ -63,7 +63,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 Name = "TestSpline",
                 Knots = new[]
                 {
-                    new SplineCreateParams.KnotData { Position = new float[] { 0, 0, 0 } }
+                    new SplineKnotData { Position = new float[] { 0, 0, 0 } }
                 }
             });
             Assert.IsFalse(result.Success);
@@ -85,13 +85,13 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 Name = "TestSpline",
                 Knots = new[]
                 {
-                    new SplineCreateParams.KnotData { Position = new float[] { 0, 0, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 5, 0, 0 } }
+                    new SplineKnotData { Position = new float[] { 0, 0, 0 } },
+                    new SplineKnotData { Position = new float[] { 5, 0, 0 } }
                 }
             });
             var result = SplineInfoTool.Execute(new SplineInfoParams { GameObjectName = "TestSpline" });
             Assert.IsTrue(result.Success, result.Error);
-            Assert.AreEqual(1, result.Data.Splines.Count);
+            Assert.AreEqual(1, result.Data.Splines.Length);
         }
 
         [Test]
@@ -102,18 +102,18 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 Name = "TestSpline",
                 Knots = new[]
                 {
-                    new SplineCreateParams.KnotData { Position = new float[] { 0, 0, 0 } },
-                    new SplineCreateParams.KnotData { Position = new float[] { 5, 0, 0 } }
+                    new SplineKnotData { Position = new float[] { 0, 0, 0 } },
+                    new SplineKnotData { Position = new float[] { 5, 0, 0 } }
                 }
             });
             var result = SplineAddKnotTool.Execute(new SplineAddKnotParams
             {
                 GameObjectName = "TestSpline",
                 Action = "add",
-                KnotData = new SplineAddKnotParams.KnotDataEntry { Position = new float[] { 10, 0, 0 } }
+                KnotData = new SplineKnotData { Position = new float[] { 10, 0, 0 } }
             });
             Assert.IsTrue(result.Success, result.Error);
-            Assert.AreEqual(3, result.Data.NewKnotCount);
+            Assert.AreEqual(3, result.Data.KnotCount);
         }
 
         [Test]
@@ -123,7 +123,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
             {
                 GameObjectName = "NonExistent",
                 Action = "add",
-                KnotData = new SplineAddKnotParams.KnotDataEntry { Position = new float[] { 0, 0, 0 } }
+                KnotData = new SplineKnotData { Position = new float[] { 0, 0, 0 } }
             });
             Assert.IsFalse(result.Success);
         }

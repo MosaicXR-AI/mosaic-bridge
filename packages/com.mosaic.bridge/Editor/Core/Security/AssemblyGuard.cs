@@ -37,11 +37,26 @@ namespace Mosaic.Bridge.Core.Security
 
         /// <summary>
         /// Assemblies that are always allowed and cannot be removed via the UI.
+        /// Every Mosaic-authored tool asmdef must live here — we ship them as
+        /// part of the same package and trust them by construction. Third-party
+        /// tool assemblies still have to be added by the user via the UI.
         /// </summary>
         private static readonly HashSet<string> DefaultAllowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Mosaic.Bridge.Tools",
-            "Mosaic.Bridge.Tests"
+            "Mosaic.Bridge.Tests",
+            // Optional-package wrappers. Each compiles only when its associated
+            // Unity package is installed (gated via asmdef versionDefines), so
+            // including the name here is safe — the assembly only exists when
+            // the user has opted in to the underlying package.
+            "Mosaic.Bridge.Tools.Cinemachine",
+            "Mosaic.Bridge.Tools.ProBuilder",
+            "Mosaic.Bridge.Tools.Addressables",
+            "Mosaic.Bridge.Tools.TextMeshPro",
+            "Mosaic.Bridge.Tools.URP",
+            "Mosaic.Bridge.Tools.HDRP",
+            "Mosaic.Bridge.Tools.Splines",
+            "Mosaic.Bridge.Tools.VisualScripting"
         };
 
         // ── Public API ───────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { homePath } from '../utils.js';
+import { buildCommandAndArgs } from './index.js';
 
 /**
  * OpenAI Codex CLI stores MCP config in TOML (not JSON like the others).
@@ -61,10 +62,7 @@ export async function configureCodex(ctx) {
     };
   }
 
-  root.mcp_servers[serverName] = {
-    command: 'npx',
-    args: ['-y', '@mosaicxr-ai/mcp-server', '--project-path', projectPath],
-  };
+  root.mcp_servers[serverName] = buildCommandAndArgs({ projectPath });
 
   // Ensure the parent directory exists (first-time installs won't have ~/.codex/).
   const dir = path.dirname(configPath);

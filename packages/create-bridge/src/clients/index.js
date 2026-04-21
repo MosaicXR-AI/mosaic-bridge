@@ -30,9 +30,25 @@ export function getClientRegistry() {
 }
 
 /**
- * Shared server-entry template. All four clients accept the same top-level
- * `mcpServers` key with a stdio command definition, so this produces a
- * single entry that we then splice into each client's file.
+ * Builds the `{ command, args }` pair that actually launches the MCP server.
+ *
+ * On Windows `npx` is a `.cmd` shim, and MCP clients spawn stdio servers
+ * without a shell — a bare `command: "npx"` fails to launch and Claude Code
+ * surfaces a "Windows requires 'cmd /c' wrapper to execute npx" warning.
+ * Wrap through `cmd /c` so the shim resolves correctly.
+ */
+export function buildCommandAndArgs({ projectPath }) {
+  const npxArgs = ['-y', '@mosaicxr-ai/mcp-server', '--project-path', projectPath];
+  if (process.platform === 'win32') {
+    return { command: 'cmd', args: ['/c', 'npx', ...npxArgs] };
+  }
+  return { command: 'npx', args: npxArgs };
+}
+
+/**
+ * Shared server-entry template. All four JSON-based clients accept the same
+ * top-level `mcpServers` key with a stdio command definition, so this produces
+ * a single entry that we then splice into each client's file.
  *
  * The server command is `npx @mosaicxr-ai/mcp-server` so users don't need
  * a pre-installed global binary — npx downloads on first run and caches it.
@@ -40,7 +56,6 @@ export function getClientRegistry() {
 export function buildMcpServerEntry({ projectPath }) {
   return {
     type: 'stdio',
-    command: 'npx',
-    args: ['-y', '@mosaicxr-ai/mcp-server', '--project-path', projectPath],
+    ...buildCommandAndArgs({ projectPath }),
   };
 }

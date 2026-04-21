@@ -5,6 +5,50 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.7] — 2026-04-21
+
+### Fixed
+
+Round 2 of manual-test-driven fixes. Caught by re-running previously-SKIPed
+tests after the test-assets-manifest landed.
+
+- **input/create (T-INPUT-01 FAIL-ERROR)** — seeded a default empty
+  ActionMap before calling `InputActionAsset.ToJson()`. A freshly-created
+  asset has null internal collections; `ToJson()` iterates them via LINQ
+  which throws `ArgumentNullException: Value cannot be null. Parameter
+  name: source`. Now returns a valid stub asset callers can populate via
+  follow-up `input/map` tools.
+- **terrain/trees (T-TERRAIN-SCULPTING-05 PASS-WITH-WARNINGS)** — reject
+  prefabs whose root has no `MeshRenderer`, `LODGroup`, or
+  `BillboardRenderer`. Unity's terrain tree system renders from the
+  prototype root only — nested-child visuals silently don't draw. Clear
+  error now surfaces the constraint + suggests `gameobject/create` as an
+  alternative scattering path.
+- **ui/create_canvas** — accept Unity-doc canonical enum names
+  (`ScreenSpaceOverlay`, `ScreenSpaceCamera`, `WorldSpace`) in addition
+  to the short aliases (`Overlay`, `Camera`, `WorldSpace`) that were the
+  only accepted values in beta.1-6. Result `RenderMode` field now
+  returns the canonical name. Non-breaking for existing callers.
+
+### Docs
+
+- **test-assets-manifest.md** — corrected Poly Haven slugs: 
+  `rock_surface_04` → `rocks_ground_01`, `grass_medium_03` → `leafy_grass`
+  (original URLs 404'd). Added inline note about the
+  `texture/set-import-settings` textureShape gap with an
+  `editor/execute-code` workaround.
+
+### Issues filed (tracked separately)
+
+- **#6** `component/set_reference` doesn't traverse nested struct paths —
+  blocks CM3 Follow target, Spline knots, Volume override `.value`.
+  Foundational capability gap.
+- **#7** `texture/set-import-settings` has no `textureShape` option —
+  blocks HDRI→Cubemap workflow.
+- **#8** Optional-package tool wrappers (ProBuilder, Addressables, etc.)
+  not discoverable even when packages are installed. May be resolved by
+  the beta.4-6 compile-error fixes; verify after re-import.
+
 ## [1.0.0-beta.6] — 2026-04-21
 
 ### Fixed

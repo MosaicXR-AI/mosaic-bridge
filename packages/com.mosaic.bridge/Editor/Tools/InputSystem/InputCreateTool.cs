@@ -37,6 +37,14 @@ namespace Mosaic.Bridge.Tools.InputSystem
             var asset = ScriptableObject.CreateInstance<InputActionAsset>();
             asset.name = p.Name;
 
+            // A freshly-created InputActionAsset has null internal collections
+            // (m_ActionMaps, m_ControlSchemes). InputActionAsset.ToJson() iterates
+            // those via LINQ which throws ArgumentNullException with
+            // "Value cannot be null. Parameter name: source". Seed an empty
+            // default ActionMap so ToJson has a concrete collection to serialize
+            // — callers can rename/remove it later via input/map tools.
+            asset.AddActionMap("Default");
+
             // InputActionAsset is serialized as JSON text
             File.WriteAllText(
                 Path.Combine(Application.dataPath, "..", p.Path),

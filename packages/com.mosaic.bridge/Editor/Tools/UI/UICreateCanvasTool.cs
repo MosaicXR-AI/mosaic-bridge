@@ -12,25 +12,32 @@ namespace Mosaic.Bridge.Tools.UI
     public static class UICreateCanvasTool
     {
         [MosaicTool("ui/create_canvas",
-                    "Creates a new Canvas with CanvasScaler and GraphicRaycaster. Auto-creates EventSystem if none exists.",
+                    "Creates a new Canvas with CanvasScaler and GraphicRaycaster. Auto-creates EventSystem if none exists. RenderMode: ScreenSpaceOverlay | ScreenSpaceCamera | WorldSpace (Unity-doc canonical names). Legacy aliases Overlay/Camera/WorldSpace remain accepted.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<UICreateCanvasResult> Execute(UICreateCanvasParams p)
         {
             // 1. Parse render mode
             RenderMode renderMode = UnityEngine.RenderMode.ScreenSpaceOverlay;
-            string renderModeLabel = "Overlay";
+            string renderModeLabel = "ScreenSpaceOverlay";
 
             if (!string.IsNullOrEmpty(p.RenderMode))
             {
+                // Accept both canonical Unity-doc names (ScreenSpaceOverlay,
+                // ScreenSpaceCamera, WorldSpace) AND the short aliases
+                // (Overlay, Camera, WorldSpace) that were the beta.1-6 surface.
+                // Keeps existing callers working while aligning with the Unity
+                // Manual's enum vocabulary.
                 switch (p.RenderMode.ToLowerInvariant())
                 {
+                    case "screenspaceoverlay":
                     case "overlay":
                         renderMode = UnityEngine.RenderMode.ScreenSpaceOverlay;
-                        renderModeLabel = "Overlay";
+                        renderModeLabel = "ScreenSpaceOverlay";
                         break;
+                    case "screenspacecamera":
                     case "camera":
                         renderMode = UnityEngine.RenderMode.ScreenSpaceCamera;
-                        renderModeLabel = "Camera";
+                        renderModeLabel = "ScreenSpaceCamera";
                         break;
                     case "worldspace":
                         renderMode = UnityEngine.RenderMode.WorldSpace;
@@ -38,7 +45,7 @@ namespace Mosaic.Bridge.Tools.UI
                         break;
                     default:
                         return ToolResult<UICreateCanvasResult>.Fail(
-                            $"Invalid RenderMode '{p.RenderMode}'. Must be Overlay, Camera, or WorldSpace.",
+                            $"Invalid RenderMode '{p.RenderMode}'. Must be ScreenSpaceOverlay, ScreenSpaceCamera, or WorldSpace.",
                             ErrorCodes.INVALID_PARAM);
                 }
             }

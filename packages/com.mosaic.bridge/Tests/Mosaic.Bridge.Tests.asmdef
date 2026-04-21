@@ -14,6 +14,7 @@
         "Mosaic.Bridge.Tools.HDRP",
         "Mosaic.Bridge.Tools.Splines",
         "Mosaic.Bridge.Tools.VisualScripting",
+        "Unity.Cinemachine",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

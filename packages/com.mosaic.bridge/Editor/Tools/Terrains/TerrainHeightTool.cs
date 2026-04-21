@@ -9,7 +9,7 @@ namespace Mosaic.Bridge.Tools.Terrains
     public static class TerrainHeightTool
     {
         [MosaicTool("terrain/height",
-                    "Performs height operations on a terrain: set, flatten, raise-lower, smooth, noise",
+                    "Performs height operations on a terrain: set, flatten, raise-lower, smooth, noise, array. Use 'array' with Heights[] + Width + HeightCells for batch writes — the right primitive for procedural terrain (avoids per-cell iteration). Supports DelayLod for multi-call sequences + BlendMode (replace|add|max|min).",
                     isReadOnly: false)]
         public static ToolResult<TerrainHeightResult> Execute(TerrainHeightParams p)
         {
@@ -53,13 +53,21 @@ namespace Mosaic.Bridge.Tools.Terrains
                     message = ApplyNoise(data, res, p);
                     break;
 
+                case "array":
+                    message = ApplyArray(data, res, p, out var arrayError);
+                    if (arrayError != null)
+                        return ToolResult<TerrainHeightResult>.Fail(arrayError, ErrorCodes.INVALID_PARAM);
+                    break;
+
                 default:
                     return ToolResult<TerrainHeightResult>.Fail(
-                        $"Unknown action '{p.Action}'. Valid actions: set, flatten, raise-lower, smooth, noise",
+                        $"Unknown action '{p.Action}'. Valid actions: set, flatten, raise-lower, smooth, noise, array",
                         ErrorCodes.INVALID_PARAM);
             }
 
-            terrain.Flush();
+            // DelayLod skips immediate collider rebuild. Caller is responsible for
+            // a final non-delayed call (or subsequent action that flushes).
+            if (!p.DelayLod) terrain.Flush();
 
             return ToolResult<TerrainHeightResult>.Ok(new TerrainHeightResult
             {
@@ -163,6 +171,76 @@ namespace Mosaic.Bridge.Tools.Terrains
 
             data.SetHeights(0, 0, heights);
             return $"Applied Perlin noise with strength {p.Strength:F2} and seed {p.Seed}";
+        }
+
+        private static string ApplyArray(TerrainData data, int res, TerrainHeightParams p, out string error)
+        {
+            error = null;
+
+            if (p.Heights == null || p.Heights.Length == 0)
+            {
+                error = "Heights array is required for action 'array'.";
+                return null;
+            }
+            if (p.Width <= 0 || p.HeightCells <= 0)
+            {
+                error = "Width and HeightCells must be > 0 for action 'array'.";
+                return null;
+            }
+            if (p.Heights.Length != p.Width * p.HeightCells)
+            {
+                error = $"Heights length {p.Heights.Length} does not match Width*HeightCells ({p.Width * p.HeightCells}).";
+                return null;
+            }
+            if (p.ArrayX < 0 || p.ArrayY < 0 ||
+                p.ArrayX + p.Width > res || p.ArrayY + p.HeightCells > res)
+            {
+                error = $"Array region ({p.ArrayX},{p.ArrayY})+({p.Width}x{p.HeightCells}) exceeds heightmap resolution {res}.";
+                return null;
+            }
+
+            var blend = (p.BlendMode ?? "replace").ToLowerInvariant();
+            if (blend != "replace" && blend != "add" && blend != "max" && blend != "min")
+            {
+                error = $"Unknown BlendMode '{p.BlendMode}'. Valid: replace, add, max, min.";
+                return null;
+            }
+
+            // Build the 2D array TerrainData expects — [y, x], row-major from Heights.
+            var region = new float[p.HeightCells, p.Width];
+
+            if (blend == "replace")
+            {
+                for (int y = 0; y < p.HeightCells; y++)
+                for (int x = 0; x < p.Width; x++)
+                    region[y, x] = Mathf.Clamp01(p.Heights[y * p.Width + x]);
+            }
+            else
+            {
+                // For add/max/min we need existing heights to blend against.
+                var existing = data.GetHeights(p.ArrayX, p.ArrayY, p.Width, p.HeightCells);
+                for (int y = 0; y < p.HeightCells; y++)
+                for (int x = 0; x < p.Width; x++)
+                {
+                    float incoming = p.Heights[y * p.Width + x];
+                    float current = existing[y, x];
+                    float combined = blend switch
+                    {
+                        "add" => current + incoming,
+                        "max" => Mathf.Max(current, incoming),
+                        "min" => Mathf.Min(current, incoming),
+                        _     => incoming
+                    };
+                    region[y, x] = Mathf.Clamp01(combined);
+                }
+            }
+
+            if (p.DelayLod)
+                data.SetHeightsDelayLOD(p.ArrayX, p.ArrayY, region);
+            else
+                data.SetHeights(p.ArrayX, p.ArrayY, region);
+
+            return $"Applied array {p.Width}x{p.HeightCells} at ({p.ArrayX},{p.ArrayY}) blend={blend} delayLod={p.DelayLod}";
         }
     }
 }

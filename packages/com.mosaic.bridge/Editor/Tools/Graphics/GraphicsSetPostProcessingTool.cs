@@ -1,4 +1,5 @@
 #if UNITY_6000_0_OR_NEWER
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -43,14 +44,12 @@ namespace Mosaic.Bridge.Tools.Graphics
                 Undo.RecordObject(volume, "Mosaic: Set Post-Processing");
             }
 
-            // Use reflection to set properties (avoids hard dependency on URP assembly)
-            var isGlobalProp = volumeType.GetProperty("isGlobal");
-            var weightProp = volumeType.GetProperty("weight");
-            var priorityProp = volumeType.GetProperty("priority");
-
-            if (isGlobalProp != null) isGlobalProp.SetValue(volume, p.IsGlobal);
-            if (weightProp != null) weightProp.SetValue(volume, Mathf.Clamp01(p.Weight));
-            if (priorityProp != null) priorityProp.SetValue(volume, p.Priority);
+            // Unity's Volume declares isGlobal, weight, priority, and sharedProfile as
+            // public FIELDS, not properties. Using GetProperty alone silently no-ops.
+            // Try property first (in case of custom subclass), then fall back to field.
+            SetMember(volumeType, volume, "isGlobal", p.IsGlobal);
+            SetMember(volumeType, volume, "weight", Mathf.Clamp01(p.Weight));
+            SetMember(volumeType, volume, "priority", p.Priority);
 
             if (!string.IsNullOrEmpty(p.ProfilePath))
             {
@@ -59,8 +58,7 @@ namespace Mosaic.Bridge.Tools.Graphics
                     return ToolResult<GraphicsSetPostProcessingResult>.Fail(
                         $"VolumeProfile not found at '{p.ProfilePath}'", ErrorCodes.NOT_FOUND);
 
-                var sharedProfileProp = volumeType.GetProperty("sharedProfile");
-                if (sharedProfileProp != null) sharedProfileProp.SetValue(volume, profile);
+                SetMember(volumeType, volume, "sharedProfile", profile);
             }
 
             EditorUtility.SetDirty(volume);
@@ -74,6 +72,28 @@ namespace Mosaic.Bridge.Tools.Graphics
                 Priority = p.Priority,
                 ProfilePath = p.ProfilePath
             });
+        }
+
+        // Sets a member by name, trying property first, then field. Returns whether
+        // the member was found (call sites may want to know, but current callers
+        // treat absence as silent-ok since not all Volume subclasses expose the same
+        // members across pipeline versions).
+        private static bool SetMember(System.Type type, object target, string memberName, object value)
+        {
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
+            var prop = type.GetProperty(memberName, flags);
+            if (prop != null && prop.CanWrite)
+            {
+                prop.SetValue(target, value);
+                return true;
+            }
+            var field = type.GetField(memberName, flags);
+            if (field != null)
+            {
+                field.SetValue(target, value);
+                return true;
+            }
+            return false;
         }
     }
 }

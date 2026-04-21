@@ -22,7 +22,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Create_Cube_ReturnsSuccess()
         {
-            var result = ProBuilderCreateTool.Execute(new ProBuilderCreateParams
+            var result = ProBuilderCreateTool.Create(new ProBuilderCreateParams
             {
                 Shape = "Cube", Name = "PB_Cube"
             });
@@ -35,7 +35,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Create_Sphere_ReturnsSuccess()
         {
-            var result = ProBuilderCreateTool.Execute(new ProBuilderCreateParams
+            var result = ProBuilderCreateTool.Create(new ProBuilderCreateParams
             {
                 Shape = "Sphere", Name = "PB_Sphere"
             });
@@ -45,7 +45,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Create_Stairs_ReturnsSuccess()
         {
-            var result = ProBuilderCreateTool.Execute(new ProBuilderCreateParams
+            var result = ProBuilderCreateTool.Create(new ProBuilderCreateParams
             {
                 Shape = "Stairs", Name = "PB_Stairs"
             });
@@ -55,7 +55,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Create_InvalidShape_ReturnsFail()
         {
-            var result = ProBuilderCreateTool.Execute(new ProBuilderCreateParams
+            var result = ProBuilderCreateTool.Create(new ProBuilderCreateParams
             {
                 Shape = "InvalidShape", Name = "PB_Bad"
             });
@@ -65,7 +65,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Info_NoMeshes_ReturnsEmptyList()
         {
-            var result = ProBuilderInfoTool.Execute(new ProBuilderInfoParams());
+            var result = ProBuilderInfoTool.Info(new ProBuilderInfoParams());
             Assert.IsTrue(result.Success, result.Error);
             Assert.IsNotNull(result.Data.Meshes);
         }
@@ -73,17 +73,17 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Info_AfterCreate_ReturnsMesh()
         {
-            ProBuilderCreateTool.Execute(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Cube" });
-            var result = ProBuilderInfoTool.Execute(new ProBuilderInfoParams { GameObjectName = "PB_Cube" });
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Cube" });
+            var result = ProBuilderInfoTool.Info(new ProBuilderInfoParams { GameObjectName = "PB_Cube" });
             Assert.IsTrue(result.Success, result.Error);
-            Assert.AreEqual(1, result.Data.Meshes.Count);
+            Assert.AreEqual(1, result.Data.Meshes.Length);
         }
 
         [Test]
         public void Modify_Subdivide_ReturnsSuccess()
         {
-            ProBuilderCreateTool.Execute(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
-            var result = ProBuilderModifyTool.Execute(new ProBuilderModifyParams
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
             {
                 GameObjectName = "PB_Modify", Operation = "subdivide"
             });
@@ -93,8 +93,8 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Modify_FlipNormals_ReturnsSuccess()
         {
-            ProBuilderCreateTool.Execute(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
-            var result = ProBuilderModifyTool.Execute(new ProBuilderModifyParams
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
             {
                 GameObjectName = "PB_Modify", Operation = "flip-normals"
             });
@@ -104,8 +104,8 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Modify_InvalidOperation_ReturnsFail()
         {
-            ProBuilderCreateTool.Execute(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
-            var result = ProBuilderModifyTool.Execute(new ProBuilderModifyParams
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "PB_Modify" });
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
             {
                 GameObjectName = "PB_Modify", Operation = "invalid"
             });
@@ -115,7 +115,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Modify_NonExistentGO_ReturnsFail()
         {
-            var result = ProBuilderModifyTool.Execute(new ProBuilderModifyParams
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
             {
                 GameObjectName = "NonExistent", Operation = "subdivide"
             });

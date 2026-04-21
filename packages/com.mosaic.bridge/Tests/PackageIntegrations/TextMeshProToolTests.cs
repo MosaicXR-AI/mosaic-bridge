@@ -93,7 +93,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
             });
             var result = TmpInfoTool.Execute(new TmpInfoParams { GameObjectName = "TMP_Props" });
             Assert.IsTrue(result.Success, result.Error);
-            Assert.AreEqual(1, result.Data.Components.Count);
+            Assert.AreEqual(1, result.Data.Components.Length);
         }
 
         [Test]

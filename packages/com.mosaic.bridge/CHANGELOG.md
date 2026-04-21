@@ -5,6 +5,30 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.6] — 2026-04-21
+
+### Fixed
+Package-integration tests now compile cleanly when the corresponding
+packages (Cinemachine, Splines, ProBuilder, Addressables, TextMeshPro)
+are present. Previous tests referenced stale API shapes:
+
+- **CinemachineToolTests.cs** — qualified `AddComponent<Camera>()` as
+  `UnityEngine.Camera`. After adding `using Unity.Cinemachine;`
+  the bare `Camera` identifier resolved to the `Unity.Cinemachine.Camera`
+  namespace (not a type), causing CS0118.
+- **SplinesToolTests.cs** — replaced non-existent nested types
+  `SplineCreateParams.KnotData` / `SplineAddKnotParams.KnotDataEntry`
+  with the actual top-level `SplineKnotData`. Replaced
+  `result.Data.Splines.Count` (array) with `.Length`. Replaced
+  `result.Data.NewKnotCount` with the actual `KnotCount` field.
+- **ProBuilderToolTests.cs** — renamed `.Execute` → `.Create` / `.Info` /
+  `.Modify` to match the actual public methods. Replaced
+  `result.Data.Meshes.Count` with `.Length` (array).
+- **AddressablesToolTests.cs** — renamed `.Execute` → `.Groups` / `.Info` /
+  `.Mark`.
+- **TextMeshProToolTests.cs** — proactive fix: `result.Data.Components.Count`
+  → `.Length`.
+
 ## [1.0.0-beta.5] — 2026-04-21
 
 ### Fixed

@@ -20,7 +20,9 @@ namespace Mosaic.Bridge.Tests.Cinemachine
                 _existingMainCamera.SetActive(false);
 
             _mainCameraGo = new GameObject("TestMainCamera");
-            _mainCameraGo.AddComponent<Camera>();
+            // Qualify — Unity.Cinemachine contains a `Camera` sub-namespace that
+            // shadows the unqualified `Camera` identifier once we import its root.
+            _mainCameraGo.AddComponent<UnityEngine.Camera>();
             _mainCameraGo.tag = "MainCamera";
         }
 

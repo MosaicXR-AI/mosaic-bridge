@@ -11,7 +11,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Groups_List_ReturnsSuccess()
         {
-            var result = AddressablesGroupsTool.Execute(new AddressablesGroupsParams
+            var result = AddressablesGroupsTool.Groups(new AddressablesGroupsParams
             {
                 Action = "list"
             });
@@ -22,7 +22,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Groups_InvalidAction_ReturnsFail()
         {
-            var result = AddressablesGroupsTool.Execute(new AddressablesGroupsParams
+            var result = AddressablesGroupsTool.Groups(new AddressablesGroupsParams
             {
                 Action = "invalid"
             });
@@ -32,7 +32,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Info_ReturnsSettings()
         {
-            var result = AddressablesInfoTool.Execute(new AddressablesInfoParams());
+            var result = AddressablesInfoTool.Info(new AddressablesInfoParams());
             Assert.IsTrue(result.Success, result.Error);
             Assert.IsNotNull(result.Data);
         }
@@ -40,7 +40,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Mark_InvalidAssetPath_ReturnsFail()
         {
-            var result = AddressablesMarkTool.Execute(new AddressablesMarkParams
+            var result = AddressablesMarkTool.Mark(new AddressablesMarkParams
             {
                 AssetPath = "Assets/NonExistent/fake.asset"
             });
@@ -50,13 +50,13 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [Test]
         public void Groups_CreateAndDelete_RoundTrip()
         {
-            var createResult = AddressablesGroupsTool.Execute(new AddressablesGroupsParams
+            var createResult = AddressablesGroupsTool.Groups(new AddressablesGroupsParams
             {
                 Action = "create", GroupName = "MosaicTestGroup"
             });
             Assert.IsTrue(createResult.Success, createResult.Error);
 
-            var deleteResult = AddressablesGroupsTool.Execute(new AddressablesGroupsParams
+            var deleteResult = AddressablesGroupsTool.Groups(new AddressablesGroupsParams
             {
                 Action = "delete", GroupName = "MosaicTestGroup"
             });

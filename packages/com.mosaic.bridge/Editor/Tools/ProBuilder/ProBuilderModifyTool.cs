@@ -50,8 +50,10 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                         return ToolResult<ProBuilderModifyResult>.Fail(
                             "No faces selected. Use probuilder/select to select faces before merging.",
                             ErrorCodes.INVALID_PARAM);
-                    var result = MergeElements.MergeFaces(pb, selectedFaces);
-                    if (result == null)
+                    // ProBuilder 6.x public API: MergeElements.Merge(mesh, faces) returns
+                    // the merged Face (or null on failure).
+                    var merged = MergeElements.Merge(pb, selectedFaces);
+                    if (merged == null)
                         return ToolResult<ProBuilderModifyResult>.Fail(
                             "Merge operation failed. Faces may not be adjacent.",
                             ErrorCodes.INVALID_PARAM);
@@ -78,7 +80,33 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                         return ToolResult<ProBuilderModifyResult>.Fail(
                             "No faces selected. Use probuilder/select to select faces before detaching.",
                             ErrorCodes.INVALID_PARAM);
-                    DetachElements.DetachFacesAsObject(pb, selectedFaces);
+
+                    // ProBuilder 6.x does not expose a public DetachElements API.
+                    // Re-implement "detach faces as new object" using the stable
+                    // public ProBuilderMesh.DeleteFaces primitive:
+                    //   1. Clone the GameObject.
+                    //   2. On the clone, keep ONLY the selected faces (by index).
+                    //   3. On the original, delete the selected faces.
+                    var clone = UnityEngine.Object.Instantiate(pb.gameObject);
+                    clone.name = pb.name + " (detached)";
+                    clone.transform.SetParent(pb.transform.parent, worldPositionStays: true);
+                    Undo.RegisterCreatedObjectUndo(clone, "Mosaic: ProBuilder Detach");
+
+                    var selectedIndices = new HashSet<int>();
+                    for (int i = 0; i < pb.faces.Count; i++)
+                        if (System.Array.IndexOf(selectedFaces, pb.faces[i]) >= 0)
+                            selectedIndices.Add(i);
+
+                    var cloneMesh = clone.GetComponent<ProBuilderMesh>();
+                    var cloneFacesToDelete = new List<Face>();
+                    for (int i = 0; i < cloneMesh.faces.Count; i++)
+                        if (!selectedIndices.Contains(i))
+                            cloneFacesToDelete.Add(cloneMesh.faces[i]);
+                    cloneMesh.DeleteFaces(cloneFacesToDelete);
+                    cloneMesh.ToMesh();
+                    cloneMesh.Refresh();
+
+                    pb.DeleteFaces(selectedFaces);
                     break;
                 }
                 case "bridge":

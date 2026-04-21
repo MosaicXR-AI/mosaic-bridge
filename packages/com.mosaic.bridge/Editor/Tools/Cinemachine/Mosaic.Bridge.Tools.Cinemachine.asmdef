@@ -5,7 +5,9 @@
         "Mosaic.Bridge.Contracts",
         "Mosaic.Bridge.Core",
         "Mosaic.Bridge.Tools",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Unity.Splines",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [
         "Editor"
@@ -21,6 +23,11 @@
             "name": "com.unity.cinemachine",
             "expression": "3.0.0",
             "define": "MOSAIC_HAS_CINEMACHINE"
+        },
+        {
+            "name": "com.unity.splines",
+            "expression": "2.0.0",
+            "define": "MOSAIC_HAS_SPLINES"
         }
     ],
     "noEngineReferences": false

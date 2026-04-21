@@ -324,17 +324,21 @@ project's `manifest.json`:
 ## Roadmap
 
 ### v1.0 beta (current)
-- Core bridge, MCP server, ~197 tools
+- Core bridge, MCP server, 288 tools across 67 categories
 - Per-project runtime isolation
-- Auto `.mcp.json` for Claude Code
+- Auto `.mcp.json` for Claude Code + auto-config for Claude Desktop, Cursor,
+  Gemini CLI, and OpenAI Codex CLI via `npx @mosaicxr-ai/create-bridge`
+- Windows `cmd /c` wrapper for stdio MCP launch (fixed in beta.3/beta.4)
+- Knowledge base covering all 288 tools with Unity-version-aware guidance
+  (see `_bmad-output/planning-artifacts/knowledge-base/`)
 - Apache 2.0 license with patent grant
 
 ### v1.0 stable
-- `npx @mosaicxr-ai/create-bridge` — interactive installer for Claude Code,
-  Claude Desktop, Cursor, and Gemini
 - Unity Asset Store listing
 - OpenUPM registry publication
 - First docs site
+- Runtime `kb/query` + `kb/fetch` server contract live
+- `kb/watch` background drift detector for Unity-docs updates
 
 ### v1.1+
 - Migrate deprecated Unity API usage to modern equivalents

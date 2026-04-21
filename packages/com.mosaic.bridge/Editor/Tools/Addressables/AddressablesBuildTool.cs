@@ -1,5 +1,6 @@
 #if MOSAIC_HAS_ADDRESSABLES
 using System.Diagnostics;
+using System.Linq;
 using UnityEditor.AddressableAssets;
 using UnityEditor.AddressableAssets.Build;
 using UnityEditor.AddressableAssets.Settings;
@@ -34,7 +35,7 @@ namespace Mosaic.Bridge.Tools.Addressables
             sw.Stop();
 
             bool succeeded = string.IsNullOrEmpty(buildResult.Error);
-            int fileCount = buildResult.FileRegistry?.GetFilePaths()?.Count ?? 0;
+            int fileCount = buildResult.FileRegistry?.GetFilePaths()?.Count() ?? 0;
 
             return ToolResult<AddressablesBuildResult>.Ok(new AddressablesBuildResult
             {

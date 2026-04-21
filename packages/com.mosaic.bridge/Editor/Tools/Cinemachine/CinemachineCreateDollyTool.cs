@@ -1,4 +1,4 @@
-#if MOSAIC_HAS_CINEMACHINE
+#if MOSAIC_HAS_CINEMACHINE && MOSAIC_HAS_SPLINES
 using UnityEngine;
 using UnityEngine.Splines;
 using UnityEditor;

@@ -77,3 +77,6 @@ Icon
 coverage/
 *.lcov
 .nyc_output/
+.claude/*
+_bmad/*
+_bmad-output/*

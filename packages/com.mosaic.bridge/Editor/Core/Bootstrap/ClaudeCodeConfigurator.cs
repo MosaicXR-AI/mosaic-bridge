@@ -152,14 +152,30 @@ namespace Mosaic.Bridge.Core.Bootstrap
             }
             else
             {
-                serverEntry = new JObject(
-                    new JProperty("type", "stdio"),
-                    new JProperty("command", "mosaic-mcp"),
-                    new JProperty("args", new JArray(
-                        "--project-path",
-                        projectPath
-                    ))
-                );
+                // On Windows, `mosaic-mcp` is installed as a .cmd shim by npm. MCP
+                // clients spawn stdio servers without a shell, so a bare
+                // command: "mosaic-mcp" fails to launch. Wrap through `cmd /c`
+                // so the shim resolves correctly.
+                var isWindows = UnityEngine.Application.platform == UnityEngine.RuntimePlatform.WindowsEditor;
+                serverEntry = isWindows
+                    ? new JObject(
+                        new JProperty("type", "stdio"),
+                        new JProperty("command", "cmd"),
+                        new JProperty("args", new JArray(
+                            "/c",
+                            "mosaic-mcp",
+                            "--project-path",
+                            projectPath
+                        ))
+                    )
+                    : new JObject(
+                        new JProperty("type", "stdio"),
+                        new JProperty("command", "mosaic-mcp"),
+                        new JProperty("args", new JArray(
+                            "--project-path",
+                            projectPath
+                        ))
+                    );
                 logger?.Warn(
                     "Could not detect mosaic-mcp dist/index.js; falling back to global 'mosaic-mcp' binary. " +
                     "Install with: npm install -g @mosaicxr-ai/mcp-server");

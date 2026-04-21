@@ -53,6 +53,24 @@ namespace Mosaic.Bridge.Tools.Terrains
                 return ToolResult<TerrainTreesResult>.Fail(
                     $"Prefab not found at '{p.PrefabPath}'", ErrorCodes.NOT_FOUND);
 
+            // Unity's terrain tree system renders instances by sampling the
+            // ROOT-level MeshRenderer / LODGroup of the prototype. Prefabs
+            // whose visuals live on a nested child GameObject produce
+            // invisible tree instances (the terrain places them at correct
+            // positions in data but nothing draws). Reject with a clear
+            // message so the caller either fixes the prefab or uses
+            // gameobject/create + component/add as a scattering alternative.
+            var hasRootMesh = prefab.GetComponent<MeshRenderer>() != null
+                           || prefab.GetComponent<LODGroup>() != null
+                           || prefab.GetComponent<BillboardRenderer>() != null;
+            if (!hasRootMesh)
+                return ToolResult<TerrainTreesResult>.Fail(
+                    $"Prefab '{p.PrefabPath}' has no MeshRenderer, LODGroup, or BillboardRenderer on its ROOT GameObject. " +
+                    "Unity's terrain tree system renders from the prototype root only — nested-child visuals will not draw. " +
+                    "Either flatten the prefab hierarchy, add a root MeshRenderer, or use gameobject/create to scatter prefabs as scene objects.",
+                    ErrorCodes.INVALID_PARAM,
+                    "See Unity Manual: Trees > Tree Prototypes. Terrain tree rendering is a special code path distinct from normal prefab instantiation.");
+
             Undo.RegisterCompleteObjectUndo(data, "Mosaic: Terrain Add Tree Prototype");
 
             var prototypes = new List<TreePrototype>(data.treePrototypes);

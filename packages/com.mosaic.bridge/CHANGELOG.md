@@ -5,6 +5,27 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.8] — 2026-04-21
+
+### Fixed
+
+Round 3 of manual-test-driven fixes. Addresses the dispatcher and schema
+issues surfaced by the beta.7 test run.
+
+- **AssemblyGuard (issue #8)** — added the 8 optional-package tool
+  wrapper assemblies (`Mosaic.Bridge.Tools.Cinemachine`,
+  `Mosaic.Bridge.Tools.ProBuilder`, `Mosaic.Bridge.Tools.Addressables`,
+  `Mosaic.Bridge.Tools.TextMeshPro`, `Mosaic.Bridge.Tools.URP`,
+  `Mosaic.Bridge.Tools.HDRP`, `Mosaic.Bridge.Tools.Splines`,
+  `Mosaic.Bridge.Tools.VisualScripting`) to `DefaultAllowed`. These are
+  Mosaic-authored and ship as part of the same package, so they're
+  trusted by construction. Before this fix the tools appeared in
+  `meta/list_advanced_tools` (which bypasses the guard) but were NOT
+  in the registry (which respects the guard), producing the dispatcher
+  mismatch — `meta/advanced_tool` returned "Tool not found" for every
+  name format tried. Each assembly only compiles when its associated
+  Unity package is installed, so enabling them by default is safe.
+
 ## [1.0.0-beta.7] — 2026-04-21
 
 ### Fixed

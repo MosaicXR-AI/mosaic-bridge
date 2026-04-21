@@ -63,15 +63,30 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
   );
 
   // Handle tools/list
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: (t.inputSchema && Object.keys(t.inputSchema).length > 0)
-        ? t.inputSchema
-        : { type: 'object' as const, properties: {}, additionalProperties: true },
-    })),
-  }));
+  // Always re-fetch from Unity. The bridge rebuilds its ToolRegistry on every
+  // [InitializeOnLoad] (domain reload after a script recompile). If we kept
+  // the startup-time `tools` snapshot, schema additions to existing tools
+  // (e.g. a new param field on material/set-property) would be invisible to
+  // MCP clients until the MCP server itself restarted. Refreshing on every
+  // list request is cheap — the HTTP call to 127.0.0.1 is sub-millisecond in
+  // practice.
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    try {
+      tools = await client.listTools();
+    } catch {
+      // Fall back to the cached list if Unity is momentarily unreachable
+      // (e.g. mid-domain-reload). Better to return stale than fail the call.
+    }
+    return {
+      tools: tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: (t.inputSchema && Object.keys(t.inputSchema).length > 0)
+          ? t.inputSchema
+          : { type: 'object' as const, properties: {}, additionalProperties: true },
+      })),
+    };
+  });
 
   // Handle tools/call
   server.setRequestHandler(CallToolRequestSchema, async (req) => {

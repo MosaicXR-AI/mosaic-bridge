@@ -18,7 +18,7 @@ namespace Mosaic.Bridge.Tools.Cameras
 
             if (p.CameraInstanceId.HasValue)
             {
-                var obj = UnityEditor.EditorUtility.InstanceIDToObject(p.CameraInstanceId.Value);
+                var obj = UnityEngine.Resources.EntityIdToObject(p.CameraInstanceId.Value);
                 if (obj == null)
                     return ToolResult<CameraScreenshotGameResult>.Fail(
                         $"No object found with InstanceId {p.CameraInstanceId.Value}",

@@ -35,7 +35,8 @@ namespace Mosaic.Bridge.Tools.Settings
             if (p.BundleIdentifier != null)
             {
                 PlayerSettings.SetApplicationIdentifier(
-                    BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget),
+                    UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(
+                        BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget)),
                     p.BundleIdentifier);
                 changed.Add("BundleIdentifier");
             }

@@ -45,7 +45,7 @@ namespace Mosaic.Bridge.Tools.Constraints
             if (p.SourceInstanceId.HasValue && p.SourceInstanceId.Value != 0)
             {
 #pragma warning disable CS0618
-                var sourceGo = EditorUtility.InstanceIDToObject(p.SourceInstanceId.Value) as GameObject;
+                var sourceGo = UnityEngine.Resources.EntityIdToObject(p.SourceInstanceId.Value) as GameObject;
 #pragma warning restore CS0618
                 if (sourceGo != null)
                 {
@@ -74,7 +74,7 @@ namespace Mosaic.Bridge.Tools.Constraints
             if (instanceId.HasValue && instanceId.Value != 0)
             {
 #pragma warning disable CS0618
-                go = EditorUtility.InstanceIDToObject(instanceId.Value) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
             if (go == null && !string.IsNullOrEmpty(name))

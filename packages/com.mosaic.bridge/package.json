@@ -1,6 +1,6 @@
 {
   "name": "com.mosaic.bridge",
-  "version": "1.0.0-beta.8",
+  "version": "1.0.0-beta.10",
   "displayName": "Mosaic Bridge",
   "description": "Unity Editor MCP (Model Context Protocol) plugin. Enables AI agents to drive the Unity Editor through MCP-compliant tool calls. Free, open-source, Apache 2.0.",
   "unity": "6000.0",

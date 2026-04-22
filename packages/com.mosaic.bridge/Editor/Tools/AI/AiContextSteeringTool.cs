@@ -8,6 +8,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.AI
 {
@@ -96,8 +97,8 @@ namespace Mosaic.Bridge.Tools.AI
             string outputDir = !string.IsNullOrEmpty(p.SavePath)
                 ? p.SavePath.TrimEnd('/', '\\')
                 : "Assets/Generated/AI";
+            AssetDatabaseHelper.EnsureFolder(outputDir);
             string fullDir = Path.Combine(Application.dataPath, "..", outputDir);
-            Directory.CreateDirectory(fullDir);
 
             string scriptAssetPath = $"{outputDir}/{className}.cs";
             string scriptFullPath = Path.Combine(Application.dataPath, "..", scriptAssetPath);

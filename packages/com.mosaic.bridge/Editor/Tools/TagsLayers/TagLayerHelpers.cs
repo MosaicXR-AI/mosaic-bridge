@@ -16,7 +16,7 @@ namespace Mosaic.Bridge.Tools.TagsLayers
         {
             if (instanceId.HasValue)
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId.Value) as GameObject;
+                var obj = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
                 if (obj != null) return obj;
             }
 

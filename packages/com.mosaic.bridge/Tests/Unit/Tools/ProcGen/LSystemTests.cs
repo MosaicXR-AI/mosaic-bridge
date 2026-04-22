@@ -29,7 +29,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.ProcGen
             var result = ProcGenLSystemTool.Execute(p);
             if (result.Success && result.Data.InstanceId != 0)
             {
-                var go = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
+                var go = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
                 if (go != null) _created.Add(go);
             }
             return result;

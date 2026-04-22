@@ -19,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Timeline
             // Resolve the target GameObject
             GameObject go = null;
             if (p.InstanceId != 0)
-                go = EditorUtility.InstanceIDToObject(p.InstanceId) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId) as GameObject;
             if (go == null && !string.IsNullOrEmpty(p.Name))
                 go = GameObject.Find(p.Name);
             if (go == null)

@@ -18,7 +18,7 @@ namespace Mosaic.Bridge.Tools.Graphics
         {
             GameObject go = null;
             if (p.InstanceId != 0)
-                go = EditorUtility.InstanceIDToObject(p.InstanceId) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId) as GameObject;
             if (go == null && !string.IsNullOrEmpty(p.Name))
                 go = GameObject.Find(p.Name);
             if (go == null)
@@ -80,14 +80,21 @@ namespace Mosaic.Bridge.Tools.Graphics
         // members across pipeline versions).
         private static bool SetMember(System.Type type, object target, string memberName, object value)
         {
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
-            var prop = type.GetProperty(memberName, flags);
+            // Search public and non-public to cover Unity's backing fields (e.g., m_Priority)
+            const BindingFlags pubFlags = BindingFlags.Public | BindingFlags.Instance;
+            const BindingFlags allFlags = pubFlags | BindingFlags.NonPublic;
+
+            var prop = type.GetProperty(memberName, pubFlags);
             if (prop != null && prop.CanWrite)
             {
                 prop.SetValue(target, value);
                 return true;
             }
-            var field = type.GetField(memberName, flags);
+
+            // Try public field first, then private/protected backing field
+            var field = type.GetField(memberName, pubFlags)
+                     ?? type.GetField("m_" + char.ToUpperInvariant(memberName[0]) + memberName.Substring(1), allFlags)
+                     ?? type.GetField(memberName, allFlags);
             if (field != null)
             {
                 field.SetValue(target, value);

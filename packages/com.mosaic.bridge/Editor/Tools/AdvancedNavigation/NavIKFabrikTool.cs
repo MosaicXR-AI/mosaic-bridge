@@ -22,7 +22,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
             // Find root bone
             GameObject root = null;
             if (p.RootInstanceId.HasValue && p.RootInstanceId.Value != 0)
-                root = EditorUtility.InstanceIDToObject(p.RootInstanceId.Value) as GameObject;
+                root = UnityEngine.Resources.EntityIdToObject(p.RootInstanceId.Value) as GameObject;
             if (root == null && !string.IsNullOrEmpty(p.RootName))
                 root = GameObject.Find(p.RootName);
             if (root == null)

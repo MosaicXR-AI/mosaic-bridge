@@ -38,9 +38,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
 
         private void Track(int instanceId)
         {
-#pragma warning disable CS0618
-            var go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-#pragma warning restore CS0618
+            var go = Resources.EntityIdToObject(instanceId) as GameObject;
             if (go != null)
                 _created.Add(go);
         }
@@ -111,9 +109,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(result.Success, result.Error);
             Track(result.Data.InstanceId);
 
-#pragma warning disable CS0618
-            var go = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
-#pragma warning restore CS0618
+            var go = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(go);
             Assert.IsNotNull(go.GetComponent<Canvas>());
             Assert.IsNotNull(go.GetComponent<CanvasScaler>());
@@ -144,9 +140,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Track(result.Data.InstanceId);
 
             // Verify text child exists
-#pragma warning disable CS0618
-            var buttonGo = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
-#pragma warning restore CS0618
+            var buttonGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(buttonGo);
             Assert.IsTrue(buttonGo.transform.childCount > 0, "Button should have a Text child");
         }
@@ -219,9 +213,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(result.Success, result.Error);
             Track(result.Data.InstanceId);
 
-#pragma warning disable CS0618
-            var go = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
-#pragma warning restore CS0618
+            var go = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             var rect = go.GetComponent<RectTransform>();
             Assert.AreEqual(50f, rect.anchoredPosition.x, 0.01f);
             Assert.AreEqual(100f, rect.anchoredPosition.y, 0.01f);

@@ -18,5 +18,8 @@ namespace Mosaic.Bridge.Tools.Textures
         public string FilterMode { get; set; }
         /// <summary>Wrap mode: Repeat, Clamp, Mirror, MirrorOnce. Null to leave unchanged.</summary>
         public string WrapMode { get; set; }
+        /// <summary>Texture shape: 2D, Cube (cubemap / HDRI), 2DArray, 3D. Null to leave unchanged.
+        /// Use "Cube" + TextureType="Default" to convert an equirectangular HDRI into a Cubemap.</summary>
+        public string TextureShape { get; set; }
     }
 }

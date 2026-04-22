@@ -12,7 +12,7 @@ namespace Mosaic.Bridge.Tools.Lighting
         {
             if (instanceId != 0)
             {
-                var obj = UnityEditor.EditorUtility.InstanceIDToObject(instanceId);
+                var obj = UnityEngine.Resources.EntityIdToObject(instanceId);
                 if (obj is GameObject go)
                     return go.GetComponent<Light>();
                 if (obj is Light light)

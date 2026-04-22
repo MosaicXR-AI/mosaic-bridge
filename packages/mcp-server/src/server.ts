@@ -190,6 +190,43 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
         description: 'Complete list of registered Mosaic Bridge tools with metadata',
         mimeType: 'application/json',
       },
+      // Unity project asset directories — use @mention to reference these in prompts
+      {
+        uri: 'mosaic://unity/assets/prefabs',
+        name: 'Unity Prefabs',
+        description: 'All prefab assets (.prefab) in the Unity project. Use @Unity Prefabs to browse available prefabs.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'mosaic://unity/assets/materials',
+        name: 'Unity Materials',
+        description: 'All material assets (.mat) in the Unity project. Use @Unity Materials to see available materials.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'mosaic://unity/assets/textures',
+        name: 'Unity Textures',
+        description: 'All texture assets (png, jpg, tga, exr, hdr) in the Unity project.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'mosaic://unity/assets/scenes',
+        name: 'Unity Scenes',
+        description: 'All scene assets (.unity) in the Unity project.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'mosaic://unity/assets/scripts',
+        name: 'Unity Scripts',
+        description: 'All C# script assets (.cs) in the Unity project Assets folder.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'mosaic://unity/assets/shadergraphs',
+        name: 'Unity ShaderGraphs',
+        description: 'All ShaderGraph assets (.shadergraph) in the Unity project.',
+        mimeType: 'application/json',
+      },
     ];
 
     // Story 5.5 + 3.5: Add KB entries as MCP resources
@@ -247,6 +284,44 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
           })), null, 2),
         }],
       };
+    }
+
+    // Unity project asset lists — each category calls asset/list on the bridge
+    const ASSET_FILTERS: Record<string, { filter: string; label: string }> = {
+      'mosaic://unity/assets/prefabs':     { filter: 't:Prefab',     label: 'Prefabs' },
+      'mosaic://unity/assets/materials':   { filter: 't:Material',   label: 'Materials' },
+      'mosaic://unity/assets/textures':    { filter: 't:Texture2D t:Cubemap t:Texture3D', label: 'Textures' },
+      'mosaic://unity/assets/scenes':      { filter: 't:Scene',      label: 'Scenes' },
+      'mosaic://unity/assets/scripts':     { filter: 't:MonoScript', label: 'Scripts' },
+      'mosaic://unity/assets/shadergraphs':{ filter: 'glob:*.shadergraph', label: 'ShaderGraphs' },
+    };
+
+    if (uri in ASSET_FILTERS) {
+      const { filter, label } = ASSET_FILTERS[uri];
+      try {
+        const result = await client.executeToolWithRetry('asset/list', { Filter: filter, PageSize: 200 });
+        return {
+          contents: [{
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({
+              category: label,
+              filter,
+              assets: (result.data as { Assets?: unknown[] })?.Assets ?? [],
+              totalCount: (result.data as { TotalCount?: number })?.TotalCount ?? 0,
+              hint: `Use these paths directly in tool calls: asset/info, asset/instantiate_prefab, material/assign, etc.`,
+            }, null, 2),
+          }],
+        };
+      } catch (err) {
+        return {
+          contents: [{
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ error: `Could not list ${label}: ${err instanceof Error ? err.message : String(err)}` }),
+          }],
+        };
+      }
     }
 
     // Story 5.5 + 3.5: Handle KB resource reads

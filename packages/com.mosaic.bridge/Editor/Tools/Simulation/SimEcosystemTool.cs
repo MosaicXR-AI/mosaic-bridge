@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Simulation
 {
@@ -34,8 +35,8 @@ namespace Mosaic.Bridge.Tools.Simulation
                 return ToolResult<SimEcosystemResult>.Fail(
                     "OutputDirectory must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+            AssetDatabaseHelper.EnsureFolder(outputDir);
             string fullDir = Path.Combine(Application.dataPath, "..", outputDir);
-            Directory.CreateDirectory(fullDir);
 
             // --- Compute Shader ---
             string computeAssetPath = $"{outputDir}/Ecosystem.compute";

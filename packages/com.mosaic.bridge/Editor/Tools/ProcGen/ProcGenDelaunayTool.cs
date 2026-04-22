@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -76,8 +77,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
                     return ToolResult<ProcGenDelaunayResult>.Fail(
                         "SavePath must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+                AssetDatabaseHelper.EnsureFolder(savePath);
                 var fullDir = Path.Combine(Application.dataPath, "..", savePath);
-                Directory.CreateDirectory(fullDir);
 
                 meshPath = savePath + "/DelaunayMesh.asset";
                 AssetDatabase.CreateAsset(mesh, meshPath);

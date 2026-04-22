@@ -27,7 +27,10 @@ namespace Mosaic.Bridge.Tools.ProcGen
         static readonly int[] Opposite = { 1, 0, 3, 2, 5, 4 };
 
         [MosaicTool("procgen/wfc",
-                    "Runs Wave Function Collapse to fill a grid with tiles satisfying adjacency constraints",
+                    "Runs Wave Function Collapse to fill a grid with tiles satisfying adjacency constraints. " +
+                    "Tiles param is required: [{\"Id\":\"floor\",\"Weight\":1.0,\"AllowedNeighbors\":{\"right\":[\"floor\",\"wall\"],\"left\":[\"floor\"],\"up\":[\"floor\"],\"down\":[\"floor\"]}}]. " +
+                    "Direction keys: right/left/up/down (2D); also forward/back for 3D (Depth>1). " +
+                    "AllowedNeighbors maps each direction to a list of tile Ids allowed as neighbors.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ProcGenWfcResult> Execute(ProcGenWfcParams p)
         {

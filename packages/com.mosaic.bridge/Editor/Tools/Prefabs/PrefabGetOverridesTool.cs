@@ -19,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Prefabs
 
             if (p.InstanceId.HasValue)
             {
-                go = EditorUtility.InstanceIDToObject(p.InstanceId.Value) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
                 if (go == null)
                     return ToolResult<PrefabGetOverridesResult>.Fail(
                         $"No GameObject found with instanceId {p.InstanceId.Value}",

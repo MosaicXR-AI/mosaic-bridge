@@ -58,7 +58,9 @@ namespace Mosaic.Bridge.Tools.Terrains
             }
             if (p.CastShadows.HasValue)
             {
-                terrain.castShadows = p.CastShadows.Value;
+                terrain.shadowCastingMode = p.CastShadows.Value
+                    ? UnityEngine.Rendering.ShadowCastingMode.On
+                    : UnityEngine.Rendering.ShadowCastingMode.Off;
                 changed = true;
             }
             if (p.DrawHeightmap.HasValue)
@@ -86,7 +88,7 @@ namespace Mosaic.Bridge.Tools.Terrains
                 TreeBillboardDistance  = terrain.treeBillboardDistance,
                 TreeMaximumFullLODCount = terrain.treeMaximumFullLODCount,
                 HeightmapPixelError   = terrain.heightmapPixelError,
-                CastShadows           = terrain.castShadows,
+                CastShadows           = terrain.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.Off,
                 DrawHeightmap         = terrain.drawHeightmap,
                 DrawTreesAndFoliage   = terrain.drawTreesAndFoliage,
                 Message               = changed ? "Settings updated" : "No changes (read-only query)"

@@ -3,7 +3,7 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { runInteractive } from './flow.js';
 
-const VERSION = '1.0.0-beta.1';
+const VERSION = '1.0.0-beta.4';
 
 export async function run(argv) {
   const program = new Command()
@@ -38,6 +38,10 @@ export async function run(argv) {
       '--force',
       'Overwrite existing MCP client config entries for this server (instead of skipping)'
     )
+    .option(
+      '--skip-claude',
+      'Do not write CLAUDE.md scene-building instructions into the Unity project root'
+    )
     .helpOption('-h, --help', 'Show help');
 
   program.parse(argv);
@@ -52,6 +56,7 @@ export async function run(argv) {
       nonInteractive: !!opts.yes,
       serverNameOverride: opts.serverName,
       force: !!opts.force,
+      skipClaude: !!opts.skipClaude,
     });
   } catch (err) {
     if (err && err.cancelled) {

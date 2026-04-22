@@ -173,9 +173,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
 
         private static GameObject FindByInstanceId(int instanceId)
         {
-#pragma warning disable CS0618
-            return UnityEditor.EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-#pragma warning restore CS0618
+            return UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
         }
     }
 }

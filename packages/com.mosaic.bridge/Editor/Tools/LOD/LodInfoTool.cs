@@ -68,7 +68,7 @@ namespace Mosaic.Bridge.Tools.LOD
             if (instanceId.HasValue && instanceId.Value != 0)
             {
 #pragma warning disable CS0618
-                go = EditorUtility.InstanceIDToObject(instanceId.Value) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
             if (go == null && !string.IsNullOrEmpty(name))

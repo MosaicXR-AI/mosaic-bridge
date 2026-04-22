@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -30,8 +31,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
                 return ToolResult<ProcGenNoise3DTextureResult>.Fail(
                     "NoiseType must be 'perlin', 'worley', or 'perlin-worley'", ErrorCodes.INVALID_PARAM);
 
+            AssetDatabaseHelper.EnsureFolder(outDir);
             var fullDir = Path.Combine(Application.dataPath, "..", outDir);
-            Directory.CreateDirectory(fullDir);
 
             // --- Compute Shader ---
             string computeName  = "Noise3DTexture.compute";

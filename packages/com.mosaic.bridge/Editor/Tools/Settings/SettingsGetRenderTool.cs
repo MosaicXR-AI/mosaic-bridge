@@ -17,10 +17,11 @@ namespace Mosaic.Bridge.Tools.Settings
         {
             var activeBuildTarget = EditorUserBuildSettings.activeBuildTarget;
 
-            // Use currentRenderPipeline (respects per-quality-level overrides), not
-            // defaultRenderPipeline (which only reflects the project-wide default
-            // and misreports when quality levels override it).
-            var rpa = GraphicsSettings.currentRenderPipeline;
+            // QualitySettings.renderPipeline is the per-quality-level override (Unity 6+).
+            // Fall back to GraphicsSettings.currentRenderPipeline (the project-level default)
+            // when the quality level has no override. This order is correct on all Unity versions:
+            // Unity 6 deprecated currentRenderPipeline in contexts where quality overrides exist.
+            var rpa = QualitySettings.renderPipeline ?? GraphicsSettings.currentRenderPipeline;
             var rpName = rpa != null ? rpa.name : "Built-in";
             var rpType = rpa != null ? rpa.GetType().Name : "Built-in";
             var canonicalPipeline = DetectPipeline(rpa);

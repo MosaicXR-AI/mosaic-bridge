@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -24,8 +25,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
                 return ToolResult<ProcGenMarchingCubesResult>.Fail(
                     "OutputDirectory must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+            AssetDatabaseHelper.EnsureFolder(outDir);
             var fullDir = Path.Combine(Application.dataPath, "..", outDir);
-            Directory.CreateDirectory(fullDir);
 
             // --- Compute Shader ---
             string computeName  = "MarchingCubes.compute";

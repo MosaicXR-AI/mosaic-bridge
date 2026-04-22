@@ -5,6 +5,113 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.10] — 2026-04-22
+
+### Added
+
+- **`AssetDatabaseHelper.EnsureFolder`** (internal shared utility) — Ensures a folder path
+  exists in both the filesystem and AssetDatabase using `AssetDatabase.CreateFolder` for each
+  level. Replaces unsafe `Directory.CreateDirectory` calls that left directories unregistered
+  in AssetDatabase, causing opaque `{"suggestedFix":null}` errors in 30+ code-gen tools.
+
+### Fixed
+
+- **`gameobject/set_active`** — Now uses `Resources.FindObjectsOfTypeAll<GameObject>()`
+  filtered by scene validity, so it can activate **inactive** GameObjects. Previous
+  `GameObject.Find()` implementation skipped inactive objects entirely.
+
+- **`shadergraph/list`** — Replaced `AssetDatabase.FindAssets("t:Shader")` with a
+  filesystem search (`Directory.GetFiles("*.shadergraph")`). The type-indexed search
+  returned 0 results when `.shadergraph` files existed but weren't yet fully imported.
+
+- **`prefab/info`** — Wrapped `PrefabUtility.GetObjectOverrides / GetAddedComponents /
+  GetRemovedComponents / GetAddedGameObjects / GetRemovedGameObjects` calls in try-catch.
+  These APIs throw "Provided GameObject is not a Prefab instance" when called on prefab
+  asset roots (as opposed to scene instances). Tool now returns correct metadata for
+  both asset paths and scene instances.
+
+- **`mesh/generate`, `mesh/decimate`, `mesh/boolean`, `mesh/convex-hull`** — Applied
+  `AssetDatabaseHelper.EnsureFolder` before `AssetDatabase.CreateAsset`. Added try-catch
+  around `CreateAsset` to surface the real error message instead of opaque failure.
+
+- **`simulation/cloth`, `simulation/fluid`, `simulation/smoke`** — Applied
+  `AssetDatabaseHelper.EnsureFolder` before `File.WriteAllText` / `AssetDatabase.ImportAsset`
+  to ensure output directories are registered before use.
+
+- **`procgen/terrain`** — Applied `AssetDatabaseHelper.EnsureFolder` for the same reason.
+
+- All remaining procgen + simulation + physics + AI + animation + measure tools that used
+  `Directory.CreateDirectory(fullDir)` now use `AssetDatabaseHelper.EnsureFolder` instead.
+
+### Changed (descriptions / caveats)
+
+- **`mesh/generate`** — Description now explicitly states Vertices is a flat `float[]`
+  (`[x0,y0,z0,x1,y1,z1,...]`), NOT nested arrays. Includes a minimal triangle example.
+
+- **`procgen/wfc`** — Description now includes a complete Tiles schema example with
+  `Id`, `Weight`, `AllowedNeighbors` keys and direction names (right/left/up/down/forward/back).
+
+- **`reflection/call-method`** — Description now states struct/vector args must be JSON
+  objects (`{"x":1,"y":2,"z":3}`), NOT arrays (`[1,2,3]`).
+
+---
+
+## [1.0.0-beta.9] — 2026-04-22
+
+### Added — Spatial coherence + scene intelligence
+
+- **`terrain/sample-height`** — Returns world-space Y at any XZ position on the active terrain.
+  Use before every `gameobject/create` or `prefab/instantiate` to resolve placement Y.
+  Result: `WorldY`, `NormalizedHeight`, `SuggestedPlacementY [x, worldY+0.1, z]`, `TerrainSize`.
+  Read-only.
+
+- **`gameobject/snap-to-ground`** — Snaps an existing GameObject's Y to
+  `terrain.SampleHeight(x,z) + YOffset`. Fixes bulk-placed objects after sculpting.
+  Modes: `terrain` (edit-mode, fast) or `raycast` (physics-based, for non-terrain floors).
+  Undo-safe.
+
+- **`terrain/get-regions`** — Reads the splatmap and returns per-layer coverage stats:
+  dominant coverage fraction (%), world-space bounding box for each layer's painted area,
+  center world position. Use before `scene/plan-composition` to understand current
+  texture layout.
+
+- **`scene/plan-composition`** — Takes a structured scene intent (regions, landmarks,
+  time of day, player type) and returns a validated execution plan: pre-resolved Y
+  coordinates for every landmark (sampled from active terrain), ordered build phases,
+  lighting parameters (angle, color, intensity keyed to time of day/weather), and camera
+  start position. Run after terrain sculpting, before placing objects.
+
+- **`shadergraph/add-node`** — Adds a processing node to an existing `.shadergraph` file.
+  Supports 38 common node types via friendly aliases: math (add, subtract, multiply, divide,
+  power, lerp, clamp, saturate, abs, negate, sqrt, floor, ceil, frac, step, smoothstep, remap),
+  utility (split, combine, swizzle, fresnel), input (float, vector2/3/4, color, uv, time,
+  position, normal, viewdir), texture (sampletexture2d, samplecubemap). Returns `NodeId`
+  (GUID) and slot definitions for use with `shadergraph/connect`.
+
+- **`shadergraph/connect`** — Creates an edge between two ShaderGraph nodes via
+  `OutputNodeId + OutputSlotId → InputNodeId + InputSlotId`. Both IDs are returned by
+  `shadergraph/add-node`. Validates both nodes exist before writing.
+
+### Fixed
+
+- **`component/set_reference` (Issue #6)** — Now traverses nested struct property paths
+  via `FindPropertyRelative()` with automatic `m_` prefix fallback. Both
+  `"Target.TrackingTarget"` and `"m_Target.m_TrackingTarget"` resolve correctly. Also
+  extended to support **value-type assignments**: `FloatValue`, `IntValue`, `BoolValue`,
+  `StringValue` (including enum names), `ColorValue [r,g,b,a]`, and `VectorValue [x,y,z]`.
+  Closes the Cinemachine CM3 Follow-target, Lens field, and Volume override `.value` blockers.
+
+- **`texture/set-import-settings` (Issue #7)** — Added `TextureShape` parameter:
+  `2D`, `Cube` (cubemap), `2DArray`, `3D`. Use `TextureShape=Cube` with
+  `TextureType=Default` to convert an equirectangular HDRI into a Cubemap for skyboxes.
+  Result now includes `TextureShape` field.
+
+### Docs / planning
+
+- KB entry T5.1 `scene/scene-composition-guide.json` — 5-tier scene interview protocol,
+  8-phase build pipeline, spatial coherence contract, ScenePlan JSON template.
+- `CLAUDE.md.unity-template` — now distributed by `create-bridge@beta.4` installer.
+
 ## [1.0.0-beta.8] — 2026-04-21
 
 ### Fixed

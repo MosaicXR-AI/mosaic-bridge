@@ -28,8 +28,12 @@ namespace Mosaic.Bridge.Tools.Navigation
             if (p.SlopeAngle.HasValue)
                 settings.agentSlope = p.SlopeAngle.Value;
 
-            // Bake using the legacy NavMeshBuilder (works with the Navigation window settings)
+            // UnityEditor.AI.NavMeshBuilder is deprecated but remains the only editor-time
+            // one-shot bake API. UnityEngine.AI.NavMeshBuilder is runtime/async and has no
+            // equivalent static BuildNavMesh(). Suppress the warning rather than switch APIs.
+#pragma warning disable CS0618
             UnityEditor.AI.NavMeshBuilder.BuildNavMesh();
+#pragma warning restore CS0618
 
             // Verify bake succeeded by checking triangulation
             var triangulation = NavMesh.CalculateTriangulation();

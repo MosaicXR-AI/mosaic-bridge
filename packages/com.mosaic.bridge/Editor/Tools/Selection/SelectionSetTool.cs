@@ -32,7 +32,7 @@ namespace Mosaic.Bridge.Tools.Selection
                 foreach (var id in p.InstanceIds)
                 {
 #pragma warning disable CS0618
-                    var obj = EditorUtility.InstanceIDToObject(id);
+                    var obj = UnityEngine.Resources.EntityIdToObject(id);
 #pragma warning restore CS0618
                     if (obj == null)
                         warnings.Add($"Instance ID {id} could not be resolved and was skipped");

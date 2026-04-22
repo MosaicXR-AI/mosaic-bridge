@@ -18,7 +18,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             // Prefer InstanceId lookup
             if (instanceId != 0)
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+                var obj = UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
                 if (obj == null)
                 {
                     error = $"No GameObject found with InstanceId {instanceId}";

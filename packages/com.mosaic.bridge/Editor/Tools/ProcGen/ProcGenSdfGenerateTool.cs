@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -127,8 +128,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
             tex.Apply();
 
             // Ensure save dir
+            AssetDatabaseHelper.EnsureFolder(savePath);
             var fullDir = Path.Combine(Application.dataPath, "..", savePath);
-            Directory.CreateDirectory(fullDir);
 
             string name = string.IsNullOrEmpty(p.OutputName)
                 ? $"sdf_{source}_{resolution}"

@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Animations
 {
@@ -52,8 +53,8 @@ namespace Mosaic.Bridge.Tools.Animations
             string scriptCode = GenerateScript(scriptName, solver, p.ChainBones.Length, p.Iterations, p.Tolerance);
 
             string projectRoot = Application.dataPath.Replace("/Assets", "");
+            AssetDatabaseHelper.EnsureFolder(savePath);
             string fullDir = Path.Combine(projectRoot, savePath);
-            Directory.CreateDirectory(fullDir);
             string fullPath = Path.Combine(projectRoot, scriptPath);
             File.WriteAllText(fullPath, scriptCode, Encoding.UTF8);
             AssetDatabase.Refresh();

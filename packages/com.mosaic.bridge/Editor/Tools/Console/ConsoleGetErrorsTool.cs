@@ -7,7 +7,9 @@ namespace Mosaic.Bridge.Tools.ConsoleTools
     public static class ConsoleGetErrorsTool
     {
         [MosaicTool("console/get-errors",
-                    "Retrieves error (and optionally warning/info) entries from the Unity Console",
+                    "Retrieves entries from the Unity Console. By default returns errors AND warnings (IncludeWarnings=true). " +
+                    "Set IncludeInfo=true to also include log messages. Reads both pre-existing messages (compile errors, import warnings) " +
+                    "and new messages captured since domain reload. Call this first when diagnosing Unity issues.",
                     isReadOnly: true)]
         public static ToolResult<ConsoleGetErrorsResult> GetErrors(ConsoleGetErrorsParams p)
         {

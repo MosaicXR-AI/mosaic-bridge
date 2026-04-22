@@ -31,7 +31,7 @@ namespace Mosaic.Bridge.Tools.Timeline
             // Try to get from director instance
             if (timeline == null && p.DirectorInstanceId != 0)
             {
-                var go = EditorUtility.InstanceIDToObject(p.DirectorInstanceId) as GameObject;
+                var go = UnityEngine.Resources.EntityIdToObject(p.DirectorInstanceId) as GameObject;
                 if (go != null)
                 {
                     director = go.GetComponent<PlayableDirector>();

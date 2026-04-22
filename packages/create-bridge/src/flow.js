@@ -9,6 +9,80 @@ const BRIDGE_PACKAGE_NAME = 'com.mosaic.bridge';
 const BRIDGE_GIT_URL =
   'https://github.com/MosaicXR-AI/mosaic-bridge.git?path=/packages/com.mosaic.bridge';
 
+const CLAUDE_MD_CONTENT = `# Unity Project — AI Assistant Instructions
+
+This project uses **Mosaic Bridge MCP** to drive the Unity Editor via tool calls.
+
+---
+
+## Scene Building — Interview Protocol
+
+When I ask you to "build a scene", "create an environment", "make a desert/forest/city", or describe any vague place/mood:
+
+**STOP. Do not call any Mosaic tools. Run the Scene Interview first.**
+
+Ask all four Tier 1 questions in a single message:
+
+1. **Scene type?** — game level / playable · cinematic · archviz · prototype
+2. **Geographic or thematic reference?** — be specific: "Wadi Rum Jordan", "Pacific Northwest forest", "dystopian 2080 Tokyo". Generic = generic output.
+3. **Scale?** — < 100m · 100m–1km · 1–10km · 10km+
+4. **Player perspective?** — first person · third person · drone / flight · top-down · no player (cinematic only)
+
+If needed, ask follow-up questions:
+- Visual style (realistic / stylized / lowpoly)
+- Time of day + weather ("golden hour, light haze")
+- Per-region visual characteristics (list the biomes)
+- Focal points / landmarks
+- Platform target (desktop / mobile / VR)
+- Build phased (confirm each phase) or one-shot?
+
+After interview, generate a **ScenePlan summary** and wait for my confirmation before executing any tools.
+
+---
+
+## Spatial Coherence Contract
+
+**Every placed object Y must = terrain.SampleHeight(x, z) + small_offset.**
+
+Never use Y=0 as a placement coordinate unless the scene is a flat indoor space.
+
+Use \`terrain/sample-height\` before every \`gameobject/create\` or \`prefab/instantiate\` call.
+Use \`scene/plan-composition\` to get pre-resolved Y coordinates for all landmarks at once.
+Use \`gameobject/snap-to-ground\` to fix already-placed objects after terrain sculpting.
+
+---
+
+## Execution Pipeline Order
+
+Always build in this order (skipping creates visual artifacts):
+
+1. **Terrain** — create, sculpt major features, secondary detail
+2. **Water** — if applicable; sets the shoreline Y reference
+3. **Terrain textures** — layer setup + splatmap painting
+4. **Sky + Lighting** — directional light, skybox, ambient
+5. **Large structures** — buildings, rock formations (use terrain/sample-height for Y)
+6. **Vegetation** — trees (terrain system) then grass then small details
+7. **Post-processing** — fog, bloom, color grade (last pass)
+8. **Camera / player controller** — calibrated to final scene scale
+
+---
+
+## Tool Usage Rules
+
+- **Render pipeline:** Always call \`settings/get-render\` before material or shader work. Use \`currentRenderPipeline\` field.
+- **Terrain trees:** Prefab root must have \`MeshRenderer\`, \`LODGroup\`, or \`BillboardRenderer\`. Nested-child visuals are ignored.
+- **Material keywords:** Use \`keyword\` ValueType on \`material/set-property\` for \`_EMISSION\`, \`_NORMALMAP\`, \`_ALPHATEST_ON\`.
+- **ShaderGraph nodes:** Use \`shadergraph/add-node\` + \`shadergraph/connect\` — do not fall back to raw HLSL .shader files.
+- **Nested component properties:** \`component/set_reference\` now supports dot-notation paths (e.g. "Lens.FieldOfView") and m_ prefix fallback.
+- **HDRI skybox:** Use \`texture/set-import-settings\` with \`TextureShape=Cube\` to convert equirectangular HDRI to cubemap.
+
+---
+
+## When in Doubt
+
+Ask a clarifying question rather than guessing. A 2-minute interview prevents a 20-minute rebuild.
+`;
+
 /**
  * The main orchestrated flow — prompts the user, then runs steps.
  * Throws an error with { cancelled: true } if the user Ctrl-C'd.
@@ -63,6 +137,30 @@ export async function runInteractive(opts) {
     } catch (err) {
       unityStep.stop(pc.red(`✗ Unity install failed: ${err.message}`));
       results.push({ kind: 'unity', ok: false, error: err });
+    }
+
+    // Write CLAUDE.md with scene-building instructions into the Unity project root
+    // (skipped if --skip-claude or if file already exists and --force is not set)
+    if (!opts.skipClaude) {
+      const claudeMdPath = path.join(projectInfo.projectPath, 'CLAUDE.md');
+      const alreadyExists = fs.existsSync(claudeMdPath);
+      if (!alreadyExists || opts.force) {
+        try {
+          fs.writeFileSync(claudeMdPath, CLAUDE_MD_CONTENT, 'utf8');
+          p.log.success(
+            alreadyExists
+              ? pc.green(`✓ Updated CLAUDE.md (scene-building instructions) — --force`)
+              : pc.green(`✓ Wrote CLAUDE.md (scene-building instructions) to project root`)
+          );
+          results.push({ kind: 'claude-md', ok: true });
+        } catch (err) {
+          p.log.warn(pc.yellow(`⚠ Could not write CLAUDE.md: ${err.message}`));
+          results.push({ kind: 'claude-md', ok: false, error: err });
+        }
+      } else {
+        p.log.info(pc.dim('↩ CLAUDE.md already exists — skipped (use --force to overwrite)'));
+        results.push({ kind: 'claude-md', ok: true, detail: { skipped: true } });
+      }
     }
   } else {
     p.log.info(pc.dim('Skipped Unity package install (--skip-unity)'));

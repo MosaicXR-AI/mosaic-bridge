@@ -64,96 +64,99 @@ namespace Mosaic.Bridge.Tools.Prefabs
             // For assets, use the asset root; for scene instances use the instance root.
             var root = asset;
 
-            var objOverrides = PrefabUtility.GetObjectOverrides(root, includeDefaultOverrides: false);
-            if (objOverrides != null && objOverrides.Count > 0)
+            // GetObjectOverrides / GetAddedComponents etc. only work on prefab INSTANCES (scene objects).
+            // On a prefab asset root they throw "Provided GameObject is not a Prefab instance".
+            // Wrap in try-catch so prefab/info works on both asset paths and scene instances.
+            try
             {
-                hasOverrides = true;
-                foreach (var ov in objOverrides)
+                var objOverrides = PrefabUtility.GetObjectOverrides(root, includeDefaultOverrides: false);
+                if (objOverrides != null && objOverrides.Count > 0)
                 {
-                    if (ov.instanceObject == null) continue;
-
-                    var so = new SerializedObject(ov.instanceObject);
-                    var source = PrefabUtility.GetCorrespondingObjectFromSource(ov.instanceObject);
-                    SerializedObject sourceSo = source != null ? new SerializedObject(source) : null;
-
-                    var prop = so.GetIterator();
-                    while (prop.NextVisible(true))
+                    hasOverrides = true;
+                    foreach (var ov in objOverrides)
                     {
-                        if (!prop.prefabOverride) continue;
+                        if (ov.instanceObject == null) continue;
 
-                        string valueStr = SerializedPropertyToString(prop);
-
-                        propertyOverrides.Add(new PropertyOverrideEntry
+                        var so = new SerializedObject(ov.instanceObject);
+                        var prop = so.GetIterator();
+                        while (prop.NextVisible(true))
                         {
-                            ComponentType = ov.instanceObject.GetType().Name,
-                            PropertyPath  = prop.propertyPath,
-                            ModifiedValue = valueStr
+                            if (!prop.prefabOverride) continue;
+                            propertyOverrides.Add(new PropertyOverrideEntry
+                            {
+                                ComponentType = ov.instanceObject.GetType().Name,
+                                PropertyPath  = prop.propertyPath,
+                                ModifiedValue = SerializedPropertyToString(prop)
+                            });
+                        }
+                        so.Dispose();
+                    }
+                }
+
+                var addedComps = PrefabUtility.GetAddedComponents(root);
+                if (addedComps != null && addedComps.Count > 0)
+                {
+                    hasOverrides = true;
+                    foreach (var ac in addedComps)
+                    {
+                        addedComponents.Add(new AddedComponentEntry
+                        {
+                            ComponentType  = ac.instanceComponent != null
+                                ? ac.instanceComponent.GetType().Name : "Unknown",
+                            GameObjectName = ac.instanceComponent != null
+                                ? ac.instanceComponent.gameObject.name : "Unknown"
                         });
                     }
+                }
 
-                    sourceSo?.Dispose();
-                    so.Dispose();
+                var removedComps = PrefabUtility.GetRemovedComponents(root);
+                if (removedComps != null && removedComps.Count > 0)
+                {
+                    hasOverrides = true;
+                    foreach (var rc in removedComps)
+                    {
+                        removedComponents.Add(new RemovedComponentEntry
+                        {
+                            ComponentType  = rc.assetComponent != null
+                                ? rc.assetComponent.GetType().Name : "Unknown",
+                            GameObjectName = rc.containingInstanceGameObject != null
+                                ? rc.containingInstanceGameObject.name : "Unknown"
+                        });
+                    }
+                }
+
+                var addedGOs = PrefabUtility.GetAddedGameObjects(root);
+                if (addedGOs != null && addedGOs.Count > 0)
+                {
+                    hasOverrides = true;
+                    foreach (var ag in addedGOs)
+                    {
+                        addedGameObjects.Add(new AddedGameObjectEntry
+                        {
+                            Name = ag.instanceGameObject != null
+                                ? ag.instanceGameObject.name : "Unknown"
+                        });
+                    }
+                }
+
+                var removedGOs = PrefabUtility.GetRemovedGameObjects(root);
+                if (removedGOs != null && removedGOs.Count > 0)
+                {
+                    hasOverrides = true;
+                    foreach (var rg in removedGOs)
+                    {
+                        removedGameObjects.Add(new RemovedGameObjectEntry
+                        {
+                            Name = rg.assetGameObject != null
+                                ? rg.assetGameObject.name : "Unknown"
+                        });
+                    }
                 }
             }
-
-            var addedComps = PrefabUtility.GetAddedComponents(root);
-            if (addedComps != null && addedComps.Count > 0)
+            catch (System.Exception)
             {
-                hasOverrides = true;
-                foreach (var ac in addedComps)
-                {
-                    addedComponents.Add(new AddedComponentEntry
-                    {
-                        ComponentType  = ac.instanceComponent != null
-                            ? ac.instanceComponent.GetType().Name : "Unknown",
-                        GameObjectName = ac.instanceComponent != null
-                            ? ac.instanceComponent.gameObject.name : "Unknown"
-                    });
-                }
-            }
-
-            var removedComps = PrefabUtility.GetRemovedComponents(root);
-            if (removedComps != null && removedComps.Count > 0)
-            {
-                hasOverrides = true;
-                foreach (var rc in removedComps)
-                {
-                    removedComponents.Add(new RemovedComponentEntry
-                    {
-                        ComponentType  = rc.assetComponent != null
-                            ? rc.assetComponent.GetType().Name : "Unknown",
-                        GameObjectName = rc.containingInstanceGameObject != null
-                            ? rc.containingInstanceGameObject.name : "Unknown"
-                    });
-                }
-            }
-
-            var addedGOs = PrefabUtility.GetAddedGameObjects(root);
-            if (addedGOs != null && addedGOs.Count > 0)
-            {
-                hasOverrides = true;
-                foreach (var ag in addedGOs)
-                {
-                    addedGameObjects.Add(new AddedGameObjectEntry
-                    {
-                        Name = ag.instanceGameObject != null
-                            ? ag.instanceGameObject.name : "Unknown"
-                    });
-                }
-            }
-
-            var removedGOs = PrefabUtility.GetRemovedGameObjects(root);
-            if (removedGOs != null && removedGOs.Count > 0)
-            {
-                hasOverrides = true;
-                foreach (var rg in removedGOs)
-                {
-                    removedGameObjects.Add(new RemovedGameObjectEntry
-                    {
-                        Name = rg.assetGameObject != null
-                            ? rg.assetGameObject.name : "Unknown"
-                    });
-                }
+                // Override inspection is not available for prefab assets (only for prefab instances).
+                // Results are empty but the rest of the response remains valid.
             }
 
             return ToolResult<PrefabInfoResult>.Ok(new PrefabInfoResult

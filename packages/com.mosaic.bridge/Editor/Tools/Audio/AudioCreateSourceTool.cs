@@ -19,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Audio
             if (p.InstanceId.HasValue)
             {
 #pragma warning disable CS0618
-                go = EditorUtility.InstanceIDToObject(p.InstanceId.Value) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
 

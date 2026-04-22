@@ -11,17 +11,18 @@ namespace Mosaic.Bridge.Tools.Settings
                     isReadOnly: true)]
         public static ToolResult<SettingsGetPlayerResult> GetPlayer(SettingsGetPlayerParams p)
         {
-            var activeBuildTarget      = EditorUserBuildSettings.activeBuildTarget;
-            var activeBuildTargetGroup = BuildPipeline.GetBuildTargetGroup(activeBuildTarget);
+            var activeBuildTarget = EditorUserBuildSettings.activeBuildTarget;
+            var namedTarget       = UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(
+                                        BuildPipeline.GetBuildTargetGroup(activeBuildTarget));
 
             return ToolResult<SettingsGetPlayerResult>.Ok(new SettingsGetPlayerResult
             {
                 CompanyName            = PlayerSettings.companyName,
                 ProductName            = PlayerSettings.productName,
                 Version                = PlayerSettings.bundleVersion,
-                BundleIdentifier       = PlayerSettings.GetApplicationIdentifier(activeBuildTargetGroup),
-                ScriptingBackend       = PlayerSettings.GetScriptingBackend(activeBuildTargetGroup).ToString(),
-                ApiCompatibilityLevel  = PlayerSettings.GetApiCompatibilityLevel(activeBuildTargetGroup).ToString(),
+                BundleIdentifier       = PlayerSettings.GetApplicationIdentifier(namedTarget),
+                ScriptingBackend       = PlayerSettings.GetScriptingBackend(namedTarget).ToString(),
+                ApiCompatibilityLevel  = PlayerSettings.GetApiCompatibilityLevel(namedTarget).ToString(),
                 ActiveBuildTarget      = activeBuildTarget.ToString()
             });
         }

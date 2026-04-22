@@ -127,9 +127,7 @@ namespace Mosaic.Bridge.Tests.Lighting
 
         private static GameObject FindCreated(int instanceId)
         {
-#pragma warning disable CS0618
-            return UnityEditor.EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-#pragma warning restore CS0618
+            return UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
         }
     }
 }

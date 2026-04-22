@@ -146,7 +146,7 @@ namespace Mosaic.Bridge.Tools.Animations
             if (p.InstanceId.HasValue)
             {
 #pragma warning disable CS0618
-                var obj = EditorUtility.InstanceIDToObject(p.InstanceId.Value) as GameObject;
+                var obj = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
                 return obj;
             }

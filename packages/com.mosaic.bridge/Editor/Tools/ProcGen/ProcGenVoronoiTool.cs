@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -96,8 +97,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
                     return ToolResult<ProcGenVoronoiResult>.Fail(
                         "SavePath must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+                AssetDatabaseHelper.EnsureFolder(savePath);
                 var fullDir = Path.Combine(Application.dataPath, "..", savePath);
-                Directory.CreateDirectory(fullDir);
 
                 string texFile = Path.Combine(fullDir, "VoronoiDiagram.png");
                 File.WriteAllBytes(texFile, tex.EncodeToPNG());
@@ -115,8 +116,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
                     return ToolResult<ProcGenVoronoiResult>.Fail(
                         "SavePath must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+                AssetDatabaseHelper.EnsureFolder(savePath);
                 var fullDir = Path.Combine(Application.dataPath, "..", savePath);
-                Directory.CreateDirectory(fullDir);
 
                 // Build mesh from Delaunay triangulation of the seed points
                 var mesh = BuildVoronoiMesh(points, minX, minY, maxX, maxY);

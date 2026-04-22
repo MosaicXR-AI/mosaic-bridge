@@ -38,8 +38,8 @@ namespace Mosaic.Bridge.Tests.Dispatcher
             var disp = new MainThreadDispatcher(fullQueue, _logger);
 
             // Fill it — do NOT await, the tasks are intentionally left pending.
-            disp.HandleAsync(MakeRequest(), CancellationToken.None);
-            disp.HandleAsync(MakeRequest(), CancellationToken.None);
+            _ = disp.HandleAsync(MakeRequest(), CancellationToken.None);
+            _ = disp.HandleAsync(MakeRequest(), CancellationToken.None);
 
             // Third enqueue must fail synchronously with 503 because the queue is full.
             var t3 = disp.HandleAsync(MakeRequest(), CancellationToken.None);
@@ -114,7 +114,7 @@ namespace Mosaic.Bridge.Tests.Dispatcher
         }
 
         [Test]
-        public async Task ProcessPendingRequests_MaxPerTick1_LeavesRemainder()
+        public void ProcessPendingRequests_MaxPerTick1_LeavesRemainder()
         {
             var t1 = _dispatcher.HandleAsync(MakeRequest(), CancellationToken.None);
             var t2 = _dispatcher.HandleAsync(MakeRequest(), CancellationToken.None);

@@ -18,7 +18,7 @@ namespace Mosaic.Bridge.Tools.Timeline
         public static ToolResult<TimelineBindResult> Bind(TimelineBindParams p)
         {
             // Resolve the director
-            var directorObj = EditorUtility.InstanceIDToObject(p.DirectorInstanceId) as GameObject;
+            var directorObj = UnityEngine.Resources.EntityIdToObject(p.DirectorInstanceId) as GameObject;
             if (directorObj == null)
                 return ToolResult<TimelineBindResult>.Fail(
                     $"GameObject with InstanceId {p.DirectorInstanceId} not found",
@@ -46,7 +46,7 @@ namespace Mosaic.Bridge.Tools.Timeline
             var track = tracks[p.TrackIndex];
 
             // Resolve the target
-            var target = EditorUtility.InstanceIDToObject(p.TargetInstanceId);
+            var target = UnityEngine.Resources.EntityIdToObject(p.TargetInstanceId);
             if (target == null)
                 return ToolResult<TimelineBindResult>.Fail(
                     $"Target object with InstanceId {p.TargetInstanceId} not found",

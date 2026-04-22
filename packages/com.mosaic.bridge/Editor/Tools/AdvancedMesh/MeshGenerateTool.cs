@@ -5,13 +5,17 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.AdvancedMesh
 {
     public static class MeshGenerateTool
     {
         [MosaicTool("mesh/generate",
-                    "Creates a mesh from raw vertex, triangle, UV, and normal data and saves as an asset",
+                    "Creates a mesh from raw vertex, triangle, UV, and normal data and saves as an asset. " +
+                    "Vertices is a FLAT float array: [x0,y0,z0, x1,y1,z1, ...] (NOT nested arrays). " +
+                    "Triangles is a flat int array of indices: [0,1,2, ...]. " +
+                    "Example: Vertices=[0,0,0,1,0,0,0,1,0] Triangles=[0,1,2] creates one triangle.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<MeshGenerateResult> Execute(MeshGenerateParams p)
         {
@@ -107,13 +111,19 @@ namespace Mosaic.Bridge.Tools.AdvancedMesh
 
             mesh.RecalculateBounds();
 
-            string absoluteDir = Path.GetDirectoryName(
-                Path.GetFullPath(Path.Combine(Application.dataPath, "..", p.OutputPath)));
-            if (!string.IsNullOrEmpty(absoluteDir))
-                Directory.CreateDirectory(absoluteDir);
+            AssetDatabaseHelper.EnsureFolderForAsset(p.OutputPath);
 
-            AssetDatabase.CreateAsset(mesh, p.OutputPath);
-            AssetDatabase.SaveAssets();
+            try
+            {
+                AssetDatabase.CreateAsset(mesh, p.OutputPath);
+                AssetDatabase.SaveAssets();
+            }
+            catch (Exception ex)
+            {
+                return ToolResult<MeshGenerateResult>.Fail(
+                    $"Failed to save mesh asset at '{p.OutputPath}': {ex.Message}",
+                    ErrorCodes.INTERNAL_ERROR);
+            }
 
             int? goId = null;
             if (p.CreateGameObject)

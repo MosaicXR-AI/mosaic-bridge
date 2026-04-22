@@ -12,7 +12,10 @@ namespace Mosaic.Bridge.Tools.Components
     public static class ComponentSetPropertyTool
     {
         [MosaicTool("component/set_property",
-                    "Sets a serialized property value on a component attached to a GameObject",
+                    "Sets a serialized property value on a component attached to a GameObject. " +
+                    "IMPORTANT: PropertyName must use Unity's serialized field name with the 'm_' prefix, " +
+                    "NOT the public C# property name. Examples: 'm_Mass' not 'mass', 'm_Enabled' not 'enabled'. " +
+                    "Use component/get_properties first to discover the exact serialized property names.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ComponentSetPropertyResult> SetProperty(ComponentSetPropertyParams p)
         {

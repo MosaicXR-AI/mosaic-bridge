@@ -194,7 +194,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Measure
             Assert.IsTrue(result.Success, result.Error);
             Assert.AreNotEqual(-1, result.Data.AnnotationId);
 
-            var visual = EditorUtility.InstanceIDToObject(result.Data.AnnotationId) as GameObject;
+            var visual = Resources.EntityIdToObject(result.Data.AnnotationId) as GameObject;
             Assert.IsNotNull(visual, "Wireframe visual GameObject should exist");
             _created.Add(visual);
 

@@ -10,7 +10,9 @@ namespace Mosaic.Bridge.Tools.Textures
     public static class TextureSetImportSettingsTool
     {
         [MosaicTool("texture/set-import-settings",
-                    "Sets texture import settings (type, max size, compression, sRGB, filter mode, wrap mode)",
+                    "Sets texture import settings (type, shape, max size, compression, sRGB, filter mode, wrap mode). " +
+                    "Use TextureShape=Cube with TextureType=Default to convert an equirectangular HDRI into a Cubemap " +
+                    "(e.g. for skyboxes). Closes issue #7.",
                     isReadOnly: false)]
         public static ToolResult<TextureSetImportSettingsResult> SetImportSettings(TextureSetImportSettingsParams p)
         {
@@ -68,17 +70,28 @@ namespace Mosaic.Bridge.Tools.Textures
                 importer.wrapMode = wrapMode;
             }
 
+            // Texture Shape (closes issue #7 — HDRI→Cubemap workflow)
+            if (!string.IsNullOrEmpty(p.TextureShape))
+            {
+                if (!TryParseTextureShape(p.TextureShape, out var textureShape))
+                    return ToolResult<TextureSetImportSettingsResult>.Fail(
+                        $"Unknown TextureShape '{p.TextureShape}'. Valid: 2D, Cube, 2DArray, 3D",
+                        ErrorCodes.INVALID_PARAM);
+                importer.textureShape = textureShape;
+            }
+
             importer.SaveAndReimport();
 
             return ToolResult<TextureSetImportSettingsResult>.Ok(new TextureSetImportSettingsResult
             {
-                AssetPath   = p.AssetPath,
-                TextureType = importer.textureType.ToString(),
-                MaxSize     = importer.maxTextureSize,
-                Compression = importer.textureCompression.ToString(),
-                SRGB        = importer.sRGBTexture,
-                FilterMode  = importer.filterMode.ToString(),
-                WrapMode    = importer.wrapMode.ToString()
+                AssetPath    = p.AssetPath,
+                TextureType  = importer.textureType.ToString(),
+                TextureShape = importer.textureShape.ToString(),
+                MaxSize      = importer.maxTextureSize,
+                Compression  = importer.textureCompression.ToString(),
+                SRGB         = importer.sRGBTexture,
+                FilterMode   = importer.filterMode.ToString(),
+                WrapMode     = importer.wrapMode.ToString()
             });
         }
 
@@ -104,6 +117,19 @@ namespace Mosaic.Bridge.Tools.Textures
                 case "normalquality": result = TextureImporterCompression.Compressed;      return true;
                 case "highquality":   result = TextureImporterCompression.CompressedHQ;    return true;
                 default:              result = TextureImporterCompression.Compressed;       return false;
+            }
+        }
+
+        private static bool TryParseTextureShape(string value, out TextureImporterShape result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "2d":        result = TextureImporterShape.Texture2D;      return true;
+                case "cube":
+                case "cubemap":   result = TextureImporterShape.TextureCube;    return true;
+                case "2darray":   result = TextureImporterShape.Texture2DArray; return true;
+                case "3d":        result = TextureImporterShape.Texture3D;      return true;
+                default:          result = TextureImporterShape.Texture2D;      return false;
             }
         }
 

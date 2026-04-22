@@ -66,7 +66,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Mesh
                 Assert.IsTrue(res.Success, $"Expected success but got error: {res.Error}");
                 Assert.IsNotNull(res.Data);
                 if (!string.IsNullOrEmpty(res.Data.MeshPath)) _createdAssets.Add(res.Data.MeshPath);
-                var go = EditorUtility.InstanceIDToObject(res.Data.InstanceId) as GameObject;
+                var go = Resources.EntityIdToObject(res.Data.InstanceId) as GameObject;
                 if (go != null) _spawned.Add(go);
                 return res.Data;
             }
@@ -220,7 +220,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Mesh
                 GenerateCollider = true,
             });
 
-            var go = EditorUtility.InstanceIDToObject(data.InstanceId) as GameObject;
+            var go = Resources.EntityIdToObject(data.InstanceId) as GameObject;
             Assert.IsNotNull(go);
             Assert.IsNotNull(go.GetComponent<MeshCollider>());
         }

@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.AdvancedMesh
 {
@@ -107,11 +108,7 @@ namespace Mosaic.Bridge.Tools.AdvancedMesh
 
             try
             {
-                string absoluteDir = Path.GetDirectoryName(
-                    Path.GetFullPath(Path.Combine(Application.dataPath, "..", assetPath)));
-                if (!string.IsNullOrEmpty(absoluteDir))
-                    Directory.CreateDirectory(absoluteDir);
-
+                AssetDatabaseHelper.EnsureFolderForAsset(assetPath);
                 AssetDatabase.CreateAsset(mesh, assetPath);
                 AssetDatabase.SaveAssets();
             }

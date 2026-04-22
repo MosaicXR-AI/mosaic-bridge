@@ -39,7 +39,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Measure
 
         private void TrackPlane(int planeId)
         {
-            var planeGo = EditorUtility.InstanceIDToObject(planeId) as GameObject;
+            var planeGo = Resources.EntityIdToObject(planeId) as GameObject;
             if (planeGo != null) _created.Add(planeGo);
         }
 

@@ -50,8 +50,11 @@ namespace Mosaic.Bridge.Tools.EditorOps
         // ── Tool entry point ────────────────────────────────────────────────────
 
         [MosaicTool("editor/execute-code",
-                    "Evaluates a static C# expression via reflection (property access or method call). " +
-                    "Supports TypeName.Property, TypeName.Method(), and TypeName.Method(args).",
+                    "Evaluates a single static C# expression via reflection (property access or method call). " +
+                    "Supports TypeName.Property, TypeName.Method(), and TypeName.Method(args). " +
+                    "IMPORTANT: Accepts ONE expression only — multi-statement blocks are not supported. " +
+                    "Examples: 'UnityEditor.EditorApplication.isPlaying', 'UnityEngine.Time.time', " +
+                    "'UnityEditor.Selection.activeGameObject.name'.",
                     isReadOnly: false)]
         public static ToolResult<EditorExecuteCodeResult> Execute(EditorExecuteCodeParams p)
         {

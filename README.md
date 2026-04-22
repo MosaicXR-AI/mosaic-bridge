@@ -96,6 +96,31 @@ npx @mosaicxr-ai/create-bridge \
 
 See `npx @mosaicxr-ai/create-bridge --help` for all flags.
 
+### Scene-building intelligence (CLAUDE.md)
+
+The installer automatically writes a `CLAUDE.md` file to your Unity project root. This file
+instructs Claude to:
+
+- **Interview before building** — when you give a vague prompt like "make me a desert scene",
+  Claude asks 4 targeted questions (scene type, geographic reference, scale, player perspective)
+  before touching any tools. This turns a vague request into a spatially accurate plan.
+- **Enforce spatial coherence** — every placed object Y is resolved from `terrain/sample-height`
+  before placement. No more objects buried underground or floating in air.
+- **Follow the correct build order** — terrain → textures → lighting → structures → vegetation →
+  post-processing → camera.
+
+To skip writing `CLAUDE.md`:
+
+```bash
+npx @mosaicxr-ai/create-bridge --skip-claude
+```
+
+To refresh it after an update:
+
+```bash
+npx @mosaicxr-ai/create-bridge --force
+```
+
 ### Manual install (if you prefer)
 
 Add to `<UnityProject>/Packages/manifest.json`:

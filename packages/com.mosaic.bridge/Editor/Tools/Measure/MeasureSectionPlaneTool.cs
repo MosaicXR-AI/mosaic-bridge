@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Measure
 {
@@ -111,7 +112,7 @@ namespace Mosaic.Bridge.Tools.Measure
 
             if (wantAll)
             {
-                var all = Object.FindObjectsOfType<Renderer>();
+                var all = Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None);
                 result.AddRange(all);
                 return result;
             }
@@ -211,8 +212,8 @@ namespace Mosaic.Bridge.Tools.Measure
         private static string GenerateRuntimeScript()
         {
             string assetPath = $"{GeneratedDir}/{RuntimeScriptName}";
+            AssetDatabaseHelper.EnsureFolder(GeneratedDir);
             string fullDir   = Path.Combine(Application.dataPath, "..", GeneratedDir);
-            Directory.CreateDirectory(fullDir);
 
             string fullPath = Path.Combine(Application.dataPath, "..", assetPath);
             if (File.Exists(fullPath))

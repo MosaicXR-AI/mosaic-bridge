@@ -34,7 +34,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
             Assert.AreEqual("AudioSource", result.Data.GameObjectName);
 
             // Clean up the created GO
-            _testGo = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
+            _testGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(_testGo);
 
             var source = _testGo.GetComponent<AudioSource>();

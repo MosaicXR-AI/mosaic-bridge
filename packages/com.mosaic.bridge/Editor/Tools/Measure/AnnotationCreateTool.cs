@@ -25,12 +25,8 @@ namespace Mosaic.Bridge.Tools.Measure
             Vector3 position = new Vector3(p.Position[0], p.Position[1], p.Position[2]);
 
             Vector3 targetPoint = position;
-            bool hasTarget = false;
             if (p.TargetPoint != null && p.TargetPoint.Length == 3)
-            {
                 targetPoint = new Vector3(p.TargetPoint[0], p.TargetPoint[1], p.TargetPoint[2]);
-                hasTarget = true;
-            }
 
             Color textColor = (p.TextColor != null && p.TextColor.Length == 4)
                 ? new Color(p.TextColor[0], p.TextColor[1], p.TextColor[2], p.TextColor[3])

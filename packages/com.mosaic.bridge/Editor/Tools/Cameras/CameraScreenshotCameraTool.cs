@@ -14,7 +14,7 @@ namespace Mosaic.Bridge.Tools.Cameras
                     isReadOnly: true, Context = ToolContext.Both)]
         public static ToolResult<CameraScreenshotCameraResult> Execute(CameraScreenshotCameraParams p)
         {
-            var obj = UnityEditor.EditorUtility.InstanceIDToObject(p.InstanceId);
+            var obj = UnityEngine.Resources.EntityIdToObject(p.InstanceId);
             if (obj == null)
                 return ToolResult<CameraScreenshotCameraResult>.Fail(
                     $"No object found with InstanceId {p.InstanceId}",

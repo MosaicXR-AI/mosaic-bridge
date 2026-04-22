@@ -36,7 +36,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             });
             Assert.IsTrue(createResult.Success, createResult.Error);
 
-            _createdGo = EditorUtility.InstanceIDToObject(createResult.Data.InstanceId) as GameObject;
+            _createdGo = Resources.EntityIdToObject(createResult.Data.InstanceId) as GameObject;
             _createdAssetPath = createResult.Data.TerrainDataAssetPath;
 
             // Query info
@@ -69,7 +69,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             });
             Assert.IsTrue(createResult.Success, createResult.Error);
 
-            _createdGo = EditorUtility.InstanceIDToObject(createResult.Data.InstanceId) as GameObject;
+            _createdGo = Resources.EntityIdToObject(createResult.Data.InstanceId) as GameObject;
             _createdAssetPath = createResult.Data.TerrainDataAssetPath;
 
             var infoResult = TerrainInfoTool.Execute(new TerrainInfoParams

@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -19,9 +20,8 @@ namespace Mosaic.Bridge.Tools.AssemblyDefs
                 return ToolResult<AsmdefCreateResult>.Fail(
                     "Path must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
 
+            AssetDatabaseHelper.EnsureFolder(p.Path);
             var fullDir = Path.GetFullPath(p.Path);
-            if (!Directory.Exists(fullDir))
-                Directory.CreateDirectory(fullDir);
 
             var filePath = Path.Combine(p.Path, p.Name + ".asmdef");
             var fullFilePath = Path.GetFullPath(filePath);

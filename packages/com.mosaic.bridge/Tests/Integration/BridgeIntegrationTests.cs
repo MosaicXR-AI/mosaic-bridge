@@ -31,10 +31,8 @@ namespace Mosaic.Bridge.Tests.Integration
             _http?.Dispose();
             if (_createdInstanceId != 0)
             {
-#pragma warning disable CS0618
-                var go = UnityEditor.EditorUtility.InstanceIDToObject(_createdInstanceId)
+                var go = UnityEngine.Resources.EntityIdToObject(_createdInstanceId)
                          as UnityEngine.GameObject;
-#pragma warning restore CS0618
                 if (go != null)
                     UnityEngine.Object.DestroyImmediate(go);
                 _createdInstanceId = 0;

@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -67,8 +68,8 @@ namespace Mosaic.Bridge.Tools.Physics
                     "SavePath must start with 'Assets/'", ErrorCodes.INVALID_PARAM);
             if (!savePath.EndsWith("/")) savePath += "/";
 
+            AssetDatabaseHelper.EnsureFolder(savePath);
             string fullDir = Path.Combine(Application.dataPath, "..", savePath);
-            Directory.CreateDirectory(fullDir);
 
             string scriptAssetPath = $"{savePath}{className}.cs";
             string scriptFullPath  = Path.Combine(Application.dataPath, "..", scriptAssetPath);

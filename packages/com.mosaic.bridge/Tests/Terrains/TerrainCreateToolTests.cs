@@ -37,7 +37,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             Assert.IsTrue(result.Success, result.Error);
             Assert.IsNotNull(result.Data);
 
-            _createdGo = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             _createdAssetPath = result.Data.TerrainDataAssetPath;
 
             Assert.IsNotNull(_createdGo);
@@ -62,7 +62,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             var result = TerrainCreateTool.Execute(p);
             Assert.IsTrue(result.Success, result.Error);
 
-            _createdGo = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             _createdAssetPath = result.Data.TerrainDataAssetPath;
 
             var terrain = _createdGo.GetComponent<UnityEngine.Terrain>();
@@ -89,7 +89,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             var result = TerrainCreateTool.Execute(p);
             Assert.IsTrue(result.Success, result.Error);
 
-            _createdGo = EditorUtility.InstanceIDToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
             _createdAssetPath = result.Data.TerrainDataAssetPath;
 
             Assert.IsFalse(string.IsNullOrEmpty(_createdAssetPath));

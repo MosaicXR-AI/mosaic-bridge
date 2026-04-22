@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -84,8 +85,8 @@ namespace Mosaic.Bridge.Tools.ProcGen
             }
 
             // --- Save as PNG ---
+            AssetDatabaseHelper.EnsureFolder(savePath);
             string fullDir = Path.Combine(Application.dataPath, "..", savePath);
-            Directory.CreateDirectory(fullDir);
 
             string fileName = $"BlueNoise_{resolution}x{resolution}_ch{channels}_{seed}.png";
             string assetPath = savePath.TrimEnd('/') + "/" + fileName;

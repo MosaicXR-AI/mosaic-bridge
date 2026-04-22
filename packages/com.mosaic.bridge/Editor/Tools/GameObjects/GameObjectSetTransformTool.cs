@@ -15,7 +15,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
         {
             GameObject go = null;
             if (p.InstanceId.HasValue && p.InstanceId.Value != 0)
-                go = EditorUtility.InstanceIDToObject(p.InstanceId.Value) as GameObject;
+                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
             if (go == null && !string.IsNullOrEmpty(p.Name))
                 go = GameObject.Find(p.Name);
             if (go == null)

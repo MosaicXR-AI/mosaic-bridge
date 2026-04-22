@@ -31,7 +31,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
             GameObject origin = null;
             if (p.OriginInstanceId.HasValue && p.OriginInstanceId.Value != 0)
             {
-                origin = EditorUtility.InstanceIDToObject(p.OriginInstanceId.Value) as GameObject;
+                origin = UnityEngine.Resources.EntityIdToObject(p.OriginInstanceId.Value) as GameObject;
             }
             if (origin == null && !string.IsNullOrEmpty(p.OriginName))
             {

@@ -16,7 +16,10 @@ namespace Mosaic.Bridge.Tools.Reflection
     {
         [MosaicTool("reflection/call-method",
                     "Invokes a method via reflection. Supports static methods and instance methods " +
-                    "(via InstancePath to a GameObject). Blocked methods are rejected for security.",
+                    "(via InstancePath to a GameObject). Blocked methods are rejected for security. " +
+                    "IMPORTANT: Struct/vector args must be passed as JSON objects, NOT arrays. " +
+                    "Use {\"x\":1,\"y\":2,\"z\":3} for Vector3, NOT [1,2,3]. " +
+                    "Use {\"r\":1,\"g\":0,\"b\":0,\"a\":1} for Color.",
                     isReadOnly: false)]
         public static ToolResult<ReflectionCallMethodResult> Execute(ReflectionCallMethodParams p)
         {

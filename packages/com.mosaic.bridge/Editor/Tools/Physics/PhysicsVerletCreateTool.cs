@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -85,8 +86,8 @@ namespace Mosaic.Bridge.Tools.Physics
 
             var projectRoot = Application.dataPath.Replace("/Assets", "");
             // Do NOT strip "Assets/" — combine project root + full Assets-relative path
+            AssetDatabaseHelper.EnsureFolder(savePath);
             var fullDir = Path.Combine(projectRoot, savePath);
-            Directory.CreateDirectory(fullDir);
             var fullPath = Path.Combine(projectRoot, scriptAssetPath);
 
             // -------- Generate script --------

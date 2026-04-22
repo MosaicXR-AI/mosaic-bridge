@@ -10,7 +10,11 @@ namespace Mosaic.Bridge.Tools.PlayMode
         private static readonly string[] ValidActions = { "play", "pause", "stop", "step" };
 
         [MosaicTool("editor/play-mode",
-                    "Controls Unity play mode: play, pause, stop, or step one frame",
+                    "Controls Unity play mode: play, pause, stop, or step one frame. " +
+                    "IMPORTANT: Play-mode transitions are asynchronous — the response State reflects the " +
+                    "pre-transition value (e.g., 'Stopped' immediately after calling 'play'). " +
+                    "Call editor/execute-code with 'UnityEditor.EditorApplication.isPlaying' after a " +
+                    "short delay to verify the new state.",
                     isReadOnly: false)]
         public static ToolResult<EditorPlayModeResult> Execute(EditorPlayModeParams p)
         {

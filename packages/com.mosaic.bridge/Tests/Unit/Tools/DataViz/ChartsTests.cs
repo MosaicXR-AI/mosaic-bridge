@@ -23,9 +23,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.DataViz
 
         private GameObject ResolveGO(int id)
         {
-#pragma warning disable CS0618
-            return EditorUtility.InstanceIDToObject(id) as GameObject;
-#pragma warning restore CS0618
+            return Resources.EntityIdToObject(id) as GameObject;
         }
 
         private GameObject Track(int id)

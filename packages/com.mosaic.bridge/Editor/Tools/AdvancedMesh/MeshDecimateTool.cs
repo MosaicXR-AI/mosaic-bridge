@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.AdvancedMesh
 {
@@ -85,8 +86,7 @@ namespace Mosaic.Bridge.Tools.AdvancedMesh
             // ---------- Prepare output dir ----------
             string savePath = string.IsNullOrEmpty(p.SavePath) ? "Assets/Generated/Mesh/" : p.SavePath;
             if (!savePath.EndsWith("/")) savePath += "/";
-            string absDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", savePath));
-            Directory.CreateDirectory(absDir);
+            AssetDatabaseHelper.EnsureFolder(savePath.TrimEnd('/'));
 
             string baseName = string.IsNullOrEmpty(p.OutputName) ? sourceName + "_LOD" : p.OutputName;
 

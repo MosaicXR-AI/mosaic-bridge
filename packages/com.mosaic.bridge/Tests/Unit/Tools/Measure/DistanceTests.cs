@@ -102,9 +102,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Measure
             Assert.AreNotEqual(-1, result.Data.AnnotationId);
             Assert.AreEqual("TestMeasureAnnotation", result.Data.AnnotationName);
 
-#pragma warning disable CS0618
-            _annotation = EditorUtility.InstanceIDToObject(result.Data.AnnotationId) as GameObject;
-#pragma warning restore CS0618
+            _annotation = Resources.EntityIdToObject(result.Data.AnnotationId) as GameObject;
             Assert.IsNotNull(_annotation);
             Assert.IsNotNull(_annotation.GetComponent<LineRenderer>());
             // Label child should exist

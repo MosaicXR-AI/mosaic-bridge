@@ -12,7 +12,7 @@
 
 Mosaic Bridge connects MCP-compliant AI clients — Claude Code, Claude Desktop,
 Cursor, Gemini CLI, and any other Model Context Protocol client — to a running
-Unity Editor. It exposes ~197 tools covering GameObject and scene operations,
+Unity Editor. It exposes ~250 tools covering GameObject and scene operations,
 procedural generation, physics simulation, pathfinding, rendering, animation,
 and more.
 
@@ -150,7 +150,7 @@ Then point your MCP client at:
 
 ## What's inside
 
-~197 tools across 59 categories. A sample:
+~250 tools across 60+ categories. A sample:
 
 | Category | Tools | Notable |
 |---|---|---|
@@ -161,20 +161,22 @@ Then point your MCP client at:
 | Advanced Rendering | 12 | Volumetric clouds, atmospheric scattering, ray marching, SDF text, portals |
 | Physics | 10 | Rigidbody, collider, raycast, overlap, gravity, physics material, joints |
 | Spatial Data Structures | 6 | Spatial hash, k-d tree, octree |
-| GameObjects & Scenes | 14 | Create, delete, duplicate, reparent, hierarchy, stats |
-| Prefabs & Assets | 12 | Create, instantiate, overrides, variants, import, list |
+| Scene Intelligence | 4 | `scene/create-object` (asset search → store → procedural build), `asset/find-3d`, `scene/plan-composition`, `terrain/get-regions` |
+| GameObjects & Scenes | 15 | Create, delete, duplicate, reparent, hierarchy, stats, snap-to-ground |
+| Prefabs & Assets | 13 | Create, instantiate, overrides, variants, import, list, find-3d |
 | Components & Scripts | 9 | Add, remove, set property / reference, create/read/update scripts |
 | Animation | 7 | Controllers, states, blend trees, clips, IK setup, transitions |
 | Lighting & Graphics | 13 | Lights, baking, shaders, post-processing, shadergraph |
 | Cameras & ScreenShots | 6 | Camera info, scene/game/camera screenshots |
 | UI | 5 | Canvas, elements, layouts, rect transforms |
 | Navigation | 10 | NavMesh, agents, obstacles, pathfinding, FOV visualization, FABRIK IK |
-| Terrain | 8 | Height, paint, trees, detail, settings, grid, erosion |
+| Terrain | 10 | Height, paint, trees, detail, settings, grid, erosion, sample-height, get-regions |
+| Particles | 7 | Create, set-shape, set-emission, set-renderer, set-main, playback, info |
 | Package Integrations | ~28 | Cinemachine, ProBuilder, Addressables, TextMeshPro, URP, HDRP, Splines, VisualScripting |
 
-Plus: editor control (play mode, execute code, menu items), profiler, timeline,
-input system, constraints, LOD, assembly definitions, reflection, undo/redo,
-selection, tags & layers, settings, build, console, measurement, data
+Plus: editor control (play mode, run-block, execute code, menu items), profiler,
+timeline, input system, constraints, LOD, assembly definitions, reflection,
+undo/redo, selection, tags & layers, settings, build, console, measurement, data
 visualization.
 
 Full tool list: `Packages/com.mosaic.bridge/Editor/Tools/` after install, or
@@ -328,7 +330,7 @@ Monorepo layout:
 ```
 packages/
 ├── com.mosaic.bridge/       Unity UPM package (Editor + Runtime + Tests)
-│   ├── Editor/              ~197 tools + core infrastructure
+│   ├── Editor/              ~250 tools + core infrastructure
 │   ├── Runtime/             Runtime-compatible tool subset
 │   ├── Tests/               NUnit + Unity Test Runner
 │   └── Samples~/            Custom-tool authoring sample
@@ -349,13 +351,15 @@ project's `manifest.json`:
 ## Roadmap
 
 ### v1.0 beta (current)
-- Core bridge, MCP server, 288 tools across 67 categories
+- Core bridge, MCP server, ~250 tools across 60+ categories
 - Per-project runtime isolation
 - Auto `.mcp.json` for Claude Code + auto-config for Claude Desktop, Cursor,
   Gemini CLI, and OpenAI Codex CLI via `npx @mosaicxr-ai/create-bridge`
-- Windows `cmd /c` wrapper for stdio MCP launch (fixed in beta.3/beta.4)
-- Knowledge base covering all 288 tools with Unity-version-aware guidance
-  (see `_bmad-output/planning-artifacts/knowledge-base/`)
+- Windows `cmd /c` wrapper for stdio MCP launch (fixed in beta.2)
+- Scene intelligence: `scene/create-object` decision tree (project search →
+  Asset Store → procedural build), spatial coherence tools, build plans
+- `editor/run-block` multi-statement C# execution with polling
+- Knowledge base with Unity-version-aware guidance
 - Apache 2.0 license with patent grant
 
 ### v1.0 stable

@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.DataViz
 {
@@ -194,7 +195,7 @@ namespace Mosaic.Bridge.Tools.DataViz
 
             var projectRoot = Application.dataPath.Replace("/Assets", "");
             var fullDir = Path.Combine(projectRoot, savePath);
-            Directory.CreateDirectory(fullDir);
+            AssetDatabaseHelper.EnsureFolder(savePath.TrimEnd('/'));
 
             string texFileName = baseName + ".png";
             string texAssetPath = savePath + texFileName;
@@ -446,7 +447,7 @@ namespace Mosaic.Bridge.Tools.DataViz
 
             var projectRoot = Application.dataPath.Replace("/Assets", "");
             var fullDir = Path.Combine(projectRoot, savePath);
-            Directory.CreateDirectory(fullDir);
+            AssetDatabaseHelper.EnsureFolder(savePath.TrimEnd('/'));
 
             string legendTexFile = baseName + "_Legend.png";
             string legendTexAsset = savePath + legendTexFile;

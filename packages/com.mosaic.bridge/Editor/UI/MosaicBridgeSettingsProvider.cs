@@ -20,7 +20,7 @@ namespace Mosaic.Bridge.UI
         {
             return new MosaicBridgeSettingsProvider
             {
-                keywords = new[] { "Mosaic", "Bridge", "MCP", "Pipeline", "License", "Trial", "Assembly", "Tools", "Feature", "Flags", "Telemetry" }
+                keywords = new[] { "Mosaic", "Bridge", "MCP", "Pipeline", "License", "Trial", "Assembly", "Tools", "Feature", "Flags", "Telemetry", "Particle", "Pack", "VFX", "Effects" }
             };
         }
 
@@ -49,6 +49,16 @@ namespace Mosaic.Bridge.UI
 
             // === Allowed Tool Assemblies (Assembly Guard) ===
             AssemblyGuardSection.Draw();
+
+            EditorGUILayout.Space(10);
+
+            // === Asset Store Guidance ===
+            AssetStoreGuidanceSection.Draw();
+
+            EditorGUILayout.Space(10);
+
+            // === Particle Pack Source ===
+            ParticlePackSection.Draw();
 
             EditorGUILayout.Space(10);
 

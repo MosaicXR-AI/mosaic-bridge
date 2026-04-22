@@ -80,3 +80,4 @@ coverage/
 .claude/*
 _bmad/*
 _bmad-output/*
+docs/manual-test-guide.md

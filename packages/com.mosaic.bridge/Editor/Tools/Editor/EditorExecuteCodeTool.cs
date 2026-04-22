@@ -50,9 +50,11 @@ namespace Mosaic.Bridge.Tools.EditorOps
         // ── Tool entry point ────────────────────────────────────────────────────
 
         [MosaicTool("editor/execute-code",
-                    "Evaluates a single static C# expression via reflection (property access or method call). " +
-                    "Supports TypeName.Property, TypeName.Method(), and TypeName.Method(args). " +
-                    "IMPORTANT: Accepts ONE expression only — multi-statement blocks are not supported. " +
+                    "Evaluates a single static C# expression via reflection (property read or method call). " +
+                    "Use for reading editor state, not for creating scene content. " +
+                    "⛔ DO NOT use to create GameObjects, meshes, materials, or any scene content — " +
+                    "   use the dedicated MCP tools (scene/create-object, probuilder/create, material/create, etc.). " +
+                    "IMPORTANT: ONE expression only — for multi-statement blocks use editor/run-block. " +
                     "Examples: 'UnityEditor.EditorApplication.isPlaying', 'UnityEngine.Time.time', " +
                     "'UnityEditor.Selection.activeGameObject.name'.",
                     isReadOnly: false)]

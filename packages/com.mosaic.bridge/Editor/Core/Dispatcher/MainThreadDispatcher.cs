@@ -98,6 +98,9 @@ namespace Mosaic.Bridge.Core.Dispatcher
         // Called from EditorApplication.update (main thread) or directly from tests.
         public void ProcessPendingRequests(int maxToProcess = -1)
         {
+            // Refresh stall timestamp so HandleAsync knows the main thread is alive.
+            // Essential when called directly from test runners where EditorApplication.update never fires.
+            Interlocked.Exchange(ref _lastUpdateTickMs, _nowProvider());
             int writesProcessed = 0;
             int readsProcessed = 0;
             int maxWrites = maxToProcess >= 0 ? maxToProcess : _maxWritesPerTick;
@@ -218,7 +221,6 @@ namespace Mosaic.Bridge.Core.Dispatcher
 
         private void OnUpdate()
         {
-            Interlocked.Exchange(ref _lastUpdateTickMs, _nowProvider());
             ProcessPendingRequests();
         }
 

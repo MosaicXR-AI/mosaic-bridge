@@ -296,6 +296,9 @@ namespace Mosaic.Bridge.Tests.Regression
 
         private HttpResponseMessage DriveUntilComplete(Func<Task<HttpResponseMessage>> factory)
         {
+            // Prime the stall detector before the request is sent so HandleAsync
+            // doesn't see a stale timestamp and immediately return 202.
+            BridgeBootstrap.Dispatcher?.ProcessPendingRequests(maxToProcess: 5);
             var task = Task.Run(factory);
             var deadline = DateTime.UtcNow.AddSeconds(15);
             while (!task.IsCompleted && DateTime.UtcNow < deadline)

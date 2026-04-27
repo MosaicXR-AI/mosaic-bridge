@@ -41,8 +41,8 @@ namespace Mosaic.Bridge.Tests.Regression
         [Test]
         public void AllToolCategories_HaveAtLeastOneFixture()
         {
-            Assert.AreEqual(BridgeState.Running, BridgeBootstrap.State,
-                "BridgeBootstrap must be Running. Start the Unity bridge before running coverage tests.");
+            Assume.That(BridgeBootstrap.State == BridgeState.Running,
+                "Bridge is not running. Start the Unity bridge before running coverage tests.");
 
             // 1. Get all tool categories from the live registry
             var registryCategories = GetRegistryCategories();
@@ -75,8 +75,8 @@ namespace Mosaic.Bridge.Tests.Regression
         [Test]
         public void AllFixtures_ReferenceValidTools()
         {
-            Assert.AreEqual(BridgeState.Running, BridgeBootstrap.State,
-                "BridgeBootstrap must be Running. Start the Unity bridge before running coverage tests.");
+            Assume.That(BridgeBootstrap.State == BridgeState.Running,
+                "Bridge is not running. Start the Unity bridge before running coverage tests.");
 
             // 1. Get all registered tool names
             var registeredTools = GetRegisteredToolNames();
@@ -255,6 +255,7 @@ namespace Mosaic.Bridge.Tests.Regression
 
         private HttpResponseMessage DriveUntilComplete(Func<Task<HttpResponseMessage>> factory)
         {
+            BridgeBootstrap.Dispatcher?.ProcessPendingRequests(maxToProcess: 5);
             var task = Task.Run(factory);
             var deadline = DateTime.UtcNow.AddSeconds(10);
             while (!task.IsCompleted && DateTime.UtcNow < deadline)

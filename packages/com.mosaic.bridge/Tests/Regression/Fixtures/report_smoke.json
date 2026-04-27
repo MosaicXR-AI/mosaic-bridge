@@ -1,0 +1,13 @@
+{
+  "fixture": "report_smoke",
+  "tool": "mosaic_report_issue",
+  "category": "report",
+  "description": "Smoke test for report/issue — assembles diagnostic report with optional description",
+  "parameters": { "UserDescription": "smoke test" },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

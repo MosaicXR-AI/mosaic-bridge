@@ -1,0 +1,18 @@
+{
+  "fixture": "perlin_worms_smoke",
+  "tool": "mosaic_procgen_perlin-worms",
+  "category": "procgen",
+  "description": "Smoke test: Perlin worms tunnel carving",
+  "parameters": {
+    "GridSize": 16,
+    "WormCount": 3,
+    "WormLength": 20,
+    "OutputDirectory": "Assets/Generated/Regression/PerlinWorms"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

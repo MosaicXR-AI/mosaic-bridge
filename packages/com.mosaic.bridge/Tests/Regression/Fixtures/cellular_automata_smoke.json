@@ -1,0 +1,19 @@
+{
+  "fixture": "cellular_automata_smoke",
+  "tool": "mosaic_procgen_cellular-automata",
+  "category": "procgen",
+  "description": "Smoke test: cellular automata with Game of Life rules",
+  "parameters": {
+    "Width": 64,
+    "Height": 64,
+    "BirthRule": "3",
+    "SurvivalRule": "23",
+    "OutputDirectory": "Assets/Generated/Regression/CellularAutomata"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

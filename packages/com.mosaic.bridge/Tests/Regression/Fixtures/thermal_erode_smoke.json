@@ -1,0 +1,17 @@
+{
+  "fixture": "thermal_erode_smoke",
+  "tool": "mosaic_procgen_thermal-erode",
+  "category": "procgen",
+  "description": "Smoke test: thermal erosion with small map",
+  "parameters": {
+    "MapSize": 64,
+    "Iterations": 5,
+    "OutputDirectory": "Assets/Generated/Regression/ThermalErode"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

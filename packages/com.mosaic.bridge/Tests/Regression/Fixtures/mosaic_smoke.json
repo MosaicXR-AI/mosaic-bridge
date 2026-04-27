@@ -1,0 +1,15 @@
+{
+  "fixture": "mosaic_smoke",
+  "tool": "mosaic_report_issue",
+  "category": "mosaic",
+  "description": "Smoke test for report/issue — assembles a diagnostic report and attempts clipboard write",
+  "parameters": {
+    "userDescription": "regression test"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

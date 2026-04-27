@@ -1,0 +1,17 @@
+{
+  "fixture": "marching_cubes_smoke",
+  "tool": "mosaic_procgen_marching-cubes",
+  "category": "procgen",
+  "description": "Smoke test: marching cubes with small grid for speed",
+  "parameters": {
+    "GridSize": 16,
+    "IsoLevel": 0.5,
+    "OutputDirectory": "Assets/Generated/Regression/MarchingCubes"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

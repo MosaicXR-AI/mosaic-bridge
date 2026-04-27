@@ -1,0 +1,17 @@
+{
+  "fixture": "hydraulic_erode_smoke",
+  "tool": "mosaic_procgen_hydraulic-erode",
+  "category": "procgen",
+  "description": "Smoke test: hydraulic erosion with small map for speed",
+  "parameters": {
+    "MapSize": 64,
+    "NumDroplets": 1000,
+    "OutputDirectory": "Assets/Generated/Regression/HydraulicErode"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

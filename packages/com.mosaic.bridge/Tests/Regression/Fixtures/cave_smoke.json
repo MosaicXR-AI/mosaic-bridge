@@ -1,0 +1,19 @@
+{
+  "fixture": "cave_smoke",
+  "tool": "mosaic_procgen_cave",
+  "category": "procgen",
+  "description": "Smoke test: cave cellular automata generation",
+  "parameters": {
+    "Width": 32,
+    "Height": 32,
+    "FillPercent": 45,
+    "SmoothIterations": 3,
+    "OutputDirectory": "Assets/Generated/Regression/Cave"
+  },
+  "expectations": {
+    "success": true,
+    "statusCode": 200
+  },
+  "cleanup": "delete_created_asset",
+  "tags": ["smoke"]
+}

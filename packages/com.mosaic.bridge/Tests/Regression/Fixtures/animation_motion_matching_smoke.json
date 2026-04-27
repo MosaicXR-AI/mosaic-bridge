@@ -1,0 +1,10 @@
+{
+  "fixture": "animation_motion_matching_smoke",
+  "tool": "mosaic_animation_motion-matching-setup",
+  "category": "animation",
+  "description": "Smoke test for animation/motion-matching-setup — missing GameObjectName returns INVALID_PARAM",
+  "parameters": { "GameObjectName": "", "AnimationClips": ["Idle", "Walk"] },
+  "expectations": { "success": false, "statusCode": 400 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

@@ -2,6 +2,18 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.6] — 2026-04-29
+
+### Added
+
+- **Unity asset MCP resources** — six new resource categories exposed at
+  `mosaic://unity/assets/{prefabs,materials,textures,scenes,scripts,shadergraphs}`.
+  In Claude Code, use `@Unity Prefabs`, `@Unity Materials`, etc. to browse your project
+  assets directly in the prompt. Each resource calls `asset/list` on the bridge and
+  returns asset paths ready for use in tool calls.
+
+---
+
 ## [1.0.0-beta.5] — 2026-04-22
 
 ### Fixed

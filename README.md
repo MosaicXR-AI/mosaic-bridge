@@ -96,26 +96,45 @@ npx @mosaicxr-ai/create-bridge \
 
 See `npx @mosaicxr-ai/create-bridge --help` for all flags.
 
-### Scene-building intelligence (CLAUDE.md)
+### Scene-building intelligence + cross-LLM agents
 
-The installer automatically writes a `CLAUDE.md` file to your Unity project root. This file
-instructs Claude to:
+The installer writes instruction files and specialist agents into your Unity project for every
+supported AI client:
+
+| File | Client |
+|------|--------|
+| `CLAUDE.md` | Claude Code + Claude Desktop |
+| `GEMINI.md` | Gemini CLI |
+| `AGENTS.md` | OpenAI Codex |
+| `.cursor/rules/mosaic-bridge.mdc` | Cursor |
+
+All instruction files enforce:
 
 - **Interview before building** — when you give a vague prompt like "make me a desert scene",
-  Claude asks 4 targeted questions (scene type, geographic reference, scale, player perspective)
-  before touching any tools. This turns a vague request into a spatially accurate plan.
-- **Enforce spatial coherence** — every placed object Y is resolved from `terrain/sample-height`
+  the AI asks 4 targeted questions (scene type, geographic reference, scale, player perspective)
+  before touching any tools.
+- **Spatial coherence** — every placed object Y is resolved from `terrain/sample-height`
   before placement. No more objects buried underground or floating in air.
-- **Follow the correct build order** — terrain → textures → lighting → structures → vegetation →
+- **Correct build order** — terrain → textures → lighting → structures → vegetation →
   post-processing → camera.
 
-To skip writing `CLAUDE.md`:
+Three specialist skill agents are installed following the [bmad-method](https://github.com/bmadcode/bmad-method)
+convention — written to both `.claude/skills/` (Claude Code slash commands) and
+`.agents/skills/` (universal, works with Cursor, Gemini, Codex, Windsurf, OpenCode):
+
+| Agent | Claude Code | Cursor | Codex | Best for |
+|-------|-------------|--------|-------|----------|
+| Zara — Project Guide | `/mosaic-guide` | `@mosaic-guide` | `$mosaic-guide` | Session start, preflight, pipeline issues |
+| Ray — Shader Expert | `/mosaic-shader` | `@mosaic-shader` | `$mosaic-shader` | ShaderGraph creation, node wiring, debugging |
+| Max — Scene Builder | `/mosaic-scene` | `@mosaic-scene` | `$mosaic-scene` | Full scene construction, particles, physics |
+
+To skip writing instruction files:
 
 ```bash
 npx @mosaicxr-ai/create-bridge --skip-claude
 ```
 
-To refresh it after an update:
+To refresh after an update:
 
 ```bash
 npx @mosaicxr-ai/create-bridge --force
@@ -190,8 +209,10 @@ Tools that return physical values consult a bundled, versioned reference library
 
 - **`physics/constants.json`** — NIST CODATA fundamental constants
 - **`rendering/pbr-materials.json`** — PhysicallyBased API material values (CC0)
-- Planned: animation timing, audio attenuation, spatial metrics, color
-  temperature, lighting presets
+- **`rendering/render-pipeline-compat.json`** — shader ↔ pipeline compatibility matrix (URP / HDRP / BuiltIn)
+- **`rendering/shadergraph-nodes.json`** — 38 node aliases with input/output slot descriptions
+- **`rendering/unity-api-quirks.json`** — documented API pitfalls with tested workarounds
+- Planned: animation timing, audio attenuation, spatial metrics, color temperature, lighting presets
 
 When a tool consults the KB, it attaches a citation to its response envelope so
 the AI knows which source a value came from. If a requested value isn't in the
@@ -213,7 +234,7 @@ of these in one pass:
 | **Cursor** | `~/.cursor/mcp.json` | JSON | ✅ via installer |
 | **Gemini CLI** | `~/.gemini/settings.json` | JSON | ✅ via installer |
 | **OpenAI Codex CLI** | `~/.codex/config.toml` | TOML | ✅ via installer |
-| **Windsurf, Cline, Continue.dev, others** | see each client's docs | varies | Manual today (installer roadmap: beta.3+) |
+| **Windsurf, OpenCode, GitHub Copilot, others** | see each client's docs | varies | Manual MCP config; `AGENTS.md` + `.agents/skills/` written by installer for agent support |
 
 Any MCP 2024-11-05 compliant client works with manual config. The auto-config
 list above is just the clients the installer knows paths/formats for today.
@@ -355,11 +376,16 @@ project's `manifest.json`:
 - Per-project runtime isolation
 - Auto `.mcp.json` for Claude Code + auto-config for Claude Desktop, Cursor,
   Gemini CLI, and OpenAI Codex CLI via `npx @mosaicxr-ai/create-bridge`
-- Windows `cmd /c` wrapper for stdio MCP launch (fixed in beta.2)
+- Windows `cmd /c` wrapper for stdio MCP launch (beta.2)
 - Scene intelligence: `scene/create-object` decision tree (project search →
   Asset Store → procedural build), spatial coherence tools, build plans
 - `editor/run-block` multi-statement C# execution with polling
-- Knowledge base with Unity-version-aware guidance
+- Knowledge base with Unity-version-aware guidance + rendering compat KB (beta.3)
+- `project/preflight` — render pipeline + color property detection (beta.3)
+- `material/create-batch` — bulk material creation (beta.3)
+- Cross-LLM specialist agents via bmad-method SKILL.md format (beta.3):
+  Zara, Ray, Max installed to `.claude/skills/` + `.agents/skills/`
+- Unity project asset resources in MCP (`@Unity Prefabs`, `@Unity Materials`, etc.) (beta.3)
 - Apache 2.0 license with patent grant
 
 ### v1.0 stable

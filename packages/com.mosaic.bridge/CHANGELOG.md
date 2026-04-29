@@ -5,6 +5,38 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.3] — 2026-04-29
+
+### Added
+
+- **`project/preflight`** — returns the active render pipeline (URP / HDRP / BuiltIn),
+  the correct color property (`_BaseColor` or `_Color`), Unity version, and platform.
+  Call once at session start; avoids magenta-material errors from wrong shader/pipeline combos.
+
+- **`material/create-batch`** — creates multiple material assets in a single call.
+  Returns separate `Created`, `Skipped`, and `Failed` lists for partial-failure handling.
+  Supports per-entry `ShaderName` with the same auto-detect fallback as `material/create`.
+
+- **Knowledge base: rendering** — three new KB files bundled with the package:
+  `rendering/render-pipeline-compat.json` (shader ↔ pipeline compatibility matrix),
+  `rendering/shadergraph-nodes.json` (38 node aliases with slot descriptions),
+  `rendering/unity-api-quirks.json` (documented API pitfalls with workarounds).
+
+### Fixed
+
+- **`component/set_reference`** — `FindPropertyFuzzy` now parses array index expressions
+  (e.g. `Spline.Knots[0].Position`): detects `[n]` in each dot-separated segment, strips
+  the index, finds the array property with the usual `m_` prefix fallback, then calls
+  `GetArrayElementAtIndex(n)` before continuing traversal. Fixes GitHub issue #6.
+
+- **`component/set_property`** — fixed `CS8121` pattern-match error on `ObjectReference`
+  values: replaced `value is string refPath` with `value?.Value<string>()` for correct
+  `JToken` handling.
+
+- Various tool refinements across ShaderGraph, Physics, Audio, Materials, and Particles.
+
+---
+
 ## [1.0.0-beta.2] — 2026-04-22
 
 ### Added

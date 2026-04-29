@@ -1,0 +1,191 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "visualscripting/visual-scripting-overview",
+  "title": "Visual Scripting (Bolt): Graphs, Nodes, State Machines",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity Visual Scripting (the package formerly sold as Bolt) is a node-based behavior authoring system shipped as com.unity.visualscripting. Unity acquired Bolt and made Visual Scripting built-in starting in 2021.1, so any LTS from 2021.3 onward has it available without extra purchase. Two graph kinds: FlowGraph for imperative, event-driven node execution (Update loops, input handlers, gameplay logic) and StateGraph for finite-state machines whose states each host nested FlowGraphs. A Script Machine MonoBehaviour attaches a FlowGraph to a GameObject; a State Machine MonoBehaviour attaches a StateGraph. Variables have five scopes (Graph, Object, Scene, Application, Saved) with different persistence rules. Custom C# nodes subclass Unit with [UnitTitle]/[UnitCategory] attributes, and IL2CPP builds require running the AOT Pre-Build step. Use this entry for any visualscripting/* tool that creates graphs, wires nodes, or wraps C# APIs as Units — LLMs routinely forget to enable a type in Project Settings > Visual Scripting (node doesn't appear in the fuzzy finder), forget AOT regeneration before an IL2CPP build (NotSupportedException at runtime), or pick Visual Scripting when the team is all-programmers and would be faster in C#.",
+
+  "mosaicTools": [
+    "visualscripting/create-script-machine",
+    "visualscripting/add-node"
+  ],
+
+  "relatedKb": [
+    "core/scene-lifecycle",
+    "core/scriptable-objects"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_add_visual_scripting_to_a_project":
+      "Verify Unity >= 2021.1 (built-in from then on). Install via Package Manager — search 'Visual Scripting' in the Unity registry. After install, open Project Settings > Visual Scripting and click Regenerate Nodes. Do not purchase 'Bolt' from the Asset Store for modern projects — that is the legacy pre-acquisition asset and is obsolete.",
+    "when_creating_a_flowgraph_on_a_gameobject":
+      "Add a Script Machine component (visualscripting/create-script-machine). Set Source to Graph (embedded, not shared) for one-off behavior, or Macro (ScriptGraphAsset) when the graph should be reused across prefabs. Embedded graphs save with the scene/prefab; macros save as .asset files and are version-controllable as assets.",
+    "when_creating_a_state_machine":
+      "Add a State Machine component, not a Script Machine. Source = Graph or Macro (StateGraphAsset). Each state in the graph can host a nested FlowGraph that runs while the state is active — use this for 'idle behavior vs chase behavior vs attack behavior' splits. Transitions between states trigger on events or boolean conditions.",
+    "when_choosing_between_visualscripting_and_csharp":
+      "If the team includes non-programmers (designers, artists) who need to iterate on logic, use Visual Scripting. If the team is all programmers, C# is faster to write and read. Mixed teams: write core systems (pooling, AI brains, net code) in C# and expose designer-facing knobs as Units or ScriptableObject data — designers wire gameplay in FlowGraphs that call into your C# primitives.",
+    "when_a_node_for_a_unity_api_is_missing_from_the_fuzzy_finder":
+      "Open Project Settings > Visual Scripting > Node Library (Type Options in older docs). Add the type's assembly and the type itself to the enabled list, then click Regenerate Nodes. Unity Visual Scripting only generates nodes for types that are explicitly enabled — an uncalled type is invisible even if it's in a referenced assembly.",
+    "when_writing_a_custom_unit":
+      "Subclass Unity.VisualScripting.Unit. Decorate with [UnitTitle(\"My Node\")] for the display name and [UnitCategory(\"Path/To/Category\")] for the fuzzy finder folder. Override Definition() to declare control ports (ControlInput/ControlOutput) and value ports (ValueInput/ValueOutput). After compile, run Regenerate Nodes in Project Settings > Visual Scripting.",
+    "when_building_for_il2cpp":
+      "Run Edit > Project Settings > Visual Scripting > AOT Pre-Build (or Tools menu in older versions) before every IL2CPP build. This generates AOT stubs that IL2CPP needs to dispatch reflected calls. Skipping this step produces a runtime NotSupportedException the moment a graph evaluates. Mono builds don't need this step.",
+    "when_sharing_variables_between_graphs_and_scenes":
+      "Pick the scope by lifetime. Graph = local to one FlowGraph instance. Object = on the same GameObject, read by any graph on it. Scene = on a SceneVariables singleton in the current scene. Application = in-memory for the whole play session, lost on exit. Saved = PlayerPrefs-backed, persists across sessions. Use Saved sparingly — it's JSON in PlayerPrefs and not suited for large or sensitive data.",
+    "when_a_graph_runs_in_editor_but_throws_in_a_player_build":
+      "Almost always AOT: forgot the AOT Pre-Build step, or the type used by a node isn't in the enabled Type Options list so it was stripped. Regenerate nodes, run AOT Pre-Build, rebuild. Secondary cause: a custom Unit references editor-only code (UnityEditor namespace) — wrap editor calls in #if UNITY_EDITOR.",
+    "when_debugging_'my_event_node_never_fires'":
+      "Event nodes like On Update, On Collision Enter, On Trigger Enter require the Script Machine's GameObject to have the matching component (Rigidbody for physics collisions, Collider with isTrigger for triggers, etc.). Also check the graph is actually assigned (Source dropdown is not None) and that a macro asset in the Source slot isn't null."
+  },
+
+  "full": {
+    "packageBasics": {
+      "name": "com.unity.visualscripting",
+      "origin": "Originally the third-party asset 'Bolt 2' by Ludiq. Unity acquired it, rebranded as Visual Scripting, and shipped it as a built-in package starting Unity 2021.1.",
+      "install": "Package Manager > Unity Registry > Visual Scripting. Built-in for 2021.1+ — no Asset Store purchase needed. Legacy Bolt 1/Bolt 2 assets should be uninstalled in favor of the built-in package on modern Unity versions.",
+      "menuLocations": "Edit > Project Settings > Visual Scripting for type enablement and AOT. Window > Visual Scripting Graph for the graph editor. Right-click in Project window > Create > Visual Scripting for macro assets (Script Graph, State Graph, Subgraph)."
+    },
+    "graphTypes": {
+      "FlowGraph": "Imperative node graph. Execution flows along control edges from Event nodes (On Start, On Update, On Input, On Collision Enter) through action nodes. Value ports carry data; control ports carry execution order. Closest analog is a visual C# method body with events and branches.",
+      "StateGraph": "Finite state machine. Nodes are States with Transitions between them. Each state can host a nested FlowGraph that runs during OnEnter / OnStay / OnExit. Transitions have conditions (a boolean expression or an event trigger). Ideal for AI behavior, gameplay modes, menu flow.",
+      "Subgraph": "Reusable FlowGraph snippet that can be dropped into other graphs as a single node. Declares input and output ports via the Input and Output nodes. Equivalent to extracting a method in code."
+    },
+    "componentWiring": {
+      "ScriptMachine": "MonoBehaviour that hosts a FlowGraph on a GameObject. Source = Graph (embedded inline) or Macro (ScriptGraphAsset — a .asset on disk). Variables declared on the machine are visible to the graph as Object-scope. Multiple Script Machines on one GameObject is legal and each runs independently.",
+      "StateMachine": "MonoBehaviour that hosts a StateGraph. Same Graph vs Macro (StateGraphAsset) choice. Start State is the entry point; transitions drive movement between states at runtime.",
+      "embedVsMacroTradeoff": "Embedded graphs are faster to iterate (edit in scene, no asset to save) but don't reuse across prefabs or scenes. Macros are shareable, version-controllable as .asset files, and survive prefab replacement. Promote an embedded graph to a macro via Convert to Macro in the graph editor."
+    },
+    "variableScopes": {
+      "Graph": "Local to one graph instance. Not visible outside. Use for counters, accumulators, scratch state inside a FlowGraph.",
+      "Object": "Declared on a Variables component attached to the GameObject (auto-added with Script/State Machine). Any graph on the same GameObject reads and writes them. Analog: instance fields in C#.",
+      "Scene": "Stored on a SceneVariables GameObject created on demand. Global within the current scene, destroyed on scene unload. Analog: a scene-scoped singleton.",
+      "Application": "In-memory for the whole play session, shared across scenes, but lost when the player process exits. Analog: static fields on a normal class.",
+      "Saved": "Persisted to disk via PlayerPrefs as JSON. Survives process restart. Use for user settings, last checkpoint, simple save state — not large binary data."
+    },
+    "customUnits": {
+      "basePattern": "public class MyUnit : Unit { [DoNotSerialize] public ControlInput enter; [DoNotSerialize] public ControlOutput exit; protected override void Definition() { enter = ControlInput(nameof(enter), flow => { /* body */ return exit; }); exit = ControlOutput(nameof(exit)); } }",
+      "attributes": "[UnitTitle(\"My Node\")] sets the fuzzy-finder display name. [UnitCategory(\"Gameplay/AI\")] places it under that folder. [UnitSubtitle(\"a short hint\")] shows a gray-text subtitle in the node body. Omit these for reasonable defaults derived from class name.",
+      "ports": "ControlInput/ControlOutput drive execution flow; ValueInput<T>/ValueOutput<T> carry typed data. Declare all ports in Definition() and assign them to [DoNotSerialize] fields — Visual Scripting handles serialisation.",
+      "regeneration": "Every time you add, remove, or rename a Unit — or change enabled Type Options — open Edit > Project Settings > Visual Scripting and click Regenerate Nodes. Without this the new Unit may not appear in the fuzzy finder."
+    },
+    "typeEnablement": {
+      "why": "Visual Scripting generates nodes via reflection. To keep generated code small and build times sane, it only reflects types you've opted in. A freshly-installed package has a default set (UnityEngine basics, common component types) but any third-party namespace or custom class you want to call from a graph must be added.",
+      "where": "Edit > Project Settings > Visual Scripting > Node Library (older versions: Type Options). Add Assembly references first, then tick individual types. Click Regenerate Nodes when done.",
+      "failureMode": "Symptom: the fuzzy finder has no node for a type you expected (e.g. NavMeshAgent.SetDestination). Cause: UnityEngine.AI not enabled. Fix: add the assembly+type, regenerate."
+    },
+    "aotAndIl2cpp": {
+      "why": "IL2CPP converts C# to C++ at build time. Runtime reflection on generic methods doesn't work on AOT platforms without pre-generated stubs. Visual Scripting uses reflection heavily to call arbitrary typed methods from nodes.",
+      "step": "Edit > Project Settings > Visual Scripting > AOT Pre-Build (labeled slightly differently across versions). Run before every IL2CPP build after meaningful graph changes. It generates a LinkXml + generic AOT stubs under Assets/Unity.VisualScripting.Generated/.",
+      "verify": "After AOT Pre-Build, an AOTStubs.cs (or similar) file is present under the generated folder. Commit these generated files to source control so CI builds are deterministic.",
+      "monoBuilds": "Mono scripting backend does not need AOT Pre-Build. Skipping only hurts IL2CPP/WebGL/consoles."
+    },
+    "decisionRules": [
+      {
+        "scenario": "project has designers who will own gameplay logic",
+        "rule": "Visual Scripting. Script Machine with Macro source so the macro asset can be iterated independently of scene.",
+        "evidence": "Visual Scripting manual, Getting Started."
+      },
+      {
+        "scenario": "project is a small all-programmer team shipping fast",
+        "rule": "C# MonoBehaviours. Visual Scripting adds overhead (reflection at runtime, AOT step at build) without buying you anything when everyone can read code.",
+        "evidence": "Visual Scripting manual, Introduction (tradeoffs between VS and scripted approaches)."
+      },
+      {
+        "scenario": "team wants AI behavior with states and transitions",
+        "rule": "State Machine component with a StateGraph. Each state hosts a FlowGraph for in-state behavior. Transitions trigger on events (player sighted, health low) or conditions.",
+        "evidence": "Visual Scripting manual, State Graphs."
+      },
+      {
+        "scenario": "designer needs to call a custom C# API from a graph",
+        "rule": "Either enable the C# type in Node Library so its public members auto-generate nodes, or write a custom Unit subclass with hand-authored ports for a cleaner UX.",
+        "evidence": "Visual Scripting manual, Custom Nodes."
+      },
+      {
+        "scenario": "build is IL2CPP (iOS, WebGL, consoles, or 'just checked the Release box')",
+        "rule": "Run AOT Pre-Build. Add the check to CI so builds fail loudly if stubs are stale rather than failing silently at runtime.",
+        "evidence": "Visual Scripting manual, AOT Pre-build."
+      }
+    ],
+    "commonPitfalls": [
+      {
+        "symptom": "Node for MyType.MyMethod is missing from the fuzzy finder.",
+        "cause": "MyType is not in the enabled type list, so Visual Scripting hasn't reflected it.",
+        "fix": "Project Settings > Visual Scripting > Node Library. Add the assembly, tick MyType, click Regenerate Nodes. The node now appears."
+      },
+      {
+        "symptom": "Graph runs fine in editor; player build throws NotSupportedException the first time it evaluates.",
+        "cause": "IL2CPP build without AOT Pre-Build, so reflection over generic / value-typed calls has no stub.",
+        "fix": "Project Settings > Visual Scripting > AOT Pre-Build. Commit generated files. Rebuild. Add to CI so it runs before every build."
+      },
+      {
+        "symptom": "Custom Unit compiles but doesn't appear in the fuzzy finder.",
+        "cause": "Regenerate Nodes wasn't run, or the class is internal / abstract / lives in an excluded assembly.",
+        "fix": "Make the class public, non-abstract, in an assembly that Visual Scripting can see (default assemblies qualify). Click Regenerate Nodes."
+      },
+      {
+        "symptom": "Saved variable values from the previous play session are gone.",
+        "cause": "PlayerPrefs was cleared (often by the user), or a platform like WebGL wiped IndexedDB. Saved scope is PlayerPrefs-backed and inherits those limits.",
+        "fix": "For anything important or structured, use a proper save system (JSON or binary file under Application.persistentDataPath). Saved scope is fine for trivial flags and settings."
+      },
+      {
+        "symptom": "On Update / On Collision Enter event node fires in editor but not in a standalone build.",
+        "cause": "Either the required component (Rigidbody, Collider, etc.) isn't on the GameObject at runtime, or the prefab variant lost the Script Machine reference during a prefab rebuild.",
+        "fix": "Inspect the runtime GameObject in a dev build (Development Build + Script Debugging). Confirm Script Machine is present and Source points to a non-null graph or macro."
+      },
+      {
+        "symptom": "Two Script Machines on the same GameObject share state unexpectedly.",
+        "cause": "They both read Object-scope variables from the same Variables component on the GameObject, which is one Variables component per GameObject by design.",
+        "fix": "Split the GameObjects, or use Graph-scope variables to keep each machine's state private. Object scope is intentionally per-GameObject."
+      }
+    ],
+    "versionDeltas": [
+      {
+        "version": "2021.1",
+        "change": "Visual Scripting ships as built-in package com.unity.visualscripting, replacing the paid Bolt 2 asset. Automatic project upgrader migrates Bolt 1/2 graphs.",
+        "breaking": true,
+        "migrationNote": "Projects still using legacy Bolt 1/2 from the Asset Store should run Tools > Visual Scripting > Migrate Bolt to Visual Scripting, then remove the Bolt asset folders."
+      },
+      {
+        "version": "2021.3",
+        "change": "Visual Scripting matures in the LTS line; AOT Pre-Build step stabilises for IL2CPP. Node Library / Type Options UI settles on its current layout.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "Performance improvements and fixes around graph compilation and large graph editor responsiveness. No API breaking changes for end-user graphs.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Package continues shipping on Unity 6. No major feature additions; Unity's recommended designer-facing logic tool remains Visual Scripting for the built-in flow, with Behavior (new package) positioned for AI-specific graph authoring alongside it.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Visual Scripting package manual", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/index.html" },
+    { "title": "Visual Scripting — Graphs", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/vs-graph-types.html" },
+    { "title": "Visual Scripting — Variables", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/vs-variables.html" },
+    { "title": "Visual Scripting — Custom Nodes", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/vs-create-custom-node.html" },
+    { "title": "Visual Scripting — AOT Pre-Build", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/vs-aot-prebuild.html" },
+    { "title": "Visual Scripting — Node Library / Type Options", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/vs-node-library.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Packages — com.unity.visualscripting 1.9 manual", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/manual/index.html" },
+    { "title": "Unity Packages — com.unity.visualscripting ScriptReference", "url": "https://docs.unity3d.com/Packages/com.unity.visualscripting@1.9/api/Unity.VisualScripting.html" },
+    { "title": "Unity Blog — Visual Scripting (Bolt) becoming built-in", "url": "https://unity.com/features/unity-visual-scripting" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity Visual Scripting package manuals and ScriptReference pages. Component names, class names, attribute names, variable scope labels, and package version facts are not copyrightable. Explanatory prose, decision rules, pitfall diagnoses, and C#-to-node translation guidance are original Mosaic editorial content. Unity package manuals are cited as external references and NOT reproduced verbatim here."
+}

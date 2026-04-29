@@ -1,0 +1,342 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-core-asset-database",
+  "title": "Asset Database, Paths, Meta Files & Import Pipeline",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "How Unity tracks project files: project-relative forward-slash paths under Assets/ and Packages/<id>/, per-asset .meta files carrying the GUID that every cross-reference actually points at, and the AssetDatabase import pipeline (Refresh, ImportAsset, AssetPostprocessor). Mosaic tools in asset/*, package/*, script/*, scriptableobject/*, asmdef/*, and addressables/* all pass through this layer; the #1 failure class is writing a file with raw File.IO and skipping Refresh, or moving assets via File.Move and orphaning the meta. Read this before any tool that creates, deletes, moves, or imports files.",
+
+  "mosaicTools": [
+    "asset/create",
+    "asset/delete",
+    "asset/move",
+    "asset/rename",
+    "asset/read",
+    "asset/write",
+    "asset/import",
+    "asset/refresh",
+    "asset/find",
+    "asset/get-guid",
+    "asset/get-path",
+    "asset/get-dependencies",
+    "package/install",
+    "package/remove",
+    "package/list",
+    "package/embed",
+    "script/create",
+    "script/update",
+    "script/read",
+    "script/delete",
+    "scriptableobject/create",
+    "scriptableobject/read",
+    "scriptableobject/update",
+    "addressables/group-create",
+    "addressables/entry-add",
+    "addressables/entry-remove",
+    "addressables/build",
+    "asmdef/create",
+    "asmdef/update"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle",
+    "kb-core-prefab-workflow"
+  ],
+
+  "llmGuidance": {
+    "when_writing_a_file_with_raw_io_not_an_assetdatabase_api":
+      "Always follow File.Write* with AssetDatabase.Refresh(). Without it the asset is invisible to the Project window and LoadAssetAtPath returns null. Exception: AssetDatabase.CreateAsset, ImportAsset, and CopyAsset import synchronously and do NOT require Refresh.",
+    "when_moving_or_renaming_an_asset":
+      "Use AssetDatabase.MoveAsset (move + rename combined) or AssetDatabase.RenameAsset. Never File.Move / File.Copy — the .meta does not follow automatically, the GUID gets reassigned, and every reference that pointed at the old asset breaks. Check the string return value: empty string means success, non-empty is the error reason.",
+    "when_deleting_an_asset":
+      "Use AssetDatabase.DeleteAsset(path). File.Delete leaves a stale .meta that Unity treats as a missing asset and will log on next import. If the asset has dependents, prefer AssetDatabase.MoveAssetToTrash for a reversible delete.",
+    "when_building_a_path_string":
+      "Always forward slashes. Always project-relative, starting with Assets/ or Packages/<packageId>/. No leading slash. No absolute paths unless the API explicitly takes a system path (Application.dataPath, AssetDatabase.GetAssetPathFromText etc.). On Windows, normalize backslashes to forward slashes before any AssetDatabase call.",
+    "when_creating_a_c_sharp_script_then_attaching_it":
+      "Write the script, wait for compilation to finish (poll console/get-errors until clean and EditorApplication.isCompiling is false), THEN add the component. Attaching before the type exists throws or silently adds a MissingScript component. See kb-core-scene-lifecycle for compilation gates.",
+    "when_creating_a_scriptableobject_asset":
+      "ScriptableObject.CreateInstance<T>() then AssetDatabase.CreateAsset(instance, path). If you mutate fields after CreateAsset without EditorUtility.SetDirty + AssetDatabase.SaveAssets, the changes live only in memory and disappear on domain reload.",
+    "when_touching_many_assets_in_a_loop":
+      "Wrap the loop in AssetDatabase.StartAssetEditing() / StopAssetEditing(). A naive loop re-imports after each call and is 10-100x slower. StopAssetEditing is mandatory in finally — failing to call it freezes the editor in a batch-editing state.",
+    "when_loading_an_asset_at_runtime":
+      "AssetDatabase.* is editor-only and will NotFound in a built player. Runtime paths are Resources.Load (synchronous, everything in Resources/ is always shipped), or Addressables.LoadAssetAsync (async, per-group bundle control). Never ship AssetDatabase code in a runtime assembly.",
+    "when_a_write_targets_a_package_path":
+      "Only embedded packages (Packages/ folder inside the project) and `file:` local packages are writable. Registry-installed packages are immutable — writes succeed on disk but are wiped on next resolve. If a tool needs to modify a registry package, it must embed it first (Package Manager → Embed).",
+    "when_an_asmdef_is_involved":
+      "Adding or modifying .asmdef changes which assembly a script compiles into and may break references in other assemblies. After asmdef writes, always Refresh and wait for recompilation before proceeding. Most 'the type or namespace could not be found' errors after a Mosaic tool run trace to an unreferenced asmdef."
+  },
+
+  "full": {
+    "pathSemantics": {
+      "assetsRoot": "Assets/... — the main project content folder. Everything here is writable, tracked, and gets a .meta.",
+      "packagesRoot": "Packages/<packageId>/... — one subfolder per installed package. The <packageId> is the com.company.name identifier from the package's package.json, NOT the human-readable display name.",
+      "separator": "Forward slash only. Windows Explorer shows backslashes but every AssetDatabase API expects /. Mosaic normalizes on the server side but generated code should not rely on that.",
+      "caseSensitivity": "Unity treats paths case-insensitively on Windows/macOS default filesystems but case-sensitively on Linux and APFS-case-sensitive. Always match the on-disk case to avoid cross-platform breakage.",
+      "applicationDataPath": "Application.dataPath returns the absolute system path to Assets/ (e.g. /Users/x/Project/Assets). It is NOT an AssetDatabase path. Convert with path.Substring(Application.dataPath.Length - 'Assets'.Length) or use FileUtil.GetProjectRelativePath.",
+      "absoluteVsRelative": "AssetDatabase APIs take project-relative paths (Assets/Foo.asset). System IO APIs (File, Directory, Path) take absolute paths. Mixing them is the #2 bug class after missing Refresh."
+    },
+
+    "metaFiles": {
+      "whatItIs": "A <filename>.meta sidecar containing the asset's GUID, importer type, and importer settings. Unity creates one automatically on import of any file under Assets/ or an embedded package.",
+      "guidIsTheReference": "Scenes, prefabs, materials, and asset fields serialize GUIDs, not paths. AssetDatabase.GUIDToAssetPath and AssetPathToGUID convert between the two. Moving a .meta with its asset preserves every reference; losing the meta breaks them all.",
+      "versionControl": "Both the asset file AND its .meta must be committed. Meta-only or asset-only commits cause GUID churn on next pull. Gitignore templates for Unity list the correct excludes (Library/, Temp/, Logs/) and explicitly DO NOT ignore *.meta.",
+      "serializationMode": "Project Settings → Editor → Asset Serialization should be set to Force Text for diff-friendly scenes/prefabs/materials. Force Binary breaks merges and blocks human review of .unity files.",
+      "regeneration": "Deleting a .meta and refreshing causes Unity to generate a NEW GUID — all references to that asset break. The only safe recovery is `git restore` of the meta."
+    },
+
+    "refreshSemantics": {
+      "whenRequired": [
+        "After File.WriteAllText / File.WriteAllBytes / Directory.CreateDirectory.",
+        "After an external process (git pull, build step, code generator) modifies files in Assets/ or an embedded package.",
+        "After manually copying files into the project via OS-level operations."
+      ],
+      "whenNotRequired": [
+        "After AssetDatabase.CreateAsset — imports synchronously.",
+        "After AssetDatabase.ImportAsset on a specific path — imports that path synchronously.",
+        "After AssetDatabase.MoveAsset / RenameAsset / DeleteAsset — all route through the import pipeline.",
+        "After EditorUtility.SetDirty + AssetDatabase.SaveAssets — writes pending in-memory changes to disk without a full refresh."
+      ],
+      "refreshVsSaveAssets": "Refresh looks at the filesystem for external changes and imports them. SaveAssets flushes in-memory dirty objects (a ScriptableObject you mutated, a modified material) to disk. They are complementary, not interchangeable.",
+      "importAssetOptions": "AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate) forces reimport even when the source has not changed — useful after changing importer settings via script."
+    },
+
+    "crudOperations": [
+      { "op": "Create",   "api": "AssetDatabase.CreateAsset(obj, path)",       "notes": "Path must include the extension. Parent directory must exist. Fails silently (logs error) if the object is already an asset." },
+      { "op": "Create",   "api": "AssetDatabase.CreateFolder(parent, name)",   "notes": "Returns the GUID of the new folder. Use instead of Directory.CreateDirectory to get the .meta created atomically." },
+      { "op": "Delete",   "api": "AssetDatabase.DeleteAsset(path)",            "notes": "Returns bool. Removes asset and meta. Logs to console; references become (Missing)." },
+      { "op": "Delete",   "api": "AssetDatabase.MoveAssetToTrash(path)",       "notes": "Reversible via OS trash. Preferred over DeleteAsset when user intervention might follow." },
+      { "op": "Move",     "api": "AssetDatabase.MoveAsset(from, to)",          "notes": "Returns error string; empty means success. Moves the .meta with the asset, preserving the GUID and all references." },
+      { "op": "Rename",   "api": "AssetDatabase.RenameAsset(path, newName)",   "notes": "newName is NAME only, no extension, no path. Returns error string; empty means success." },
+      { "op": "Copy",     "api": "AssetDatabase.CopyAsset(from, to)",          "notes": "Creates a new GUID for the copy; references to the source are NOT duplicated." },
+      { "op": "Load",     "api": "AssetDatabase.LoadAssetAtPath<T>(path)",     "notes": "Editor-only. Returns null if path is wrong or type does not match." },
+      { "op": "Find",     "api": "AssetDatabase.FindAssets(filter)",           "notes": "Returns GUIDs. Filter supports t:Type (t:Material), l:Label, and quoted names. Convert via GUIDToAssetPath." },
+      { "op": "Import",   "api": "AssetDatabase.ImportAsset(path, options)",   "notes": "Force a reimport. Combine with ForceUpdate when importer settings have been changed programmatically." }
+    ],
+
+    "importPipeline": {
+      "flow": "File appears in project (created, copied, or refreshed) → Unity picks an AssetImporter subclass by extension → importer reads the file and writes the imported form to Library/ → Unity invokes AssetPostprocessor hooks → asset becomes available via LoadAssetAtPath.",
+      "importerTypes": [
+        "TextureImporter — .png, .jpg, .tga, .exr, .hdr, .psd.",
+        "ModelImporter — .fbx, .obj, .dae, .blend.",
+        "AudioImporter — .wav, .mp3, .ogg, .aiff.",
+        "ScriptImporter — .cs (and triggers compilation).",
+        "DefaultImporter / NativeFormatImporter — .asset, .unity, .prefab, .mat, .asmdef and other Unity-native YAML.",
+        "PluginImporter — .dll.",
+        "VideoClipImporter — .mp4, .mov, .webm."
+      ],
+      "settingsPersistence": "Per-asset importer settings (TextureImporter.textureType, ModelImporter.animationType, etc.) live in the .meta. Modifying via AssetImporter.GetAtPath(path), setting properties, then SaveAndReimport() is the scripted workflow.",
+      "postprocessorHooks": "AssetPostprocessor subclasses receive OnPreprocessTexture/Model/Audio/Asset before import and OnPostprocess* after. OnPostprocessAllAssets fires once per batch with imported/deleted/moved arrays.",
+      "domainReloadOnCs": "Any .cs import triggers a domain reload and recompilation. Script edits are NOT hot-swappable at runtime."
+    },
+
+    "loadingPaths": {
+      "editTime": "AssetDatabase.LoadAssetAtPath<T>(path) — direct, synchronous, editor-only.",
+      "runtimeResources": "Resources.Load<T>(path-without-extension) — path is relative to any Resources/ folder, no Assets/ prefix. Everything under Resources/ ships in the player, bloating builds. Prefer Addressables for large projects.",
+      "runtimeAddressables": "Addressables.LoadAssetAsync<T>(key) — async, returns an AsyncOperationHandle. Key can be an address string, label, or AssetReference. Requires an Addressables build step (or Use Asset Database play mode for fast iteration).",
+      "runtimeSceneReferences": "Serialized field in a MonoBehaviour — drag reference in Inspector or set via SerializeReference. Fastest because it bypasses any lookup; the reference is resolved at scene load.",
+      "streamingAssets": "Application.streamingAssetsPath — raw files copied verbatim into the build, accessed via File.IO (or UnityWebRequest on Android where it is inside the APK)."
+    },
+
+    "scripts": {
+      "creation": "Writing a .cs file under Assets/ or an embedded package triggers ScriptImporter, which invokes the C# compiler. AssetDatabase.Refresh after a File.WriteAllText kicks this off; AssetDatabase.ImportAsset on the script path works too.",
+      "compilationIsAsync": "EditorApplication.isCompiling is true while compilation runs. Listen to CompilationPipeline.compilationFinished to run code once compilation completes.",
+      "attachingAGeneratedType": "Adding a component of a type that does not yet exist throws. Always gate component/add on a successful compile. The Mosaic convention: script/create → poll console/get-errors and EditorApplication.isCompiling → component/add.",
+      "scriptAssemblyMembership": "A script compiles into Assembly-CSharp by default, OR into the assembly defined by the nearest ancestor .asmdef file. Scripts in an Editor/ folder go to Assembly-CSharp-Editor (or <asmdef>-Editor if present)."
+    },
+
+    "scriptableObjects": {
+      "creation": "var so = ScriptableObject.CreateInstance<MyType>(); AssetDatabase.CreateAsset(so, \"Assets/Foo.asset\"); AssetDatabase.SaveAssets();",
+      "createAssetMenu": "[CreateAssetMenu(menuName=\"Mosaic/MyThing\")] on a ScriptableObject class adds a right-click Create menu entry. Convenient for authors but not required for tool-driven creation.",
+      "mutationPersistence": "Mutating serialized fields in memory does NOT persist until you call EditorUtility.SetDirty(so) + AssetDatabase.SaveAssets(). A common LLM bug: create asset, set fields, forget SaveAssets, reload Unity, fields are default.",
+      "subAssets": "AssetDatabase.AddObjectToAsset(child, parentAsset) attaches a secondary object to the parent's .asset file. Used for nested data (animator sub-state machines, material variants). Must AssetDatabase.SaveAssets after.",
+      "serializationRules": "ScriptableObject serializes public fields and [SerializeField] private fields of supported types: primitives, strings, enums, Unity.Object references, and containers thereof. Polymorphic reference fields require [SerializeReference] (2019.3+)."
+    },
+
+    "packages": {
+      "layout": "Each package is a folder under Packages/ with a package.json manifest declaring name, version, and dependencies. Code inside compiles normally and can have its own .asmdef.",
+      "typesOfPackages": [
+        "Registry — installed from Unity's package registry. Stored under Library/PackageCache/ and read-only in the editor. Writes are wiped on resolve.",
+        "Embedded — a full copy lives in Packages/<id>/ and is editable. Created via Package Manager UI → right-click → Embed.",
+        "Local file: — a folder on disk referenced by file: path in manifest.json. Editable in place.",
+        "Git — cloned from a git URL. Read-only like registry packages.",
+        "Tarball — .tgz archive. Read-only."
+      ],
+      "manifest": "Packages/manifest.json (project-level) declares dependencies and registries. Packages/<id>/package.json declares a package's own metadata.",
+      "assetPathsInsidePackages": "Packages/<id>/Runtime/Foo.asset is a valid AssetDatabase path. LoadAssetAtPath, FindAssets, and the Project window all see it. Meta files inside immutable packages come from the package author and should not be edited locally."
+    },
+
+    "assemblyDefinitions": {
+      "purpose": "An .asmdef file defines a C# assembly boundary. Compilation becomes incremental (only the touched assembly rebuilds), and references between scripts become explicit.",
+      "placement": "Put an .asmdef in any folder. All .cs files beneath it (until a nested .asmdef overrides) compile into the named assembly.",
+      "references": "The references array lists other asmdefs this assembly depends on. UnityEngine and mscorlib are implicit. Add UnityEngine.UI, Unity.InputSystem, etc. explicitly when used.",
+      "autoReferenced": "The autoReferenced flag controls whether Assembly-CSharp (the default assembly) automatically sees this asmdef. Setting false is common for editor-only or plugin assemblies.",
+      "platforms": "includePlatforms / excludePlatforms gate compilation by build target. Empty arrays mean all platforms.",
+      "defineConstraints": "defineConstraints gates compilation by #define symbols (UNITY_EDITOR, custom defines). Use for optional integrations.",
+      "asmref": "An .asmref file is a lightweight way to inject scripts from a folder into an existing assembly (defined elsewhere) without duplicating the full asmdef. Introduced 2019.x."
+    },
+
+    "addressables": {
+      "whatItIs": "A Unity package (com.unity.addressables) that layers an async, label-addressable loading system over AssetBundles. Separate from core AssetDatabase but integrates with it at edit time.",
+      "coreConcepts": [
+        "AddressableAssetSettings — the singleton config under Assets/AddressableAssetsData/.",
+        "Group — a logical bundle. Assets assigned to a group ship as one bundle unless further split.",
+        "Entry — one asset's inclusion record in a group. Has an address (default: asset path), labels, and group membership.",
+        "Label — an arbitrary tag. Loading by label fetches every entry with that label.",
+        "AssetReference — a serializable field type that references an addressable by GUID. Drop in Inspector, resolve at runtime with LoadAssetAsync."
+      ],
+      "editTimeVsRuntime": "In the editor, Addressables can run in Use Asset Database mode (no bundle build needed, instant iteration) or Use Existing Build (simulates shipped state). In a player, only the built bundles are loadable.",
+      "buildRequirement": "Before shipping, Window → Asset Management → Addressables → Groups → Build → New Build → Default Build Script. Skipping this leaves the player with empty bundles and every LoadAssetAsync fails.",
+      "whyLlmToolsFumble": "Creating an addressable entry requires (a) the asset to exist, (b) an AddressableAssetSettings asset to exist (auto-created via AddressableAssetSettingsDefaultObject.GetSettings(true)), (c) a target group, (d) an AddressableAssetSettings.CreateOrMoveEntry call. Missing any of these silently leaves the asset unaddressable."
+    },
+
+    "batchOperations": {
+      "pattern": "AssetDatabase.StartAssetEditing(); try { /* many creates/imports/moves */ } finally { AssetDatabase.StopAssetEditing(); }",
+      "effect": "Suppresses per-call reimports until StopAssetEditing; then performs one consolidated import pass. 10-100x speedup for bulk operations.",
+      "mandatoryFinally": "If StopAssetEditing is missed the editor remains in batch-editing mode and the Project window stops updating until domain reload. Always use try/finally.",
+      "alternative": "AssetDatabase.SaveAssets() flushes dirty in-memory changes without a full import. Cheaper when you have modified many existing assets but not added new ones."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Tool writes a new .asset file by serializing YAML directly with File.WriteAllText",
+        "rule": "Immediately call AssetDatabase.Refresh(ImportAssetOptions.Default). Then LoadAssetAtPath to verify. Without Refresh the Project window, FindAssets, and AssetBundle builders will not see it.",
+        "evidence": "Unity Manual Importing — 'Assets are only visible after they have been imported.'"
+      },
+      {
+        "scenario": "Tool needs to move a prefab from Assets/Old/ to Assets/New/",
+        "rule": "AssetDatabase.MoveAsset(\"Assets/Old/Foo.prefab\", \"Assets/New/Foo.prefab\"). Capture the return string; non-empty means failure and the move did not happen.",
+        "evidence": "AssetDatabase.MoveAsset ScriptReference — error string return contract."
+      },
+      {
+        "scenario": "Tool generates 500 ScriptableObjects in a loop",
+        "rule": "Wrap the loop in StartAssetEditing/StopAssetEditing with try/finally. Call SaveAssets once after StopAssetEditing.",
+        "evidence": "AssetDatabase.StartAssetEditing ScriptReference — 'improves performance when you are importing many assets.'"
+      },
+      {
+        "scenario": "Tool creates a new .cs script and then tries to AddComponent<TypeInScript>",
+        "rule": "Write script → Refresh → poll EditorApplication.isCompiling == false and CompilationPipeline has no errors → AddComponent. Attempting AddComponent during compilation or before the type is loaded throws or creates a MissingScript.",
+        "evidence": "kb-core-scene-lifecycle § domainReload and session transcripts where component/add fired before compile finished."
+      },
+      {
+        "scenario": "Tool needs to read from a UPM package that was installed from the registry",
+        "rule": "Load paths are Packages/<com.vendor.id>/Path/To/Asset. Reads are fine; writes will be wiped on next Package Manager resolve. To modify, embed the package first via Package Manager UI or by copying into Packages/.",
+        "evidence": "Unity Manual — Package Manager — 'Registry packages are immutable.'"
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "File written to disk under Assets/ but not visible in Project window; LoadAssetAtPath returns null.",
+        "cause": "Raw File.IO bypassed the import pipeline and no Refresh was called.",
+        "fix": "AssetDatabase.Refresh() after the write. Better: use AssetDatabase.CreateAsset when creating Unity-native assets."
+      },
+      {
+        "symptom": "Moved an asset with File.Move and now every prefab/scene that referenced it shows (Missing).",
+        "cause": "The .meta did not move atomically with the file, and even if it did, Unity issued a new GUID when the orphan reimported.",
+        "fix": "git restore the move. Redo with AssetDatabase.MoveAsset. If irreversible, manually fix references or rebuild the prefabs."
+      },
+      {
+        "symptom": "Deleted an asset and now the console logs 'meta file without asset' every import.",
+        "cause": "File.Delete removed the asset but left the .meta.",
+        "fix": "Delete the orphan .meta, or re-create the asset, or use AssetDatabase.DeleteAsset which removes both."
+      },
+      {
+        "symptom": "ScriptableObject asset exists on disk but all fields read as default values after domain reload.",
+        "cause": "Fields were mutated after CreateAsset without SetDirty + SaveAssets, so the in-memory state was discarded on reload.",
+        "fix": "After mutating, EditorUtility.SetDirty(instance); AssetDatabase.SaveAssets();"
+      },
+      {
+        "symptom": "Same GUID appears on two different assets; one randomly 'wins' after refresh.",
+        "cause": "A .meta was copy-pasted or a Library/ cache was mis-merged. Classic source-control regression when Library is committed.",
+        "fix": "Check git log on the .meta files, regenerate one (delete the meta, accept the new GUID, fix references), and stop committing Library/."
+      },
+      {
+        "symptom": "Code references type X from package Y compiles in the editor but fails in a player build with missing assembly.",
+        "cause": "The asmdef for this assembly is missing a reference to Y's asmdef, or Y is excluded for the target platform.",
+        "fix": "Add Y's asmdef to the references array. Check includePlatforms/excludePlatforms."
+      },
+      {
+        "symptom": "Addressables.LoadAssetAsync always returns Failed in the player but works in the editor.",
+        "cause": "Addressables build step was skipped; player has no bundles.",
+        "fix": "Window → Asset Management → Addressables → Groups → Build → New Build. Commit the generated bundles or have CI run the build."
+      },
+      {
+        "symptom": "Bulk asset import takes minutes when it should take seconds.",
+        "cause": "Per-asset Refresh or CreateAsset calls, each triggering a full import pass.",
+        "fix": "Wrap in StartAssetEditing/StopAssetEditing. SaveAssets once at the end."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "[SerializeReference] attribute added. Enables polymorphic references in ScriptableObjects and MonoBehaviours, unblocking data-driven type hierarchies in asset files.",
+        "breaking": false
+      },
+      {
+        "version": "2019.x",
+        "change": ".asmref (Assembly Definition Reference) files added. Inject scripts into an existing assembly without duplicating asmdef config.",
+        "breaking": false
+      },
+      {
+        "version": "2020.1",
+        "change": "Addressables 1.16+ stabilized and positioned as the recommended runtime loading path, superseding Resources/ for large projects. Resources.Load remains supported but discouraged.",
+        "breaking": false,
+        "migrationNote": "New projects should prefer Addressables. Existing Resources/ usage does not require migration but should not grow."
+      },
+      {
+        "version": "2021.3 LTS",
+        "change": "AssetDatabase APIs stable across the 2021.3 → 6000.4 range. CreateAsset, MoveAsset, DeleteAsset, Refresh, ImportAsset semantics are unchanged.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "ImportAssetOptions gained ForceUpdate and ForceSynchronousImport refinements for finer-grained reimport control.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Package layout and AssetDatabase paths are unchanged from 2022.3 LTS. Addressables package version 1.22+ ships as the current baseline.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Assets, Objects and Serialization",        "url": "https://docs.unity3d.com/Manual/AssetsObjectsAndSerialization.html" },
+    { "title": "Unity Manual — Importing Assets",                         "url": "https://docs.unity3d.com/Manual/ImportingAssets.html" },
+    { "title": "Unity Manual — Meta files",                               "url": "https://docs.unity3d.com/Manual/AssetMetadata.html" },
+    { "title": "Unity Manual — Special Folders (Resources, Editor, StreamingAssets)", "url": "https://docs.unity3d.com/Manual/SpecialFolders.html" },
+    { "title": "Unity Manual — Packages",                                 "url": "https://docs.unity3d.com/Manual/PackagesList.html" },
+    { "title": "Unity Manual — Custom Packages (Embed, Local, Git)",      "url": "https://docs.unity3d.com/Manual/CustomPackages.html" },
+    { "title": "Unity Manual — Assembly Definitions",                     "url": "https://docs.unity3d.com/Manual/ScriptCompilationAssemblyDefinitionFiles.html" },
+    { "title": "Unity Manual — Addressables overview",                    "url": "https://docs.unity3d.com/Packages/com.unity.addressables@1.22/manual/index.html" },
+    { "title": "Unity Manual — Asset Serialization Mode",                 "url": "https://docs.unity3d.com/Manual/class-EditorManager.html" },
+    { "title": "ScriptReference — AssetDatabase",                         "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.html" },
+    { "title": "ScriptReference — AssetDatabase.Refresh",                 "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.Refresh.html" },
+    { "title": "ScriptReference — AssetDatabase.CreateAsset",             "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.CreateAsset.html" },
+    { "title": "ScriptReference — AssetDatabase.MoveAsset",               "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.MoveAsset.html" },
+    { "title": "ScriptReference — AssetDatabase.DeleteAsset",             "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.DeleteAsset.html" },
+    { "title": "ScriptReference — AssetDatabase.ImportAsset",             "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.ImportAsset.html" },
+    { "title": "ScriptReference — AssetDatabase.FindAssets",              "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.FindAssets.html" },
+    { "title": "ScriptReference — AssetDatabase.StartAssetEditing",       "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.StartAssetEditing.html" },
+    { "title": "ScriptReference — AssetImporter",                         "url": "https://docs.unity3d.com/ScriptReference/AssetImporter.html" },
+    { "title": "ScriptReference — AssetPostprocessor",                    "url": "https://docs.unity3d.com/ScriptReference/AssetPostprocessor.html" },
+    { "title": "ScriptReference — ScriptableObject.CreateInstance",       "url": "https://docs.unity3d.com/ScriptReference/ScriptableObject.CreateInstance.html" },
+    { "title": "ScriptReference — CreateAssetMenuAttribute",              "url": "https://docs.unity3d.com/ScriptReference/CreateAssetMenuAttribute.html" },
+    { "title": "ScriptReference — SerializeReference",                    "url": "https://docs.unity3d.com/ScriptReference/SerializeReference.html" },
+    { "title": "ScriptReference — CompilationPipeline",                   "url": "https://docs.unity3d.com/ScriptReference/Compilation.CompilationPipeline.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, the Unity Manual, and ScriptReference pages covering AssetDatabase, AssetImporter, AssetPostprocessor, Package Manager, Assembly Definitions, and the Addressables package. API signatures, path conventions, meta-file semantics, and importer behavior are factual and not copyrightable. Explanatory prose, decision rules, llmGuidance scenarios, and commonPitfalls are original Mosaic editorial content informed by observed LLM tool-call failure modes (missing Refresh, File.Move orphaning metas, SaveAssets omissions, pre-compile component attach). No Unity documentation text is reproduced here; all manual and script-reference pages are cited as externalReferences for the LLM to fetch when it needs source text."
+}

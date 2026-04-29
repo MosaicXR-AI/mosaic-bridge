@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using Newtonsoft.Json.Linq;
@@ -272,6 +273,64 @@ namespace Mosaic.Bridge.Core.Knowledge
                 default:
                     return null;
             }
+        }
+
+        // ------------------------------------------------------------------ //
+        // Generic KB entry access (entry-schema files: id, title, category…)
+        // ------------------------------------------------------------------ //
+
+        /// <summary>
+        /// Loads a KB entry file by category and key (filename without .json).
+        /// E.g. LoadEntry("core", "asset-database") → Editor/Knowledge/core/asset-database.json
+        /// </summary>
+        public static JObject LoadEntry(string category, string key)
+        {
+            if (string.IsNullOrEmpty(category) || string.IsNullOrEmpty(key)) return null;
+
+            var guids = AssetDatabase.FindAssets(
+                $"{key} t:TextAsset",
+                new[] { $"Packages/com.mosaic.bridge/Editor/Knowledge/{category}" });
+
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith($"{key}.json")) continue;
+                var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                if (asset == null) continue;
+                try { return JObject.Parse(asset.text); } catch { }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns all KB entry files (those with an "id" field) across all categories,
+        /// or within a specific category if provided. Skips reference data files
+        /// (constants.json, pbr-materials.json) which use a different schema.
+        /// </summary>
+        public static JObject[] ListEntries(string category = null)
+        {
+            var searchPath = category != null
+                ? $"Packages/com.mosaic.bridge/Editor/Knowledge/{category}"
+                : "Packages/com.mosaic.bridge/Editor/Knowledge";
+
+            var guids = AssetDatabase.FindAssets("t:TextAsset", new[] { searchPath });
+            var result = new List<JObject>();
+
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".json")) continue;
+                var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                if (asset == null) continue;
+                try
+                {
+                    var obj = JObject.Parse(asset.text);
+                    if (obj["id"] != null)
+                        result.Add(obj);
+                }
+                catch { }
+            }
+            return result.ToArray();
         }
 
         // ------------------------------------------------------------------ //

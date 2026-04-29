@@ -1,0 +1,194 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "spline/spline-package",
+  "title": "Unity Splines Package: Authoring, Sampling, Instancing",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "animation",
+
+  "unityVersions": {
+    "min": "2022.1",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "The com.unity.splines package is Unity's modern curve authoring system, replacing the legacy Bezier path / AnimationCurve-as-path workarounds. A SplineContainer component holds one or more Spline instances; each Spline is an ordered list of knots with per-knot tangent modes (Linear, Auto, Bezier, Broken). At runtime use SplineUtility / Spline.EvaluatePosition|Tangent|UpVector on a normalized t, or arc-length helpers for constant-speed placement. SplineInstantiate distributes prefabs along the curve; SplineAnimate drives a Transform along it; Cinemachine 3's SplineDolly drives cameras. Use this entry for any spline/* tool that creates containers, edits knots, samples points, or instances prefabs — LLMs routinely sample t=1.0 on a closed spline (wraps to t=0 silently), call Evaluate on a freshly-created container before knots are added (returns NaN / origin), or mix knot-space index and normalized t.",
+
+  "mosaicTools": [
+    "spline/create-container",
+    "spline/add-knot",
+    "spline/sample-point"
+  ],
+
+  "relatedKb": [
+    "animation/timeline-and-cinemachine",
+    "core/gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_create_a_spline":
+      "Create a GameObject, add SplineContainer (spline/create-container), then add knots via spline/add-knot. SplineContainer starts with an empty Spline list in recent versions — always ensure at least one Spline with >=2 knots before sampling. A single-knot spline evaluates to a degenerate point and often returns NaN tangents.",
+    "when_adding_knots":
+      "Set the tangent mode per knot: Linear for hard-edge polylines, Auto for smooth curves the user doesn't want to hand-tune, Bezier for mirrored handles the user can drag, Broken for independent in/out tangents (corners with smooth approach). Changing mode after placement recomputes tangents and invalidates any pre-sampled point cache.",
+    "when_sampling_a_point_at_a_specific_fraction":
+      "Use SplineUtility.EvaluatePosition(spline, t) or spline.EvaluatePosition(t) with t in [0,1]. t is a normalized spline parameter, NOT arc length — on a non-uniform spline, t=0.5 is rarely the midpoint by distance. For distance-based placement use SplineUtility.GetPointAtLinearDistance or normalize via spline.GetLength().",
+    "when_placing_objects_at_equal_spacing":
+      "Prefer SplineInstantiate with Spacing method if the spacing is authoring-time. For runtime, walk arc length: compute total = spline.GetLength(), then for each step d in [0,total] call SplineUtility.GetPointAtLinearDistance(spline, 0, d, out float t) and sample position/tangent at t. Do NOT iterate over uniform t — knot density will bunch objects.",
+    "when_moving_a_transform_along_a_spline":
+      "Use SplineAnimate component for declarative motion (set Container, Method=Distance or Time, Loop, Alignment). For scripted control, sample the spline each frame and assign transform.position; use EvaluateTangent for forward direction and EvaluateUpVector for roll. SplineAnimate respects the container's transform; world-space sampling uses SplineUtility.Evaluate with the container's localToWorld.",
+    "when_moving_a_camera_along_a_spline":
+      "Cinemachine 3: attach a CinemachineSplineDolly Position Control component to a CinemachineCamera and assign the SplineContainer. This supersedes CM 2's CinemachinePath + DollyCart. See kb://animation/timeline-and-cinemachine for camera rig rules.",
+    "when_converting_legacy_paths":
+      "CinemachinePath / CinemachineSmoothPath → SplineContainer via the Cinemachine 3 upgrade tool. AnimationCurve used as a path (x,y,z on three curves) has no built-in converter — sample the curves at N points and insert each as a knot (Auto mode). A raw Bezier path GameObject from third-party assets typically maps one anchor per knot with Bezier mode.",
+    "when_working_with_closed_splines":
+      "Set Spline.Closed = true. Be aware that t=1.0 on a closed spline is equivalent to t=0.0 (wraps), whereas on an open spline t=1.0 is the final knot. If the LLM needs the 'last point just before the loop seam,' sample at (knotCount-1)/knotCount or similar, not t=1.",
+    "when_scripting_knot_edits":
+      "Use Spline.Add, Spline.Insert, Spline.RemoveAt (Spline implements IList<BezierKnot>) or SplineUtility helpers. Mutating knots triggers the spline's changed event; anything caching tangents/lengths must invalidate. Never mutate a SerializedProperty-backed spline during a frame where another system is sampling it — race across components.",
+    "when_debugging_'evaluate_returns_nan_or_origin'":
+      "Check the spline has at least two knots. Check t is finite and in [0,1]. Check knot positions are not all identical (zero-length spline → NaN tangent). If using SplineContainer.Splines[i], confirm the index exists — Splines is a list, and an empty container returns nothing."
+  },
+
+  "full": {
+    "conceptModel": {
+      "package": "com.unity.splines is a first-party package (initial release 2022.1) providing a general curve authoring + sampling framework used by Cinemachine 3, VFX Graph, and user gameplay code. It replaces a decade of ad-hoc solutions: CinemachinePath, AnimationCurve-as-path, and third-party Bezier assets.",
+      "dataModel": "SplineContainer is a MonoBehaviour that owns a list of Spline values. A Spline is a value type (struct-like class) containing an ordered list of BezierKnot plus a Closed flag. A BezierKnot stores Position, Rotation, TangentIn, TangentOut — all in the spline's local space. Tangent mode (Linear/Auto/Bezier/Broken) is stored on the Spline's metadata, not on the knot itself; the mode dictates how TangentIn/Out are derived or edited.",
+      "editorTool": "The Spline editor tool (E-key in scene view when a SplineContainer is selected) gives click-to-add-knot, drag-to-move, and tangent handle dragging. UI Toolkit powers the inspector. The tool supports multi-selection across knots, axis snapping, and per-knot mode switching."
+    },
+    "knotTangentModes": {
+      "Linear": "TangentIn/Out are zero-length; the segment is a straight line between knots. Use for polylines, grid roads, wall tops.",
+      "Auto": "Tangents are recomputed from neighboring knot positions to produce C1-continuous smoothing (Catmull-Rom-like). No user handles. Ideal default for 'just make it smooth.'",
+      "Bezier": "Mirrored cubic Bezier handles — dragging the out handle mirrors the in handle. Classic curve authoring with smooth joins.",
+      "Broken": "Independent in and out tangents. Use for corners where the approach curve differs from the departure curve (e.g. racing track kinks, river elbows)."
+    },
+    "samplingApi": {
+      "Spline.EvaluatePosition(float t)": "Returns local-space position at normalized t in [0,1].",
+      "Spline.EvaluateTangent(float t)": "Returns local-space tangent vector (not normalized).",
+      "Spline.EvaluateUpVector(float t)": "Returns local-space up from knot rotations — interpolated, used for roll / banking.",
+      "Spline.EvaluateAcceleration(float t)": "Second derivative; useful for curvature-based FX (e.g. slow when tight).",
+      "Spline.GetLength()": "Returns arc length of the whole spline (cached; recomputed on change).",
+      "Spline.GetCurveLength(int knotIndex)": "Arc length of the segment starting at knotIndex.",
+      "SplineUtility.GetPointAtLinearDistance(spline, startT, distance, out float resultT)": "Walks along the curve by arc length from startT and returns the t at the end of the walk. This is the canonical 'advance by X meters' call.",
+      "SplineUtility.Evaluate(spline, t, out position, out tangent, out upVector)": "One-shot sample returning all three. Use this in hot paths to avoid three separate evaluations.",
+      "SplineContainer.EvaluatePosition(t) / EvaluateTangent(t)": "Convenience wrappers that transform from spline-local to world space using the container's transform."
+    },
+    "runtimeComponents": {
+      "SplineInstantiate": "Distributes a prefab along a spline at authoring or runtime. Method can be Exact Number, Spacing (arc-length), or Linked Spacing. Alignment options rotate instances to match tangent + up. Writes results as GameObjects (persisted in scene) or can regenerate on change.",
+      "SplineAnimate": "Drives a Transform along a spline. Container + Method (Time / Speed / Distance) + Loop Mode (Loop / Ping Pong / Once) + Alignment (None / Spline Element / Spline Object / World). Animation is deterministic — Update drives normalizedTime; use in conjunction with Timeline for scripted motion.",
+      "SplineExtrude": "Mesh extrusion along a spline (pipe, rail, cable). Radius, Sides, Range segment count. Regenerates on spline change.",
+      "CinemachineSplineDolly": "Cinemachine 3 Position Control component that uses a SplineContainer as a camera track. Supersedes CM 2 CinemachinePath + CinemachineDollyCart."
+    },
+    "decisionRules": [
+      {
+        "scenario": "user asks for a curved path / rail / dolly",
+        "rule": "SplineContainer, not AnimationCurve, not a chain of waypoint GameObjects. Splines are authored, sampled, and serialised as a single asset — easier to edit and perf-friendlier than N Transforms.",
+        "evidence": "Splines package manual, 'Introduction'."
+      },
+      {
+        "scenario": "user asks to scatter trees, barriers, fence posts along a road",
+        "rule": "Add a SplineInstantiate component with Method=Spacing, pick the prefab, set spacing in meters, alignment to Spline Element. Do not hand-place prefabs or iterate t uniformly — arc-length spacing is the point.",
+        "evidence": "Splines package manual, 'Instantiating objects along a spline'."
+      },
+      {
+        "scenario": "user asks to move a character or vehicle along a track",
+        "rule": "SplineAnimate with Method=Speed (m/s). For gameplay that needs to stop/reverse, set isPlaying=false and write normalizedTime manually, or sample the spline in your own MonoBehaviour.",
+        "evidence": "Splines package manual, 'Animating along a spline' + ScriptReference SplineAnimate."
+      },
+      {
+        "scenario": "user wants a camera to follow a roller-coaster rail",
+        "rule": "Cinemachine 3 CinemachineCamera + CinemachineSplineDolly Position Control, referencing the SplineContainer. Use Automatic Dolly or drive the position via SplineAnimate on a follow target. See kb://animation/timeline-and-cinemachine for camera rig rules.",
+        "evidence": "Cinemachine 3 manual, 'Cinemachine Spline Dolly'."
+      },
+      {
+        "scenario": "user wants a procedural mesh (tunnel, cable, pipe) along a path",
+        "rule": "SplineExtrude with a circular profile (or custom sides). Regenerates on spline change. For more complex cross-sections, use SplineUtility.EvaluatePosition/Tangent in a ProBuilder or MeshBuilder pipeline.",
+        "evidence": "Splines package manual, 'Spline Extrude'."
+      },
+      {
+        "scenario": "user asks to keep AnimationCurve for a path",
+        "rule": "AnimationCurve is a 1D float-over-time curve — it is NOT a path. AnimationClip drives properties on a GameObject and is the right tool for scripted animation. Use Splines for geometric paths in 3D space; use AnimationClip for 'object-does-thing-over-time.'",
+        "evidence": "Unity Manual — AnimationCurve; Splines package manual introduction."
+      }
+    ],
+    "commonPitfalls": [
+      {
+        "symptom": "EvaluatePosition returns NaN or float3.zero on a just-created spline.",
+        "cause": "The spline has zero or one knot. Evaluate requires at least two knots to define a segment.",
+        "fix": "Assert spline.Count >= 2 before sampling. When creating programmatically, add all knots first, then sample. If exposing a tool that may be called early, return a nullable or default and log a warning rather than passing NaN downstream."
+      },
+      {
+        "symptom": "Objects placed with uniform t stepping bunch up near tight knots.",
+        "cause": "t is spline-parameter space, not arc length. Dense knots compress a larger t-range into a shorter visual distance.",
+        "fix": "Use SplineUtility.GetPointAtLinearDistance or SplineInstantiate with Spacing method. For per-frame motion, advance by distance: t_next = GetPointAtLinearDistance(spline, t_current, speed * Time.deltaTime)."
+      },
+      {
+        "symptom": "Sampling t=1.0 on a closed spline returns the first knot instead of the last.",
+        "cause": "On a closed spline, parameter space wraps — t=1.0 maps to the seam, which is identical to t=0.0. There is no distinct 'final' knot.",
+        "fix": "For the knot just before the seam, sample at t = (knotCount-1)/knotCount or use SplineUtility.GetPointAtLinearDistance with distance = GetLength() - epsilon. For open splines t=1.0 is the last knot and behaves as expected."
+      },
+      {
+        "symptom": "Switching a knot's tangent mode moves the curve visibly even though no positions changed.",
+        "cause": "Auto mode recomputes tangents from neighbour positions; Linear zeroes them; Bezier/Broken restore stored handles. Any cached sampled points on the old curve are now stale.",
+        "fix": "Rebuild any caches after a mode change. If using SplineInstantiate, it already regenerates on the spline-changed event. Custom samplers should subscribe to Spline.changed (via SplineContainer) and invalidate."
+      },
+      {
+        "symptom": "SplineAnimate runs but the moved object is in world origin / wrong scale.",
+        "cause": "SplineContainer's transform is identity but the animated Transform is parented under a scaled/rotated object, or vice versa. Alignment is computed in the spline's local space and transformed by the container.",
+        "fix": "Either keep the animated object un-parented (world-space motion) or make it a child of the SplineContainer's GameObject. Check container.transform.lossyScale is uniform — non-uniform scale produces skew during alignment."
+      },
+      {
+        "symptom": "Cinemachine camera along a spline shoots past the end or jitters at the loop seam.",
+        "cause": "Dolly is using Automatic Dolly with a follow target that overshoots, or the spline is open but the dolly expects a loop.",
+        "fix": "Match Closed on the spline to the intended behaviour. For finite tracks, disable looping on the CinemachineSplineDolly. For loops, set spline Closed=true; the seam becomes tangent-continuous if neighbouring tangents line up."
+      }
+    ],
+    "versionDeltas": [
+      {
+        "version": "2022.1",
+        "change": "com.unity.splines package 1.0 initial release. SplineContainer, SplineUtility, SplineAnimate, SplineInstantiate, SplineExtrude all available. Replaces legacy curve authoring patterns.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "SplineContainer gains support for multiple Splines per container (previously one). Knot selection UI in the editor tool matures; UI Toolkit inspector lands.",
+        "breaking": false
+      },
+      {
+        "version": "2023.1",
+        "change": "Cinemachine 3 ships with CinemachineSplineDolly + CinemachineSplineCart, deprecating CinemachinePath and CinemachineDollyCart. Splines becomes the recommended camera-path system. Namespace for some APIs unifies under UnityEngine.Splines.",
+        "breaking": true,
+        "migrationNote": "Run Cinemachine 3 upgrade tool on scenes with CinemachinePath. Scripts referencing CinemachinePath must migrate to SplineContainer + SplineUtility sampling."
+      },
+      {
+        "version": "6000.0",
+        "change": "Splines package continues shipping as default; VFX Graph gains Spline nodes for particle emission along a curve. Performance improvements to GetPointAtLinearDistance via cached arc-length tables.",
+        "breaking": false
+      }
+    ],
+    "scriptingApiQuickMap": {
+      "create_container": "var go = new GameObject('Path'); var container = go.AddComponent<SplineContainer>(); — container.Spline is the default first spline.",
+      "add_knot": "container.Spline.Add(new BezierKnot(position, tangentIn, tangentOut, rotation)); — or use SplineUtility helpers to append in Auto mode and let the package compute tangents.",
+      "sample_point": "float3 p = container.EvaluatePosition(t); float3 fwd = container.EvaluateTangent(t); — returns world-space when called on the container, local-space when called on the Spline directly.",
+      "walk_by_distance": "SplineUtility.GetPointAtLinearDistance(container.Spline, startT:0f, distance:10f, out float resultT); then sample at resultT.",
+      "listen_for_changes": "Spline.Changed += (spline, knotIndex, modificationType) => { /* invalidate caches */ };"
+    }
+  },
+
+  "externalReferences": [
+    { "title": "Splines package manual", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/manual/index.html" },
+    { "title": "Splines — Create a spline", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/manual/create-spline.html" },
+    { "title": "Splines — Instantiate objects", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/manual/instantiate-objects.html" },
+    { "title": "Splines — Animate along a spline", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/manual/animate-along-spline.html" },
+    { "title": "ScriptReference — UnityEngine.Splines.Spline", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/api/UnityEngine.Splines.Spline.html" },
+    { "title": "ScriptReference — SplineUtility", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/api/UnityEngine.Splines.SplineUtility.html" },
+    { "title": "ScriptReference — SplineContainer", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/api/UnityEngine.Splines.SplineContainer.html" },
+    { "title": "Cinemachine 3 — Spline Dolly", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineSplineDolly.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Packages — com.unity.splines 2.6 manual", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/manual/index.html" },
+    { "title": "Unity Packages — com.unity.splines 2.6 ScriptReference", "url": "https://docs.unity3d.com/Packages/com.unity.splines@2.6/api/UnityEngine.Splines.html" },
+    { "title": "Unity Packages — com.unity.cinemachine 3.1 (spline dolly integration)", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineSplineDolly.html" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity Splines package manuals and ScriptReference pages. Component names, API signatures, tangent mode names, and package version facts are not copyrightable. Explanatory prose, decision rules, pitfall diagnoses, and the scripting API quick map are original Mosaic editorial content. Unity package manuals and ScriptReference are cited as external references and NOT reproduced verbatim here."
+}

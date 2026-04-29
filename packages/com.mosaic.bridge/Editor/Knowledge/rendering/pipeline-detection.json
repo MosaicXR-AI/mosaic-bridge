@@ -1,0 +1,204 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-rendering-pipeline-detection",
+  "title": "Detecting the Active Unity Render Pipeline (Built-in / URP / HDRP)",
+  "version": "1.1.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "How to detect which render pipeline a Unity project is currently using. The canonical API is GraphicsSettings.currentRenderPipeline, which returns null on Built-in RP and a RenderPipelineAsset on URP or HDRP. Distinguish URP from HDRP by inspecting the asset typename. Pipeline choice is per-quality-level, so the answer can change when quality settings change. Essential before any material/shader work because shaders are pipeline-specific.",
+
+  "mosaicTools": [
+    "material/create",
+    "material/set-property",
+    "material/assign",
+    "graphics/set-shader",
+    "graphics/render-info",
+    "shader/create-compute",
+    "shader/parallax-create",
+    "shader/sss-create",
+    "shader/ssr-configure",
+    "shadergraph/create",
+    "rendering/atmosphere-create",
+    "rendering/volumetric-fog-create",
+    "rendering/radiance-cascades",
+    "urp/volume",
+    "urp/decal",
+    "urp/renderer_feature",
+    "hdrp/light",
+    "hdrp/volume",
+    "settings/get-render",
+    "settings/set-render"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-shader-properties",
+    "kb-rendering-urp-material-workflow"
+  ],
+
+  "llmGuidance": {
+    "when_detecting_pipeline_before_picking_a_shader":
+      "Read UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline. Null → Built-in. Non-null → inspect asset typename: 'UniversalRenderPipelineAsset' = URP, 'HDRenderPipelineAsset' = HDRP. Use this result to choose the shader name (see kb-rendering-shader-properties).",
+    "when_the_project_has_per_quality_overrides":
+      "currentRenderPipeline already resolves per-quality overrides. Do NOT use GraphicsSettings.defaultRenderPipeline for runtime decisions — that ignores overrides. Use currentRenderPipeline.",
+    "when_deciding_between_runtime_check_and_compile_time_defines":
+      "Unity does NOT ship UNITY_PIPELINE_URP/HDRP defines. Package-version defines like UNITY_RENDER_PIPELINE_UNIVERSAL only mean the package is installed, not that it is active. For active-pipeline logic, use runtime GraphicsSettings.currentRenderPipeline.",
+    "when_handling_null_result":
+      "Null is the only reliable Built-in signal. A populated Graphics Settings asset slot is not sufficient — quality-level override may set it to null. Always null-check.",
+    "when_pipeline_may_switch_at_runtime":
+      "Subscribe to RenderPipelineManager.activeRenderPipelineTypeChanged (Unity 2022.2+). Invalidate any cached pipeline references on the event. Materials and shader references may need reassignment.",
+    "when_Shader_Find_returns_null_for_a_URP_or_HDRP_shader":
+      "Pipeline-specific shaders must be in Graphics Settings 'Always Included Shaders' or referenced by a scene asset. In builds, unreferenced shaders are stripped. Treat Shader.Find null as a build-config problem, not a missing package."
+  },
+
+  "full": {
+    "detectionFlowchart": [
+      { "step": 1, "action": "Read GraphicsSettings.currentRenderPipeline.", "branch": null },
+      { "step": 2, "action": "If null → Built-in RP. Use 'Standard' shader.",             "branch": "built-in" },
+      { "step": 3, "action": "If non-null → inspect asset.GetType().Name.",               "branch": null },
+      { "step": 4, "action": "If 'UniversalRenderPipelineAsset' → URP.",                  "branch": "urp" },
+      { "step": 5, "action": "If 'HDRenderPipelineAsset' → HDRP.",                        "branch": "hdrp" },
+      { "step": 6, "action": "Any other type → custom SRP. Handle per project.",          "branch": "custom" }
+    ],
+
+    "apis": {
+      "primary": {
+        "name": "UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline",
+        "returns": "RenderPipelineAsset — null on Built-in, the active pipeline asset otherwise (already resolved per-quality-level)",
+        "useFor": "All runtime and edit-time pipeline detection. This is the answer."
+      },
+      "supporting": [
+        {
+          "name": "UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline",
+          "returns": "RenderPipelineAsset — the project-wide default, ignoring quality-level overrides",
+          "useFor": "Reading the 'configured default' for tooling/settings panels. NOT for runtime rendering logic."
+        },
+        {
+          "name": "UnityEngine.QualitySettings.renderPipeline",
+          "returns": "RenderPipelineAsset — per-quality-level override, or null if the level uses default",
+          "useFor": "Inspecting quality-level overrides explicitly. Rarely needed in runtime code."
+        },
+        {
+          "name": "UnityEngine.Rendering.RenderPipelineManager.currentPipeline",
+          "returns": "RenderPipeline instance (not the asset). Null until first frame has rendered.",
+          "useFor": "Advanced cases needing the runtime pipeline object (render-pass injection, etc.). Avoid for simple detection."
+        },
+        {
+          "name": "UnityEngine.Rendering.RenderPipelineManager.activeRenderPipelineTypeChanged",
+          "returns": "Event; subscribe for runtime pipeline switches (Unity 2022.2+)",
+          "useFor": "Invalidating caches when pipeline is reassigned at runtime."
+        }
+      ]
+    },
+
+    "precedenceTable": {
+      "rule": "currentRenderPipeline = QualitySettings.renderPipeline ?? GraphicsSettings.defaultRenderPipeline",
+      "implications": [
+        "Per-quality override wins when set.",
+        "Default asset is used only when the active quality level has no override.",
+        "Different quality levels CAN reference different pipelines (even URP vs HDRP), though Unity does not recommend mixing — unverified as officially blocked."
+      ]
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "About to create a material programmatically",
+        "rule": "Detect pipeline FIRST. Choose shader name per pipeline. Then call mosaic material/create with the right shaderName. See kb-rendering-shader-properties for name tables.",
+        "evidence": "Fluid session 2026-04-20 created URP materials with '_Color' property because pipeline was never checked."
+      },
+      {
+        "scenario": "Need to know pipeline in a script that runs in both editor and build",
+        "rule": "Use runtime GraphicsSettings.currentRenderPipeline — same API both contexts. Do NOT rely on UNITY_RENDER_PIPELINE_UNIVERSAL define for active-pipeline decisions; it only signals package installation.",
+        "evidence": "Unity Manual on versionDefines and package compilation."
+      },
+      {
+        "scenario": "Typename check without taking a package dependency",
+        "rule": "Compare by asset.GetType().Name to 'UniversalRenderPipelineAsset' or 'HDRenderPipelineAsset' as strings. Do not import the types — creates compile-time dependency on URP/HDRP packages even in projects that don't have them.",
+        "evidence": "Standard Unity package-isolation pattern."
+      },
+      {
+        "scenario": "Pipeline switched at runtime (uncommon but possible)",
+        "rule": "Subscribe to RenderPipelineManager.activeRenderPipelineTypeChanged. Invalidate caches of Material references, shader handles, volume components.",
+        "evidence": "RenderPipelineManager API docs."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Code uses GraphicsSettings.defaultRenderPipeline for rendering branch; works in Quality=Default but breaks when user switches to Quality=Low/High with override.",
+        "cause": "defaultRenderPipeline ignores per-quality overrides.",
+        "fix": "Use currentRenderPipeline."
+      },
+      {
+        "symptom": "Assert pipeline != null fails on Built-in.",
+        "cause": "Built-in returns null — that IS the signal.",
+        "fix": "Treat null as 'built-in', don't guard against it."
+      },
+      {
+        "symptom": "Shader.Find('Universal Render Pipeline/Lit') returns null in build.",
+        "cause": "Shader stripped — not added to Always Included Shaders and no scene asset references it.",
+        "fix": "Add to Project Settings → Graphics → Always Included Shaders, or reference via a material asset in a scene."
+      },
+      {
+        "symptom": "Compile error: can't find type UniversalRenderPipelineAsset.",
+        "cause": "Asmdef doesn't reference com.unity.render-pipelines.universal.",
+        "fix": "Prefer string-typename check: asset.GetType().Name == 'UniversalRenderPipelineAsset'. Avoids package dependency."
+      },
+      {
+        "symptom": "URP shader falls back to Built-in rendering instead of erroring — masks detection bug.",
+        "cause": "Shader Fallback tag to Built-in. Rendering continues with wrong output.",
+        "fix": "Remove fallback in development, or explicitly assert pipeline at material assignment time."
+      },
+      {
+        "symptom": "Values of pipeline-related settings don't update immediately after asset edits.",
+        "cause": "Edit-time cache — changes may require domain reload to propagate.",
+        "fix": "Unverified exact timing. If reading immediately after AssetDatabase.SaveAssets(), consider AssetDatabase.Refresh() and re-query."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "GraphicsSettings.defaultRenderPipeline added. Previously GraphicsSettings.renderPipelineAsset served both roles (deprecated; alias retained).",
+        "breaking": false,
+        "migrationNote": "Prefer defaultRenderPipeline on 2019.3+. Old renderPipelineAsset still works as an alias — unverified whether removed in Unity 6."
+      },
+      {
+        "version": "2019.3",
+        "change": "LightweightRenderPipelineAsset renamed to UniversalRenderPipelineAsset.",
+        "breaking": true,
+        "migrationNote": "String-based typename checks must update from 'LightweightRenderPipelineAsset' to 'UniversalRenderPipelineAsset'. Projects pre-2019.3 not supported by this KB entry."
+      },
+      {
+        "version": "2022.2",
+        "change": "RenderPipelineManager.activeRenderPipelineTypeChanged event added for detecting runtime pipeline switches.",
+        "breaking": false,
+        "migrationNote": "Only available on 2022.2+. For earlier versions, poll GraphicsSettings.currentRenderPipeline manually."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "ScriptReference — GraphicsSettings.currentRenderPipeline",     "url": "https://docs.unity3d.com/ScriptReference/Rendering.GraphicsSettings-currentRenderPipeline.html" },
+    { "title": "ScriptReference — GraphicsSettings.defaultRenderPipeline",     "url": "https://docs.unity3d.com/ScriptReference/Rendering.GraphicsSettings-defaultRenderPipeline.html" },
+    { "title": "ScriptReference — QualitySettings.renderPipeline",             "url": "https://docs.unity3d.com/ScriptReference/QualitySettings-renderPipeline.html" },
+    { "title": "ScriptReference — RenderPipelineManager.currentPipeline",      "url": "https://docs.unity3d.com/ScriptReference/Rendering.RenderPipelineManager-currentPipeline.html" },
+    { "title": "ScriptReference — RenderPipelineManager.activeRenderPipelineTypeChanged", "url": "https://docs.unity3d.com/ScriptReference/Rendering.RenderPipelineManager-activeRenderPipelineTypeChanged.html" },
+    { "title": "Unity Manual — QualitySettings",                               "url": "https://docs.unity3d.com/Manual/class-QualitySettings.html" },
+    { "title": "Unity Manual — Assembly Definition files (versionDefines)",    "url": "https://docs.unity3d.com/Manual/ScriptCompilationAssemblyDefinitionFiles.html" },
+    { "title": "ScriptReference — Shader.Find",                                "url": "https://docs.unity3d.com/ScriptReference/Shader.Find.html" }
+  ],
+
+  "sources": [
+    { "title": "URP package — UniversalRenderPipelineAsset",                   "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@14.0/api/UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset.html" },
+    { "title": "HDRP package — HDRenderPipelineAsset",                         "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@14.0/api/UnityEngine.Rendering.HighDefinition.HDRenderPipelineAsset.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs. API signatures, typenames, and precedence rules are factual (not copyrightable). Explanatory prose, decision rules, llmGuidance, detectionFlowchart, and commonPitfalls are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

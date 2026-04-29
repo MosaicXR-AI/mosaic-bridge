@@ -304,7 +304,7 @@ namespace Mosaic.Bridge.Core.Discovery
         {
             var entries = new JArray();
 
-            // Physics constants
+            // Physics constants (reference data — individual constant entries)
             var physics = KnowledgeBase.GetPhysicsConstants();
             if (physics != null)
             {
@@ -324,21 +324,42 @@ namespace Mosaic.Bridge.Core.Discovery
                 }
             }
 
-            // PBR materials
+            // PBR materials (reference data — individual material entries)
             var pbrMaterials = KnowledgeBase.GetAllPbrMaterials();
             if (pbrMaterials != null)
             {
-                foreach (var entry in pbrMaterials)
+                foreach (var mat in pbrMaterials)
                 {
-                    var name = entry["name"]?.Value<string>() ?? "unknown";
+                    var name = mat["name"]?.Value<string>() ?? "unknown";
                     entries.Add(new JObject
                     {
                         ["uri"] = $"mosaic://knowledge/rendering/{name}",
                         ["name"] = name,
                         ["category"] = "rendering",
-                        ["description"] = entry["description"]?.Value<string>() ?? ""
+                        ["description"] = mat["description"]?.Value<string>() ?? ""
                     });
                 }
+            }
+
+            // Authored KB entry files (entry-schema: id, title, category, summary, mosaicTools…)
+            foreach (var entry in KnowledgeBase.ListEntries())
+            {
+                var id       = entry["id"]?.Value<string>() ?? "";
+                var cat      = entry["category"]?.Value<string>() ?? "unknown";
+                var title    = entry["title"]?.Value<string>() ?? id;
+                var summary  = entry["summary"]?.Value<string>() ?? "";
+
+                // Derive key from id: "kb-core-asset-database" → "asset-database"
+                var prefix = $"kb-{cat}-";
+                var key = id.StartsWith(prefix) ? id.Substring(prefix.Length) : id;
+
+                entries.Add(new JObject
+                {
+                    ["uri"]         = $"mosaic://knowledge/{cat}/{key}",
+                    ["name"]        = title,
+                    ["category"]    = cat,
+                    ["description"] = summary.Length > 300 ? summary.Substring(0, 300) + "…" : summary
+                });
             }
 
             return new HandlerResponse
@@ -351,7 +372,7 @@ namespace Mosaic.Bridge.Core.Discovery
 
         private HandlerResponse HandleKbRead(string entryPath)
         {
-            // entryPath format: "physics/gravity_earth" or "rendering/wood_oak"
+            // entryPath format: "physics/gravity_earth", "rendering/wood_oak", "core/asset-database"
             var parts = entryPath.Split(new[] { '/' }, 2);
             if (parts.Length != 2)
             {
@@ -364,16 +385,21 @@ namespace Mosaic.Bridge.Core.Discovery
             }
 
             var category = parts[0];
-            var key = parts[1];
+            var key      = parts[1];
             JToken entry = null;
 
+            // Reference data lookups (existing physics constants + PBR materials)
             if (category == "physics")
-            {
                 entry = KnowledgeBase.GetConstant(key);
-            }
             else if (category == "rendering")
-            {
                 entry = KnowledgeBase.GetPbrMaterial(key);
+
+            // Fallback: authored entry file (any category/key maps to Knowledge/{category}/{key}.json)
+            if (entry == null)
+            {
+                var entryObj = KnowledgeBase.LoadEntry(category, key);
+                if (entryObj != null)
+                    entry = entryObj;
             }
 
             if (entry == null)
@@ -392,10 +418,10 @@ namespace Mosaic.Bridge.Core.Discovery
                 ContentType = "application/json",
                 Body = new JObject
                 {
-                    ["uri"] = $"mosaic://knowledge/{category}/{key}",
+                    ["uri"]      = $"mosaic://knowledge/{category}/{key}",
                     ["category"] = category,
-                    ["key"] = key,
-                    ["data"] = entry
+                    ["key"]      = key,
+                    ["data"]     = entry
                 }.ToString(Formatting.None)
             };
         }

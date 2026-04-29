@@ -1,0 +1,277 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "terrain/height-tool-decision-tree",
+  "title": "Terrain Sculpting: Tool Selection Decision Tree",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "terrain",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Decision tree for choosing the right terrain sculpt primitive before the LLM commits to an edit. Mosaic exposes four tool classes: atomic Point (ships today), Array batch via SetHeights (ships today), Stroke / Stamp / Sculpt-macro (roadmap E30 S1-S4). The dominant failure is looping atomic Point — a real session burned 70 minutes and 40+ calls on one ridge a single batched pass would have built in one call. The hard rule: if the edit spans more than five heightmap cells in any dimension, never loop Point; always batch. Complements kb-terrain-system-primer which covers the underlying TerrainData API.",
+
+  "mosaicTools": [
+    "terrain/height",
+    "terrain/stroke",
+    "terrain/stamp",
+    "terrain/sculpt",
+    "procgen/terrain-noise"
+  ],
+
+  "relatedKb": [
+    "kb-terrain-system-primer",
+    "procgen/noise-tuning"
+  ],
+
+  "llmGuidance": {
+    "when_user_says_raise_or_lower_at_a_coordinate":
+      "Single point → terrain/height (Action=raise-lower) with small radius. Only valid when the feature spans ≤ 5 heightmap cells. If the user says \"a hill at 500,500\", that is a stamp or batch, not a point.",
+    "when_user_says_ridge_mountain_range_or_wall":
+      "Polyline feature → prefer terrain/stroke (roadmap). Fallback: compute the stroke's bounding rect, GetHeights once, walk the polyline with a cosine brush, SetHeights once. Never loop terrain/height along the polyline.",
+    "when_user_says_several_similar_hills_craters_or_landmarks":
+      "Repeated shape → prefer terrain/stamp (roadmap) with one pattern and N placements. Fallback: build the stamp float[,] once, paste at each location in the working heights array, SetHeights once.",
+    "when_user_says_mountain_range_rolling_hills_or_natural_terrain":
+      "Organic terrain → procgen/terrain-noise (layered fBm), not stroke painting. Noise over the whole rect in one SetHeights is faster and more natural than composed strokes.",
+    "when_user_says_crater_valley_or_basin":
+      "Named radial feature → terrain/stamp or sculpt macro. Fallback: cosine or smoothstep falloff centered on the feature, one SetHeights over the bounding rect.",
+    "when_user_describes_a_whole_scene_in_one_sentence":
+      "Scene-from-description → terrain/sculpt macro (roadmap E30 S4). Pass the structured spec; do not unroll the scene into dozens of atomic calls.",
+    "when_running_multiple_sculpt_passes_in_one_session":
+      "SetHeightsDelayLOD for every intermediate pass, SyncHeightmap exactly once at the end. Missing SyncHeightmap leaves the collider stale — physics falls through or stands on invisible geometry.",
+    "when_deciding_between_point_and_batch":
+      "Gap rule: if the edit spans > 5 heightmap cells in ANY dimension, batch. Atomic Point is a single-cell poke, nothing else.",
+    "when_a_stamp_or_stroke_tool_is_not_yet_implemented":
+      "Fall back to GetHeights → mutate float[,] → SetHeights from kb-terrain-system-primer. Never fall back to looping atomic Point — that reproduces the 40-call disaster."
+  },
+
+  "full": {
+    "toolClasses": {
+      "point": {
+        "name": "Point (atomic)",
+        "status": "Ships today",
+        "tool": "terrain/height (Action=set|raise-lower|smooth|flatten|noise)",
+        "underlying": "GetHeights over brush rect → local falloff → SetHeights. One call = one brush stamp.",
+        "correctUse": "Single-cell pokes or tiny patches (≤ 5 cells radius). LLMs almost never should.",
+        "wrongUse": "Any feature the user named as a shape (\"ridge\", \"hill\", \"crater\"). Any loop over coordinates."
+      },
+      "arrayBatch": {
+        "name": "Array batch",
+        "status": "Ships today",
+        "tool": "Any tool that routes through TerrainData.SetHeights(xBase, zBase, float[,])",
+        "underlying": "Single GetHeights + in-memory mutation + single SetHeights over the feature's bounding rect.",
+        "correctUse": "Correct default for every multi-cell sculpt when no higher-level primitive exists."
+      },
+      "stroke": {
+        "name": "Stroke (polyline + brush profile)",
+        "status": "Roadmap E30 S1",
+        "tool": "terrain/stroke: Action, points[{X,Z}], Radius, Falloff, Strength, HeightRamp?",
+        "underlying": "Walks polyline, accumulates one float[,] over stroke's bounding rect, one SetHeights.",
+        "correctUse": "Ridge lines, cliff edges, riverbeds, roads, contour walls."
+      },
+      "stamp": {
+        "name": "Stamp (heightmap-as-pattern)",
+        "status": "Roadmap E30 S2",
+        "tool": "terrain/stamp: stampPath|stampArray, centerX, centerZ, scale, rotation, strength, blendMode",
+        "underlying": "Loads a 2D intensity pattern, resamples, blends into target rect once.",
+        "correctUse": "Repeatable features, DEM imports."
+      },
+      "sculptMacro": {
+        "name": "Sculpt macro (semantic)",
+        "status": "Roadmap E30 S4",
+        "tool": "terrain/sculpt with structured spec: edges, center, features[{type, x, z, radius, height}]",
+        "underlying": "Decomposes into strokes + stamps + noise passes, SetHeightsDelayLOD per pass + one SyncHeightmap.",
+        "correctUse": "Scene-from-description — one call instead of forty."
+      }
+    },
+
+    "decisionTree": [
+      { "userIntent": "raise/lower at a single coordinate (≤ 5 cells)",            "primaryTool": "terrain/height (Point)",                     "fallback": "none — already atomic" },
+      { "userIntent": "smooth gradient A→B",                                        "primaryTool": "Array batch with linear/cosine ramp",        "fallback": "terrain/stroke when available" },
+      { "userIntent": "ridge / wall / road / river along a path",                   "primaryTool": "terrain/stroke (roadmap)",                   "fallback": "Array batch with polyline-distance falloff, one SetHeights" },
+      { "userIntent": "N similar hills / peaks / landmarks",                        "primaryTool": "terrain/stamp (roadmap), N placements",      "fallback": "Array batch — build stamp once, paste N times, one SetHeights" },
+      { "userIntent": "mountain range / rolling hills / natural terrain",           "primaryTool": "procgen/terrain-noise (layered fBm)",        "fallback": "Array batch with inline noise sampling" },
+      { "userIntent": "crater / basin / valley (radial feature)",                   "primaryTool": "terrain/stamp (roadmap) with cosine pattern","fallback": "Array batch with radial cosine falloff" },
+      { "userIntent": "plateau with sloped edges",                                  "primaryTool": "Array batch with smoothstep perimeter",      "fallback": "terrain/sculpt when available" },
+      { "userIntent": "whole scene from one sentence (edges mountains, lake ctr)",  "primaryTool": "terrain/sculpt macro (roadmap)",             "fallback": "compose stroke+stamp+noise — batch every pass" }
+    ],
+
+    "gapRule": {
+      "rule": "If the edit spans > 5 heightmap cells in ANY dimension, do NOT loop atomic terrain/height. Always batch (SetHeights) or use a stamp / stroke / macro.",
+      "rationale": "Atomic Point triggers one CPU sync + one GPU upload + one collider rebuild + one LOD rebuild per call. Batched SetHeights does all of that exactly once for the same visual result.",
+      "gemini2026Session": "A Gemini session spent ~70 minutes issuing 40+ identical terrain/height calls along an east-west ridge (Action=raise-lower, Radius=150, Strength=0.7, Y=100, X stepping 100→1900). One SetHeights over the ridge's bounding rect produces the same ridge in well under a second. The session hit the model rate limit before carving the center lake — direct cost of choosing the wrong primitive."
+    },
+
+    "performanceMath": {
+      "heightmapResolution": "1025 × 1025 (2^10 + 1) — common LTS default.",
+      "batchedPass": "One SetHeights over a 200×50 ridge rect: ~10,000 cells, one collider rebuild, one LOD rebuild, one GPU upload. Tens of milliseconds.",
+      "atomicLoop": "40 terrain/height calls: 40 collider rebuilds, 40 LOD rebuilds, 40 GPU uploads. Fixed per-call overhead dominates; ~50× slower and worse at higher resolutions.",
+      "ruleOfThumb": "Collider cost has a large fixed component. N atomic calls pay it N times; one batched call pays it once."
+    },
+
+    "delayLodPattern": {
+      "when": "Two or more sequential passes in one session (e.g., base noise → ridge stroke → crater stamps → smoothing).",
+      "pattern": [
+        "pass 1..M → SetHeightsDelayLOD(xBase, zBase, heightsK)",
+        "final    → terrainData.SyncHeightmap()  // exactly once"
+      ],
+      "savings": "Collapses M collider + LOD + GPU rebuilds into one.",
+      "failureMode": "Dangling DelayLOD without SyncHeightmap leaves TerrainCollider reading the pre-edit heightmap. Rendering updates, physics does not — characters walk on invisible old geometry or fall through visible new geometry."
+    },
+
+    "brushProfiles": {
+      "purpose": "A stroke needs a brush profile so shape is not a flat step along the polyline.",
+      "radius": "Half-width of the stroke's effect in world meters (or heightmap cells).",
+      "falloffKernels": [
+        { "name": "linear",     "formula": "max(0, 1 - d/r)",                   "look": "sharp edge, triangular section" },
+        { "name": "cosine",     "formula": "0.5 * (1 + cos(pi * min(d/r, 1)))", "look": "natural, hill-like" },
+        { "name": "smoothstep", "formula": "1 - smoothstep(0, 1, d/r)",         "look": "soft shoulders, flat top — plateaus" },
+        { "name": "gaussian",   "formula": "exp(-(d*d) / (2 * sigma*sigma))",   "look": "very soft, no hard cutoff — ridge blending" }
+      ],
+      "strength": "0..1 peak displacement at center. Stroke tools may also ramp strength along arc-length.",
+      "blendMode": "additive (delta accumulates, preserves pre-existing terrain) or overwrite (forces the profile value). Most sculpt intents want additive."
+    },
+
+    "stampProfiles": {
+      "definition": "A stamp is a 2D float intensity map (normalized 0..1 or signed) plus placement metadata.",
+      "fields": [
+        "pattern : float[,] (from texture, .raw heightmap, or computed)",
+        "centerX, centerZ : world meters",
+        "scale : world meters per stamp cell",
+        "rotation : radians around Y",
+        "strength : global multiplier",
+        "blendMode : max | add | subtract | overwrite"
+      ],
+      "blendModeGuidance": "Overlapping stamps with blendMode=overwrite clip each other (last-writer-wins). Use max for ridge-preserving overlap (neighboring mountains sharing a shoulder), add for cumulative shaping (dune fields).",
+      "coordinateHazard": "Placement is world meters; pattern cells are stamp-local indices. Mixing them up places the stamp at the wrong coordinate."
+    },
+
+    "semanticMacros": {
+      "rationale": "LLMs describe terrain in English (\"a ridge east-west, 200m wide, 80m tall, valley on the north side\"). A macro takes that spec and emits the correct stroke + stamp + noise combination — the moat feature relative to Gaia / MapMagic / World Creator, where the user composes manually.",
+      "exampleSpec": {
+        "edges": "mountains",
+        "center": "flat",
+        "features": [
+          { "type": "lake",  "x": 1000, "z": 1000, "radius": 200 },
+          { "type": "ridge", "from": [0, 500], "to": [2000, 500], "width": 200, "height": 80 }
+        ]
+      },
+      "internalDecomposition": [
+        "edges=mountains → four terrain/stroke calls, cosine brush, jittered height ramp, SetHeightsDelayLOD each",
+        "features.lake → terrain/stamp, radial smoothstep basin, blendMode=overwrite, SetHeightsDelayLOD",
+        "features.ridge → terrain/stroke between endpoints, cosine brush, SetHeightsDelayLOD",
+        "final → SyncHeightmap once"
+      ],
+      "lesson": "A macro is a pre-composed recipe. Win: LLM emits one call instead of dozens, and the macro guarantees SetHeightsDelayLOD + SyncHeightmap discipline."
+    },
+
+    "noiseIsOftenTheAnswer": {
+      "principle": "For organic intents (\"natural-looking\", \"rolling hills\", \"mountain range\", \"eroded badlands\"), noise sampled into one SetHeights beats composed strokes.",
+      "reasons": [
+        "Faster: one pass over the rect, no polyline walking, no per-stamp resampling.",
+        "More natural: layered fBm produces self-similar detail at every zoom; hand-placed strokes never match.",
+        "Composes cleanly: lay down noise first, then stamp/stroke named features on top with blendMode=add or max."
+      ],
+      "seeAlso": "procgen/noise-tuning (planned) — amplitude, frequency, octaves, lacunarity, persistence."
+    },
+
+    "commonPitfalls": [
+      {
+        "symptom": "One ridge takes 40+ calls and 70 minutes; rate limit hit before scene finishes.",
+        "cause": "Atomic Point looped along the ridge line — \"Gemini mode\".",
+        "fix": "GetHeights once over the ridge's bounding rect, walk the polyline with a cosine brush in-memory, SetHeights once. When terrain/stroke ships, use it."
+      },
+      {
+        "symptom": "Heightmap visually updated but characters fall through or stand on mid-air.",
+        "cause": "SetHeightsDelayLOD used for multiple passes without a final SyncHeightmap.",
+        "fix": "Pair DelayLOD with exactly one SyncHeightmap at the end."
+      },
+      {
+        "symptom": "Stamp applied at wildly wrong location.",
+        "cause": "Placement coord in heightmap cell indices while the tool expected world meters, or vice versa.",
+        "fix": "Per kb-terrain-system-primer coordinateSystems: world meters for placement, heightmap indices only for bounding rects."
+      },
+      {
+        "symptom": "Overlapping stamps produce hard seams or one erases another.",
+        "cause": "blendMode=overwrite on overlapping features — last stamp wins.",
+        "fix": "Use max (preserves the taller feature, adjacent mountains) or add (cumulative, dune fields). Reserve overwrite for non-overlapping or intentional carving."
+      },
+      {
+        "symptom": "Building rolling hills with N separate strokes.",
+        "cause": "Choosing stroke where noise is the right primitive.",
+        "fix": "procgen/terrain-noise once over the rect. Add stamps for named peaks on top with blendMode=add."
+      },
+      {
+        "symptom": "Point tool used for a 200×50 cell feature.",
+        "cause": "Failed the gap rule.",
+        "fix": "If the edit spans > 5 cells in any dimension, stop. Batch via SetHeights or reach for stroke/stamp/macro."
+      }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Edit spans more than 5 heightmap cells in any dimension",
+        "rule": "Never loop atomic terrain/height. Batch via SetHeights, or use stamp/stroke/macro if available.",
+        "evidence": "Gemini terrain session 2026-04-21 — 40+ atomic calls for one ridge, ~50× slower than batched. session-2026-04-21T06-17-bfbee48a.json."
+      },
+      {
+        "scenario": "Two or more sculpt passes in one session",
+        "rule": "SetHeightsDelayLOD per pass and SyncHeightmap exactly once at the end.",
+        "evidence": "Unity ScriptReference — TerrainData.SetHeightsDelayLOD and SyncHeightmap."
+      },
+      {
+        "scenario": "User named a natural feature (ridge, valley, crater, plateau)",
+        "rule": "Prefer stamp or sculpt-macro over raw SetHeights. They encode the correct brush profile and blend mode.",
+        "evidence": "E30 gap analysis § 4A — stamps and macros reduce authoring call count from N to 1."
+      },
+      {
+        "scenario": "User asked for \"mountain range\", \"rolling hills\", or \"natural terrain\"",
+        "rule": "procgen/terrain-noise with layered fBm. Noise beats stroke composition on both speed and naturalness.",
+        "evidence": "Gaia / MapMagic / World Creator all default organic terrain to noise + erosion."
+      },
+      {
+        "scenario": "Mosaic exposes stroke, stamp, or macro tools for the intent",
+        "rule": "Use them. Do not reach past a higher-level primitive to issue atomic Point calls.",
+        "evidence": "E30 S1-S4 rationale — higher-level primitives exist to avoid the 40-call failure mode."
+      }
+    ],
+
+    "quickReferenceTable": {
+      "cols": ["intent", "ship today", "when roadmap lands"],
+      "rows": [
+        ["single-cell poke",              "terrain/height",                    "terrain/height"],
+        ["smooth gradient A→B",           "Array batch",                       "terrain/stroke"],
+        ["ridge/wall/road along a path",  "Array batch + polyline falloff",    "terrain/stroke"],
+        ["N similar hills/craters",       "Array batch + pasted pattern",      "terrain/stamp"],
+        ["rolling hills/mountain range",  "procgen/terrain-noise",             "procgen/terrain-noise"],
+        ["single crater/valley",          "Array batch + cosine falloff",      "terrain/stamp"],
+        ["plateau with sloped edges",     "Array batch + smoothstep perimeter","terrain/stamp"],
+        ["whole scene from a sentence",   "Batch + noise + DelayLOD",          "terrain/sculpt macro"]
+      ]
+    },
+
+    "versionDeltas": [],
+
+    "coversToolCategories": ["terrain", "procgen"]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Painting Terrain",                        "url": "https://docs.unity3d.com/Manual/terrain-PaintTerrain.html" },
+    { "title": "Unity Manual — Terrain Tools package",                   "url": "https://docs.unity3d.com/Packages/com.unity.terrain-tools@5.0/manual/index.html" },
+    { "title": "Unity ScriptReference — TerrainData.SetHeights",         "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHeights.html" },
+    { "title": "Unity ScriptReference — TerrainData.SetHeightsDelayLOD", "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHeightsDelayLOD.html" },
+    { "title": "Unity ScriptReference — TerrainData.SyncHeightmap",      "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SyncHeightmap.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Painting Terrain (authoring source)",       "url": "https://docs.unity3d.com/Manual/terrain-PaintTerrain.html" },
+    { "title": "Unity Manual — Terrain Tools package (authoring source)",  "url": "https://docs.unity3d.com/Packages/com.unity.terrain-tools@5.0/manual/index.html" },
+    { "title": "Mosaic Terrain Gap Analysis § 4D KB-terrain-01",            "url": "internal://mosaic/_bmad-output/planning-artifacts/gap-analysis/terrain.md" },
+    { "title": "Mosaic Gemini terrain session transcript (evidence)",      "url": "internal://mosaic/_bmad/sessions/session-2026-04-21T06-17-bfbee48a.json" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team. API names, resolution formulas, falloff kernel equations, and version behavior are documented facts (not copyrightable). The decision tree, gap rule, performance comparisons, brush / stamp taxonomies, macro decomposition example, and all pitfalls and decision rules are original Mosaic editorial prose derived from the Mosaic Gemini terrain session evidence and the E30 gap analysis. Unity Manual and ScriptReference pages are cited as externalReferences and sources — NOT reproduced here. No competitor documentation (Gaia, MapMagic, World Creator) was quoted; their feature parity was characterized at a summary level from the public gap analysis."
+}

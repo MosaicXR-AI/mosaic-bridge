@@ -1,0 +1,223 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-dataviz-data-visualization-overview",
+  "title": "Data Visualization in Unity: Charts, Graphs, Heatmaps",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "data-viz",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Overview of building in-scene data visualizations in Unity — bar charts, scatter plots, network graphs, heatmaps, and state/flow diagrams. Unity is increasingly used for dashboards, analytics overlays, and digital twins where external data is rendered in world space (3D) or on Canvas (2D UI). Use whenever a Mosaic tool emits a visualization from external data: chart/create-bar, chart/create-scatter, data/bind, data/stream, process/state-diagram, process/flow-diagram, and related routing via procgen/tool-selection. Covers geometry choices (UI Image vs cube mesh vs instanced quad), color mapping (viridis, RdBu, tab10), layout algorithms (force-directed, hierarchical), and the performance cliff where > ~1,000 points requires instanced rendering instead of one-GameObject-per-datum. The #1 failure mode is spawning a GameObject per data point at scale; the #2 is rebuilding geometry on every data update instead of updating buffers or MaterialPropertyBlocks.",
+
+  "mosaicTools": [
+    "chart/create-bar",
+    "chart/create-scatter",
+    "chart/create-heatmap",
+    "chart/create-network",
+    "data/bind",
+    "data/stream",
+    "process/state-diagram",
+    "process/flow-diagram"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-compute-buffer-lifecycle",
+    "kb-ui-ui-systems-overview",
+    "kb-procgen-tool-selection"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_visualize_tabular_data":
+      "Pick geometry by count and space. ≤ 100 points and on-screen UI → Canvas + UI Image (bars) or RectTransform dots. > 100 in world space → cube/quad mesh per datum for small sets, instanced rendering for > 1,000. Build once, update values in place.",
+    "when_asked_to_build_a_scatter_plot_in_3d":
+      "Use Graphics.RenderMeshIndirect with a StructuredBuffer of points (see kb-rendering-compute-buffer-lifecycle). One draw call regardless of count. Encode scalar/category in instance color via a second buffer or MaterialPropertyBlock channel.",
+    "when_asked_to_draw_a_network_or_graph":
+      "Nodes = instanced quads or sphere primitives; edges = LineRenderer per edge for ≤ 500 edges, one Mesh with dynamic vertex stream for > 500. Default layout = force-directed (Fruchterman-Reingold). Use hierarchical (Sugiyama) when data is a DAG with a clear root.",
+    "when_asked_for_a_heatmap":
+      "2D heatmap → generate a Texture2D with SetPixels32 or LoadRawTextureData, render on a RawImage or quad. 3D heightfield heatmap → a plane Mesh whose vertex.y is driven by data and vertex color by a sampled palette. Do not build one cube per cell for grids > 50x50.",
+    "when_asked_to_animate_data_changes":
+      "Lerp the underlying data buffer or per-instance value, not the GameObject transforms. Bars → tween scaleY over ~200–400 ms with smoothstep. Streaming series → FIFO shift in a ring buffer, pulse the newest bar/point via emissive color.",
+    "when_asked_for_a_flow_or_state_diagram":
+      "Lay out boxes by layer (Sugiyama) or dot-style rank/cluster, then route arrows as cubic Bezier curves with arrowhead meshes at the end. Do not depend on Graphviz at runtime — bake layouts offline or implement a minimal layered layout in C#.",
+    "when_choosing_a_color_palette":
+      "Continuous scalar → viridis or magma (perceptually uniform, colorblind-safe). Diverging around zero → RdBu or BrBG. Categorical ≤ 10 classes → tab10 or Okabe-Ito. Never use raw HSV rainbow — it is perceptually non-uniform and misleads magnitude.",
+    "when_user_reports_frame_drops_as_data_updates":
+      "Inspect the update path. If it rebuilds meshes, destroys and re-spawns GameObjects, or re-creates Materials per frame, that is the cost. Switch to updating a MaterialPropertyBlock or SetData on a persistent GraphicsBuffer. Geometry topology rarely changes; values do.",
+    "when_user_reports_data_looks_garbled_or_bars_swap":
+      "Confirm the index mapping between data row and instance slot is stable. Sorting the underlying list between frames causes instance N to receive a different data row — animate by value change, not by re-ordering indices.",
+    "when_user_wants_tooltips_or_click_interaction":
+      "Cast a ray from the mouse (Canvas → GraphicsRaycaster, world → Camera.ScreenPointToRay). For instanced draws, meshes have no per-instance colliders — maintain a CPU-side spatial index (KD-tree or uniform grid) and hit-test against data points directly."
+  },
+
+  "full": {
+    "geometryChoices": {
+      "canvasUI": "RectTransform + Image for 2D bar charts, legends, axis labels. Cheap up to a few hundred elements. Layout via HorizontalLayoutGroup or anchored math. For axis text use TextMeshPro (SDF scales cleanly at any zoom). See kb-ui-ui-systems-overview.",
+      "worldSpaceMesh": "One Mesh with per-instance cube primitives baked into a combined mesh — good for 100–1,000 bars that are static in topology but dynamic in height. Update via a single Mesh.SetVertices call or per-instance scale via a MaterialPropertyBlock matrix.",
+      "instancedRendering": "For > 1,000 points use Graphics.RenderMeshIndirect (Unity 2022+) or Graphics.DrawMeshInstancedIndirect (legacy). A StructuredBuffer<Point> holds position + value + category. Material samples it via unity_InstanceID. Lifecycle rules: see kb-rendering-compute-buffer-lifecycle.",
+      "lineRenderer": "Built-in LineRenderer is fine for < ~100 discrete edges or polyline series. Above that, author a dynamic Mesh with a custom shader — LineRenderer allocates per-segment geometry each enable and chokes on thousands of lines.",
+      "texture2D": "Heatmaps and raster imagery. For a W x H grid, allocate Texture2D(W, H, TextureFormat.RGBA32, false), call SetPixels32(array) + Apply(false). Render on a Quad (world) or RawImage (Canvas). Keep mipmaps off for pixel-accurate display."
+    },
+
+    "chartTypes": {
+      "barChart": "Vertical or horizontal bars. Scale on one axis encodes magnitude. In 3D, use a Cube primitive with localScale.y = value * verticalScale and position.y = localScale.y / 2. In 2D, use an Image with preferredHeight or a scaled RectTransform. Group bars by adjusting x spacing; stack bars by summing cumulative y offsets.",
+      "scatterPlot": "Each datum is a point in 2D or 3D. In 3D, points are typically billboarded quads or low-poly spheres to preserve on-screen size under perspective. Encode extra dimensions via color (via palette), size (instance scale), or opacity. For > 10k points, GPU-side culling via compute shader is worth the complexity.",
+      "networkGraph": "Nodes as instanced spheres/quads, edges as line segments. Two layout families: force-directed (Fruchterman-Reingold, spring-electrical) for organic blobs with unknown structure, hierarchical (Sugiyama layered layout) for DAGs with ranks. Iterate layout on-CPU for < 1k nodes or on a compute shader for larger graphs.",
+      "heatmap2D": "Colored grid. Palette lookup happens either CPU-side (write RGBA into Texture2D per cell) or GPU-side (single-channel R32F texture + a LUT texture the shader samples). GPU path is faster for streaming data because SetPixels32 marshals the full array every update.",
+      "heatmap3DTerrain": "Data drives vertex height on a regular grid mesh (resolution = W x H). Color via vertex color (Mesh.colors) or a shader sampling the same data texture. Rebuild normals (Mesh.RecalculateNormals) when heights change, or compute them in a compute shader.",
+      "stateFlowDiagram": "Boxes (state nodes) + arrows (transitions). Layout boxes on a Sugiyama layered grid: rank by longest path from source, compact within rank, minimize edge crossings by barycenter heuristic. Route arrows as cubic Bezier curves from box edge to box edge with arrowhead meshes."
+    },
+
+    "layoutAlgorithms": {
+      "forceDirected": "Fruchterman-Reingold: each node is a charged particle repelling others by inverse-square force, each edge is a spring pulling endpoints together. Integrate with damping for 50–500 iterations. O(N^2) naive; O(N log N) with a Barnes-Hut quadtree. Suitable for < 10k nodes on CPU; ports to compute shader for larger sets.",
+      "hierarchicalSugiyama": "Four phases: (1) break cycles via DFS, (2) assign ranks by longest path, (3) order within ranks to minimize edge crossings (barycenter or median heuristic), (4) assign x/y coordinates. Produces readable DAG layouts (state machines, call graphs, pipelines).",
+      "tree": "Reingold-Tilford for binary or n-ary trees. Recursively lay out subtrees, then translate so they don't overlap. Runs in O(N) and produces tidy, readable trees — the right choice for hierarchical data with no cross-edges.",
+      "gridLayout": "Trivial but often best for small categorical sets. Place nodes in a rows x cols grid. No iteration needed. Use when the user just wants everything visible at once without occlusion."
+    },
+
+    "colorMapping": {
+      "continuousSequential": "Viridis (blue→green→yellow), magma (black→red→yellow), inferno (black→purple→yellow). All perceptually uniform, colorblind-safe, print-safe. Sample as a 256-entry LUT texture and index by (value - min) / (max - min).",
+      "continuousDiverging": "RdBu (red→white→blue), BrBG (brown→white→green), PiYG (pink→white→green). Use when data has a natural zero or midpoint (profit/loss, anomaly from mean). Center the white band on the midpoint, not on the arithmetic middle of the range.",
+      "categorical": "tab10 (10 distinct hues), tab20 (20 hues), Okabe-Ito (8 colorblind-safe). Pick by category count. Above ~12 categories, consider pattern/shape encoding instead — humans cannot distinguish 20 hues reliably.",
+      "avoidRainbow": "Hue-based rainbow palettes (red→orange→yellow→green→blue) are NOT perceptually uniform — yellow bands appear brighter than adjacent hues, implying magnitude spikes that aren't there. Also fails for red-green colorblind users. Use viridis instead.",
+      "perInstanceColorBinding": "Bind via MaterialPropertyBlock.SetVectorArray(\"_Colors\", colors) for < 1023 instances per draw, or a StructuredBuffer<float4> for unbounded counts sampled via unity_InstanceID. Update only when category or value changes — not every frame."
+    },
+
+    "animation": {
+      "valueTween": "For bar/scatter updates, interpolate the stored data value over ~200–400 ms with smoothstep easing, not the transform directly. The render loop reads the eased value and updates scale or buffer contents. Keeps easing consistent across geometry paths.",
+      "streamingSeries": "For time-series that grow over time use a ring buffer of fixed size. New data overwrites oldest slot; render reads slot (head - i) % N to lay out left-to-right. No allocation, no GC churn.",
+      "highlightPulse": "For 'new data point arrived' cue, pulse the point's emissive color channel from bright to normal over 500 ms. Implement as a per-instance float 'newness' in the StructuredBuffer, decremented per frame by Time.deltaTime / 0.5f, clamped ≥ 0, sampled by the shader.",
+      "layoutTransitions": "When switching layouts (e.g. grid → force-directed), tween each node's position from old to new over 1–2 s. Store both positions in the buffer and lerp in the shader via a global _LayoutT uniform — avoids a per-frame C# loop."
+    },
+
+    "interaction": {
+      "pickingUI": "Canvas hit-testing goes through GraphicsRaycaster automatically. Attach an IPointerClickHandler on the bar's GameObject. Free — no raycast code needed.",
+      "pickingWorld": "World-space raycast: Ray r = Camera.main.ScreenPointToRay(Input.mousePosition); Physics.Raycast(r, out hit). Requires a Collider per datum — does NOT work for instanced draws. For instanced scatter/networks, maintain a CPU-side KD-tree keyed on world position and hit-test against data points.",
+      "tooltip": "On hover/click, spawn a small Canvas panel positioned at screen-space mouse coord with text from the underlying data row. Use a pool of 1–4 tooltip panels; never Instantiate/Destroy per hover.",
+      "zoomPan": "For 3D views, a camera-orbit rig (yaw, pitch, distance) driven by mouse drag + scroll. For 2D UI charts, scale the content RectTransform and clamp anchored position to the viewport. Both decouple input from the data layer.",
+      "filter": "Apply filters by masking the instance count (args[1]) after sorting matching data to the front of the buffer, or by passing a filter mask texture the shader samples to discard non-matching instances. The second path avoids re-ordering data."
+    },
+
+    "performance": {
+      "oneGameObjectPerDatumAntiPattern": "The #1 mistake. At 10k points, Instantiate/Destroy and per-frame Transform updates saturate the main thread. Symptoms: linear frame-time scaling with data size, GC spikes on data refresh. Switch to instanced rendering — one draw call, one buffer, no GameObjects.",
+      "updateInPlace": "Geometry topology (vertex/index data) should be allocated once. Per-frame updates go through MaterialPropertyBlock.SetFloatArray, GraphicsBuffer.SetData on a persistent buffer, or Texture2D.SetPixels32 on a persistent texture. Rebuild only when the schema itself changes (e.g., a new category).",
+      "materialPropertyBlock": "MaterialPropertyBlock overrides per-renderer (or per-instance) material values without breaking SRP batching. For < 1023 instances per draw it exposes SetVectorArray/SetFloatArray/SetMatrix4x4Array. Beyond that, move to StructuredBuffer + instanced indirect.",
+      "asyncReadback": "When charts display live GPU simulation output, NEVER call buffer.GetData() on the main thread. Use AsyncGPUReadback.Request with a callback 1–3 frames later. See kb-rendering-compute-buffer-lifecycle.",
+      "textAllocations": "TextMeshPro text updates allocate when the string changes. For live labels, use SetText(StringBuilder) or SetCharArray — both skip the managed-string allocation. Updating 100 labels/frame with = \"...\" adds up to real GC pressure."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Visualization has ≤ 100 data points and lives inside a Canvas UI",
+        "rule": "Build from UI Image + RectTransform per datum. Layout via HorizontalLayoutGroup or manual anchored positions. Update via RectTransform.sizeDelta or scale. No need for meshes or instancing at this scale.",
+        "evidence": "Unity UGUI handles low hundreds of Graphics without measurable cost; the overhead is only visible past ~1000 elements on the same Canvas."
+      },
+      {
+        "scenario": "Visualization has 100–1,000 points in world space",
+        "rule": "Use per-instance cube/quad GameObjects with a MaterialPropertyBlock for color. Allocate once in a setup phase; update scale or position via Transform or MaterialPropertyBlock per frame. No per-frame Instantiate.",
+        "evidence": "MaterialPropertyBlock keeps SRP batching intact; Transform updates at this scale stay sub-millisecond on mid-range hardware."
+      },
+      {
+        "scenario": "Visualization has > 1,000 points or needs > 60 fps under streaming updates",
+        "rule": "Switch to Graphics.RenderMeshIndirect (Unity 2022+) or DrawMeshInstancedIndirect with a StructuredBuffer of per-instance data. Update SetData per frame; geometry is never rebuilt. Follow kb-rendering-compute-buffer-lifecycle for OnEnable/OnDisable buffer lifecycle.",
+        "evidence": "Single draw call + GPU-side read of per-instance data scales to 100k+ points on commodity GPUs."
+      },
+      {
+        "scenario": "Chart must update continuously from a data stream",
+        "rule": "Maintain a ring buffer of fixed capacity. Overwrite oldest slot on new sample. Drive the visualization from the ring via buffer-in-place updates — no allocations in the hot path.",
+        "evidence": "Standard streaming-chart pattern; avoids GC spikes visible at > 30 Hz update rates."
+      },
+      {
+        "scenario": "Visualization encodes a continuous scalar via color",
+        "rule": "Use viridis or magma palette. Sample from a 256-texel LUT texture indexed by normalized value. Do NOT use HSV rainbow — it is perceptually non-uniform and colorblind-unfriendly.",
+        "evidence": "Kovesi (2015) 'Good Colour Maps: How to Design Them' demonstrates the perceptual-uniformity failure of rainbow palettes."
+      },
+      {
+        "scenario": "Network graph has < 1k nodes and layout is wanted at runtime",
+        "rule": "Run Fruchterman-Reingold for 100–300 iterations on CPU. Write final positions into the instance buffer. For > 1k nodes, move the integrator to a compute shader or bake layouts offline.",
+        "evidence": "Fruchterman-Reingold (1991) is O(N^2) per iteration; 1k nodes * 300 iterations ≈ 3e8 ops, borderline on CPU main thread."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Frame-time scales linearly with number of data points.",
+        "cause": "One GameObject per datum — Instantiate, Transform updates, and scene-graph overhead dominate past a few hundred.",
+        "fix": "Replace the per-datum GameObject with instanced rendering. Store per-instance data in a StructuredBuffer, drive with Graphics.RenderMeshIndirect."
+      },
+      {
+        "symptom": "GC spike every time data refreshes.",
+        "cause": "Rebuilding meshes (new Mesh()), re-creating materials, or setting new strings on TMP labels — all allocate managed memory.",
+        "fix": "Allocate persistent Mesh/Material/StringBuilder once. Use Mesh.SetVertices + MarkDynamic, MaterialPropertyBlock for values, SetText(StringBuilder) for labels."
+      },
+      {
+        "symptom": "Bars 'swap' randomly when data updates.",
+        "cause": "The data list was re-sorted between frames; instance slot N now corresponds to a different row.",
+        "fix": "Keep the slot assignment stable across frames. If you must sort for display, animate scale/color in place — do not permute slot indices."
+      },
+      {
+        "symptom": "Heatmap grid > 100x100 tanks FPS.",
+        "cause": "One quad per cell (10k GameObjects) or rebuilding a mesh per frame.",
+        "fix": "Render as a single Texture2D (or compute-shader-driven RenderTexture) on one quad. SetPixels32 once per data change, not per frame unless the data changes per frame."
+      },
+      {
+        "symptom": "Rainbow palette makes value '5' and value '9' look closer than '1' and '5'.",
+        "cause": "HSV hue cycle is not perceptually uniform — yellow is brighter than its neighbors and compresses adjacent values.",
+        "fix": "Swap to viridis or magma. Encode as a 256-texel LUT and sample via (value - min) / (max - min)."
+      },
+      {
+        "symptom": "Tooltips lag behind the mouse by a frame and flicker.",
+        "cause": "Tooltip GameObject Instantiated/Destroyed on every hover event.",
+        "fix": "Use a pool of 1–4 tooltip Canvas panels. Toggle .enabled and update text/position — never Instantiate per hover."
+      },
+      {
+        "symptom": "Network graph nodes spread infinitely or collapse to a point.",
+        "cause": "Force-directed layout without damping, or spring constant / repulsion ratio not balanced.",
+        "fix": "Add velocity damping (multiply velocity by ~0.85 per step) and clamp max displacement per iteration. Tune repulsion k so equilibrium edge length ≈ sqrt(area / N)."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2022.1",
+        "change": "Graphics.RenderMeshIndirect added alongside GraphicsBuffer as the preferred instanced-indirect path. Replaces DrawMeshInstancedIndirect for new code.",
+        "breaking": false,
+        "migrationNote": "Existing ComputeBuffer + DrawMeshInstancedIndirect code still works; new scripts on 2022+ should prefer the new API."
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 documents RenderMeshIndirect + GraphicsBuffer as primary. UI Toolkit continues to mature alongside UGUI; for chart overlays UGUI + TextMeshPro remains the most stable path.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — UGUI Canvas and UI Components",            "url": "https://docs.unity3d.com/Manual/UIToolkits.html" },
+    { "title": "ScriptReference — MaterialPropertyBlock",                 "url": "https://docs.unity3d.com/ScriptReference/MaterialPropertyBlock.html" },
+    { "title": "ScriptReference — Texture2D.SetPixels32",                 "url": "https://docs.unity3d.com/ScriptReference/Texture2D.SetPixels32.html" },
+    { "title": "ScriptReference — Mesh",                                  "url": "https://docs.unity3d.com/ScriptReference/Mesh.html" },
+    { "title": "ScriptReference — LineRenderer",                          "url": "https://docs.unity3d.com/ScriptReference/LineRenderer.html" },
+    { "title": "ScriptReference — Graphics.RenderMeshIndirect",           "url": "https://docs.unity3d.com/ScriptReference/Graphics.RenderMeshIndirect.html" },
+    { "title": "ScriptReference — Camera.ScreenPointToRay",               "url": "https://docs.unity3d.com/ScriptReference/Camera.ScreenPointToRay.html" },
+    { "title": "Unity Manual — UI GraphicsRaycaster",                     "url": "https://docs.unity3d.com/Manual/script-GraphicRaycaster.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — UGUI overview",                            "url": "https://docs.unity3d.com/Manual/com.unity.ugui.html" },
+    { "title": "ScriptReference — MaterialPropertyBlock",                 "url": "https://docs.unity3d.com/ScriptReference/MaterialPropertyBlock.html" },
+    { "title": "ScriptReference — Graphics.RenderMeshIndirect",           "url": "https://docs.unity3d.com/ScriptReference/Graphics.RenderMeshIndirect.html" },
+    { "title": "Fruchterman & Reingold (1991) — Graph Drawing by Force-directed Placement", "url": "https://onlinelibrary.wiley.com/doi/abs/10.1002/spe.4380211102" },
+    { "title": "Sugiyama, Tagawa, Toda (1981) — Methods for Visual Understanding of Hierarchical System Structures", "url": "https://ieeexplore.ieee.org/document/4308636" },
+    { "title": "Kovesi (2015) — Good Colour Maps: How to Design Them",     "url": "https://arxiv.org/abs/1509.03700" },
+    { "title": "van der Walt & Smith — matplotlib viridis colormap rationale", "url": "https://bids.github.io/colormap/" },
+    { "title": "Okabe & Ito — Color Universal Design palette",            "url": "https://jfly.uni-koeln.de/color/" },
+    { "title": "Edward Tufte — The Visual Display of Quantitative Information (cited for data-ink ratio and small-multiples principles; not quoted)", "url": "https://www.edwardtufte.com/tufte/books_vdqi" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity Manual and ScriptReference pages (UGUI, MaterialPropertyBlock, Mesh, Texture2D, Graphics.RenderMeshIndirect, LineRenderer, Camera.ScreenPointToRay) together with open-literature references on graph layout (Fruchterman-Reingold 1991, Sugiyama 1981), perceptually-uniform colormaps (Kovesi 2015, van der Walt & Smith viridis rationale), and colorblind-safe palettes (Okabe-Ito). Edward Tufte's work is cited as a conceptual touchstone for data-ink and small-multiples reasoning but not quoted. API names, method signatures, and numeric layout constants are facts (not copyrightable); all prose, decision rules, llmGuidance, and pitfall analysis are original Mosaic editorial content. External references point to Unity documentation and cited papers; none of their text is reproduced here."
+}

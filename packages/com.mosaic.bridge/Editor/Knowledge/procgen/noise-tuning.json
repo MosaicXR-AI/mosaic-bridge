@@ -1,0 +1,290 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-procgen-noise-tuning",
+  "title": "Noise Tuning: Recipes for Terrain, Clouds, Wood, Marble, Turbulence",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "procgen",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Parameter-tuning primer for coherent-noise generators wrapped by Mosaic's procgen/noise-generate, procgen/noise-3d-texture, procgen/blue-noise, and procgen/poisson-disk tools. LLMs set noise knobs (frequency, octaves, lacunarity, gain, amplitude, seed) blind and produce unusable output more often than not because the parameter space is large, non-linear, and visually unforgiving. This entry names each noise family (Perlin, Simplex, Value, Worley, Ridged, Billow, FBM, Turbulence, Domain-Warp), anchors what each looks like, and gives concrete parameter recipes for common visual targets: rolling hills, craggy mountains, alien desert, cumulus and cirrus clouds, wood grain, marble veining, pebbled stone, turbulent fire and water. Includes output remapping, threshold/contour for binary and biome maps, domain-warp recipe for map-style coastlines, world-space scale anchoring, and the five most common failure modes (flat terrain, chaos, tiling seams, repetition, washed-out clouds). Use whenever an LLM must pick, defend, or debug noise parameters on a fresh procgen call.",
+
+  "mosaicTools": [
+    "procgen/noise-generate",
+    "procgen/noise-3d-texture",
+    "procgen/blue-noise",
+    "procgen/poisson-disk",
+    "procgen/poisson-sample",
+    "procgen/terrain"
+  ],
+
+  "relatedKb": [
+    "kb-procgen-tool-selection",
+    "kb-terrain-system-primer",
+    "kb-terrain-height-tool-decision-tree"
+  ],
+
+  "llmGuidance": {
+    "when_asked_for_natural_looking_terrain_heightmap":
+      "Default to Perlin or Simplex FBM with octaves=4 or 5, lacunarity=2.0, gain=0.5, frequency chosen so the terrain shows 4-10 big features across its width. For a 500 m terrain pick frequency=0.005-0.01 in world units. Remap raw output to [0,1] before writing heights, then scale by terrainData.size.y. See kb-terrain-system-primer.",
+    "when_asked_for_mountainous_or_craggy_terrain":
+      "Use ridged multifractal: r = 1 - abs(perlin(p)); raise each octave to a power (typically 2) before accumulating. Frequency=0.002-0.004 in world units, octaves=6, lacunarity=2.0, gain=0.5. Amplify the result to 100-200 m. Do NOT try to get crags from vanilla FBM by cranking octaves — it only adds noise, not ridges.",
+    "when_asked_for_3d_volumetric_clouds":
+      "Use 3D Simplex or Perlin with octaves=5, lacunarity=2.0, gain=0.5, frequency=0.02-0.04 in world units. Threshold the remapped output with smoothstep(t-0.1, t+0.1, n) where t=0.5 for fluffy cumulus. For wispy cirrus use turbulence (FBM of abs(noise)), octaves=5, stretch the X coordinate by 3-5x before sampling to elongate streaks.",
+    "when_asked_for_wood_grain_texture":
+      "Sample 2D Simplex noise with the Y coordinate scaled up 10-20x relative to X so the pattern stretches along the grain direction. Take fractional part of (distance_from_center * ringDensity + noise) to get concentric rings. Typical ringDensity 8-16 per meter, noise amplitude 0.3-0.6 — too much noise kills the ring structure.",
+    "when_asked_for_marble_veining":
+      "Apply Perlin noise to the input of a periodic function: marble = sin(p.x * frequency + fbm(p) * warpStrength). Typical frequency=2-4 per meter, warpStrength=4-10, fbm with octaves=4, gain=0.5. The sine gives the vein periodicity; the warped fbm bends the veins organically.",
+    "when_asked_for_stone_or_pebble_surface":
+      "Use Worley/Cellular noise with F1 (distance to nearest feature). One octave usually suffices; two octaves at lacunarity=2 add micro-detail. For reptile-skin or organic cells use F2 - F1 instead. Not Perlin — Perlin cannot produce cell boundaries.",
+    "when_asked_for_turbulent_fire_water_or_smoke_surface":
+      "Use Turbulence (FBM of abs(noise)): accumulator += abs(noise(p * freq)) * amplitude each octave. Frequency=0.08-0.15, octaves=4, lacunarity=2.0, gain=0.5. Animate by advancing a time coordinate on a 3D noise (sample at (x, y, t)).",
+    "when_terrain_looks_flat":
+      "Two causes in order: amplitude too low, or frequency too low producing one giant bump. Check: if the remapped noise range is 0.4-0.6 across the terrain, raise amplitude or the terrainData.size.y multiplier. If it is 0.1-0.9 but visually one hill, raise frequency.",
+    "when_terrain_looks_chaotic_or_noisy":
+      "Too many octaves or frequency too high. Drop octaves to 3. If still too busy, halve frequency. Rule: every doubling of frequency or added octave at gain=0.5 adds visible high-frequency detail but also visual noise.",
+    "when_pattern_repeats_obviously":
+      "Either the seed is unchanged across calls, or the sample range wraps a tiled noise period. Vary seed between calls that should look different. For world-space sampling pass a large random offset (10000+ units) per seed to avoid hitting the implementation's origin symmetries.",
+    "when_cloud_mask_looks_uniform_or_washed_out":
+      "Missing threshold and edge contrast. Apply smoothstep(t-w, t+w, n) with w=0.05-0.15. Higher t produces sparser clouds; lower t fills sky. Do the threshold after FBM, not during accumulation.",
+    "when_exporting_noise_as_a_unity_heightmap":
+      "Always remap explicitly to [0,1]. Perlin output is roughly [-1,1] (often narrower); FBM of Perlin is roughly [-sum(gain^k), +sum(gain^k)]. Compute min/max of a sample patch and linear-remap, or apply (n*0.5)+0.5 if the noise is well-normalized. See kb-terrain-system-primer for heightmap write semantics."
+  },
+
+  "full": {
+    "noiseFamilies": {
+      "perlin": "Gradient noise (Perlin 1985, improved 2002). Values lie in roughly [-1,1]; output is smooth (C2) and repeats on a unit grid in its canonical form. The workhorse noise — most Mosaic recipes start here. Axis-aligned grid artifacts appear at very low frequencies or on perfectly axis-aligned queries.",
+      "simplex": "Perlin's 2002 improvement. Uses a simplicial grid instead of a hypercube grid; scales better to 3D/4D, avoids axis-aligned artifacts, and is roughly equivalent visually at 2D. Prefer Simplex for 3D volumes and for anything sampled along a world axis.",
+      "value": "Samples random values at integer lattice points and interpolates. Cheaper than gradient noise but has boxier lobes and visible lattice structure. Useful for very fast stylized noise; avoid for natural terrain.",
+      "worley": "Cellular / Voronoi distance noise (Worley 1996). Returns distance to nearest feature point (F1), second nearest (F2), or combinations (F2 - F1 for cell edges). The only noise family that produces visible cells; use for stone, reptile skin, cracked mud.",
+      "ridgedMultifractal": "FBM variant: at each octave take r = 1 - abs(perlin(p)), optionally raise to a power, and weight by the previous octave's result (Musgrave). Produces sharp ridges that branch like real erosion-carved mountains. Vanilla FBM cannot produce these.",
+      "billow": "FBM variant: at each octave take abs(perlin(p)) with no inversion. Produces smooth, rounded, cumulus-like lobes. Good for puffy clouds, rolling dunes with softer crests, lava-lamp blobs.",
+      "fbm": "Fractional Brownian Motion: accumulate multiple octaves of a base noise, each at higher frequency (by lacunarity) and lower amplitude (by gain). Standard pattern: for i in 0..octaves: sum += noise(p * freq * lacunarity^i) * gain^i. Canonical lacunarity=2.0, gain=0.5.",
+      "turbulence": "FBM of abs(noise). Swirly, wood-like, fire-like. Each octave contributes only positive magnitude, so the field has cusps where the underlying noise crossed zero.",
+      "domainWarp": "Feed a noise output back as position input to another noise: p' = p + noise_vector(p) * warpStrength; out = noise(p'). Produces organic, map-style coastlines, wavy wood grain, marble veining. Warp vectors are usually assembled from two or three independent noise calls with different seeds."
+    },
+
+    "coreParameters": {
+      "frequency": "Cycles per world unit. A frequency of 0.01 on a 500 m terrain gives ~5 visible cycles across. Always plan frequency against intended feature count.",
+      "amplitude": "Peak-to-peak output scale of the final noise. Applied after accumulation, usually as a simple multiplier mapped into the target unit (meters of terrain height, density threshold, color displacement).",
+      "octaves": "Number of FBM layers. 1 = smooth blobs. 3-5 = natural detail. 6-8 = rich multi-scale. Above 8 returns diminish and performance halves per octave.",
+      "lacunarity": "Frequency multiplier per octave. 2.0 is canonical; 1.8-2.2 subtle variation. Values far from 2 produce distinct visual signatures — 1.5 is soft and creamy, 3.0 is spiky and separated.",
+      "gain": "Also called persistence. Amplitude multiplier per octave, typically 0.5 (Brownian). 0.3-0.4 gives smoother terrain; 0.6-0.7 gives rougher, more fractal terrain at the cost of stability.",
+      "seed": "Integer controlling the underlying permutation table or gradient set. Same seed + same sample point = same value forever. Use seed to regenerate variants; use a large world-space offset per seed to avoid implementations whose origin is visually special."
+    },
+
+    "recipes": {
+      "rollingHills_50m": {
+        "noise": "Perlin FBM",
+        "frequency": 0.005,
+        "octaves": 4,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "amplitudeMeters": 30,
+        "postprocess": "remap to [0,1]; optional pow(n, 1.2) for slightly steeper ridges"
+      },
+      "craggyMountains_200m": {
+        "noise": "Ridged multifractal (r = 1 - abs(perlin(p)), squared per octave)",
+        "frequency": 0.002,
+        "octaves": 6,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "amplitudeMeters": 150,
+        "postprocess": "square result to sharpen peaks, then remap"
+      },
+      "alienDesert_8m": {
+        "noise": "Perlin FBM + Billow blend (lerp 0.5)",
+        "frequency": 0.008,
+        "octaves": 3,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "amplitudeMeters": 8
+      },
+      "cumulusClouds3D": {
+        "noise": "Simplex 3D FBM",
+        "frequency": 0.03,
+        "octaves": 5,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "amplitudeRange": "[0,1]",
+        "postprocess": "smoothstep(0.45, 0.55, n) — threshold with soft edge for fluffy edges"
+      },
+      "cirrusClouds3D": {
+        "noise": "Turbulence (FBM of abs(Simplex))",
+        "frequency": 0.01,
+        "octaves": 5,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "preprocess": "stretch X coord by 4x before sampling — p_sampled = (p.x * 4, p.y, p.z); produces streaky clouds"
+      },
+      "woodGrain2D": {
+        "noise": "Simplex, then ring function",
+        "frequency": 0.3,
+        "preprocess": "scale Y by 15x to stretch grain along trunk axis",
+        "postprocess": "rings = frac(distance(p, center) * 12 + simplex(p) * 0.5); ring contrast controlled by |rings - 0.5|"
+      },
+      "marbleVeining": {
+        "noise": "Perlin FBM driving sin modulation",
+        "frequency": 0.02,
+        "octaves": 4,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "formula": "marble = sin((p.x + p.y) * 3 + fbm(p) * 8); veins at marble ~= 0"
+      },
+      "pebbleStone": {
+        "noise": "Worley F1 (distance to nearest)",
+        "frequency": 0.5,
+        "octaves": 2,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "postprocess": "remap F1 into [0,1]; use smoothstep(0, 0.2, F1) for pebble edges"
+      },
+      "cellBoundaries": {
+        "noise": "Worley (F2 - F1)",
+        "frequency": 0.4,
+        "octaves": 1,
+        "postprocess": "high values at cell edges, near-zero in cell interiors; invert for cracked mud"
+      },
+      "turbulentFireOrWater": {
+        "noise": "Turbulence (FBM of abs(Simplex))",
+        "frequency": 0.1,
+        "octaves": 4,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "animation": "sample at (p.x, p.y, time * 0.5) using 3D Simplex for temporal coherence"
+      },
+      "mapCoastline_domainWarp": {
+        "noise": "Domain-warped Perlin FBM",
+        "frequency": 0.004,
+        "octaves": 5,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "warpStrength": 40,
+        "formula": "q = (fbm(p, seed=1), fbm(p, seed=2)); out = fbm(p + q * warpStrength, seed=3); threshold at 0.5 for land/water"
+      }
+    },
+
+    "outputRemapping": {
+      "rawRange": "Perlin and Simplex return roughly [-1, 1] but rarely touch the extremes; empirical range for 2D is closer to [-0.7, 0.7]. Worley F1 is [0, +inf) but bounded by the feature spacing.",
+      "remapTo01": "n01 = saturate((n + 1) * 0.5) for symmetric noise, or measure min/max across a sample patch and linear-remap for tighter use of the target range.",
+      "curves": "pow(n01, 2) steepens peaks (good for mountain silhouettes). sqrt(n01) flattens peaks (good for plateau-heavy terrain). smoothstep(a, b, n01) is the default soft threshold."
+    },
+
+    "thresholdAndContour": {
+      "binaryMask": "out = n01 > threshold ? 1 : 0. Useful for water level, cloud presence, cave solid/empty. Hard step aliases — prefer smoothstep.",
+      "softMask": "out = smoothstep(t - w, t + w, n01). w=0.05-0.15 for anti-aliased edges.",
+      "biomeBands": "Assign contiguous [0,1] ranges to biomes: [0, 0.3) deep water, [0.3, 0.35) shore, [0.35, 0.6) grass, [0.6, 0.8) rock, [0.8, 1] snow. Drive with a separate low-frequency FBM so biome size is decoupled from terrain detail."
+    },
+
+    "domainWarpRecipe": {
+      "pattern": "q = vector_noise(p); p_warped = p + q * warpStrength; out = noise(p_warped).",
+      "vectorNoise": "Construct q by calling the base noise twice (or thrice in 3D) with different seeds and using results as vector components.",
+      "warpStrengthScale": "In world units. warpStrength=0 reduces to undistorted noise. Typical values 20-60 for map-scale coastlines; 4-10 for marble veining at meter scale.",
+      "iteratedWarp": "Applying domain warp twice (warp the warped field again with a lower-frequency noise) produces the famously organic Inigo Quilez style. Expensive — 3x the noise calls per sample."
+    },
+
+    "scaleAnchoring": {
+      "rule": "Frequency is cycles per world unit. Plan by feature count: desired_features_across_terrain / terrain_width_meters = frequency.",
+      "worked_example": "Goal: 6 visible mountain ranges across a 2 km terrain. 6 / 2000 = 0.003. Start frequency=0.003 and adjust. Three or four additional octaves at lacunarity=2 add detail at 0.006, 0.012, 0.024 — exactly the multi-scale structure real mountains show.",
+      "antipattern": "Picking frequency by trial and error without the world-scale anchor. Each retry costs a tool call and almost always overshoots by an order of magnitude."
+    },
+
+    "commonPitfalls": [
+      {
+        "symptom": "Terrain looks flat — mostly featureless.",
+        "cause": "Amplitude too low OR frequency too low so only one giant bump fits in the terrain.",
+        "fix": "Raise amplitude (or terrainData.size.y). Verify frequency gives at least 4 cycles across the terrain."
+      },
+      {
+        "symptom": "Terrain looks chaotic — like TV static.",
+        "cause": "Octaves too high OR base frequency too high, so every pixel carries high-frequency detail.",
+        "fix": "Drop octaves to 3. Halve frequency. Rule: natural terrain needs 3-5 octaves at gain=0.5; more is usually worse."
+      },
+      {
+        "symptom": "Visible tiling seams at terrain edges.",
+        "cause": "Using non-tiled noise on a tiled target, or vice versa. Sampling across a periodic noise's period boundary also produces a seam.",
+        "fix": "If output must tile, use a tiling-aware noise (e.g., 4D-trick tileable noise) or author with explicit wrap coordinates. If not tiling, pick a domain that doesn't straddle the period."
+      },
+      {
+        "symptom": "Every generated variant looks identical.",
+        "cause": "Seed unchanged between calls, or same large sample domain across calls.",
+        "fix": "Vary seed explicitly. Also add a random world-space offset per seed (e.g., 10000+ units) so implementations with origin symmetry don't betray repetition."
+      },
+      {
+        "symptom": "Volumetric clouds look like fog — no distinct shapes.",
+        "cause": "No threshold applied, or threshold applied during accumulation instead of after.",
+        "fix": "After FBM, apply smoothstep(t-w, t+w, n). Start t=0.5, w=0.1 and adjust."
+      },
+      {
+        "symptom": "Ridged mountains look bubbly, not craggy.",
+        "cause": "Using vanilla FBM instead of ridged multifractal; increasing octaves will not fix this.",
+        "fix": "Switch to r = 1 - abs(perlin(p)) per octave, optionally squared. This is a different noise family, not a tuning change."
+      },
+      {
+        "symptom": "Heightmap writes produce crushed terrain (everything near zero or everything near maximum).",
+        "cause": "Forgetting to remap raw noise to [0,1] before writing; Unity's TerrainData expects normalized heights.",
+        "fix": "Explicit remap: n01 = saturate((n + 1) * 0.5) or empirical min/max normalization. See kb-terrain-system-primer for heightmap write contract."
+      }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Asked for 'natural terrain' without further qualification.",
+        "rule": "Use Perlin or Simplex FBM with octaves=4, lacunarity=2.0, gain=0.5, frequency chosen for 4-10 visible features across the target.",
+        "evidence": "Musgrave, Texturing and Modeling: A Procedural Approach, chapter on fractal terrain; canonical choice since Perlin 1985."
+      },
+      {
+        "scenario": "Asked for mountains, peaks, craggy terrain.",
+        "rule": "Use ridged multifractal (r = 1 - abs(perlin(p)), squared per octave). Do not try to get ridges from vanilla FBM.",
+        "evidence": "Musgrave 1995 Ridged Multifractal Terrains; reproduced in Texturing and Modeling chapter 16."
+      },
+      {
+        "scenario": "Asked for 3D volumetric clouds.",
+        "rule": "3D Simplex FBM + smoothstep threshold. Threshold is not optional — without it clouds look like uniform fog.",
+        "evidence": "Standard technique in real-time volumetric cloud literature (Schneider/Vos, Horizon Zero Dawn cloud system) and confirmed by inspection of open-source cloud shaders."
+      },
+      {
+        "scenario": "Asked for stone, pebble, cell, or scale texture.",
+        "rule": "Worley/Cellular, not Perlin. F1 for filled cells, F2-F1 for cell borders.",
+        "evidence": "Worley 1996 A Cellular Texture Basis Function."
+      },
+      {
+        "scenario": "User asks for multi-scale detail in any noise application.",
+        "rule": "Always use FBM (or a variant) with at least 3 octaves. Never single-octave noise for natural-looking output.",
+        "evidence": "Empirical — single-octave noise has only one spatial frequency and lacks the pink-noise-like spectrum characteristic of natural phenomena."
+      },
+      {
+        "scenario": "Exporting to Unity heightmap or alphamap.",
+        "rule": "Remap noise to [0,1] explicitly before the write. Don't rely on the underlying noise implementation to be normalized.",
+        "evidence": "TerrainData.SetHeights contract expects [0,1]; negative or >1 values are silently clamped. See kb-terrain-system-primer."
+      }
+    ],
+
+    "versionDeltas": []
+  },
+
+  "externalReferences": [
+    { "title": "Red Blob Games — Making Maps with Noise Functions", "url": "https://www.redblobgames.com/maps/terrain-from-noise/" },
+    { "title": "Red Blob Games — Noise Function Basics", "url": "https://www.redblobgames.com/articles/noise/introduction.html" },
+    { "title": "libnoise documentation — Perlin, Ridged, Billow, Voronoi modules", "url": "https://libnoise.sourceforge.net/docs/index.html" },
+    { "title": "Inigo Quilez — Domain warping", "url": "https://iquilezles.org/articles/warp/" },
+    { "title": "Inigo Quilez — FBM", "url": "https://iquilezles.org/articles/fbm/" },
+    { "title": "Unity Manual — TerrainData.SetHeights", "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHeights.html" }
+  ],
+
+  "sources": [
+    { "title": "Perlin — An Image Synthesizer (SIGGRAPH 1985)", "url": "https://dl.acm.org/doi/10.1145/325165.325247" },
+    { "title": "Perlin — Improving Noise (SIGGRAPH 2002)", "url": "https://mrl.cs.nyu.edu/~perlin/paper445.pdf" },
+    { "title": "Perlin — Simplex Noise Demystified (NYU technical note, 2001)", "url": "https://weber.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf" },
+    { "title": "Worley — A Cellular Texture Basis Function (SIGGRAPH 1996)", "url": "https://dl.acm.org/doi/10.1145/237170.237267" },
+    { "title": "Musgrave, Kolb, Mace — The Synthesis and Rendering of Eroded Fractal Terrains (SIGGRAPH 1989)", "url": "https://dl.acm.org/doi/10.1145/74333.74337" },
+    { "title": "Ebert, Musgrave, Peachey, Perlin, Worley — Texturing and Modeling: A Procedural Approach (3rd ed., public chapters on fractal noise and ridged multifractal)", "url": "https://www.sciencedirect.com/book/9781558608481/texturing-and-modeling" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from open academic references: Perlin 1985 and Perlin 2002 (NYU author-hosted PDFs, standard educational reference), Perlin's 2001 simplex-noise technical note (university-hosted), Worley 1996 (SIGGRAPH proceedings, facts only), Musgrave 1989 ridged multifractal and the public chapters of Ebert/Musgrave/Peachey/Perlin/Worley Texturing and Modeling. Mathematical facts (kernel forms, canonical lacunarity=2.0, gain=0.5, gamma=7 for water-style Tait variant, output range of Perlin roughly [-1,1]) are scientific facts and are not copyrightable. Recipes (frequency/octaves/lacunarity/gain tuples per target), prose explanations, decision rules, llmGuidance scenarios, commonPitfalls taxonomy, the world-scale anchoring framework, and the domain-warp recipe are original Mosaic editorial content synthesized from the cited sources plus independent experience tuning Mosaic's procgen/noise-generate and procgen/noise-3d-texture tools (evidence: _bmad-output/planning-artifacts/gap-analysis/procgen.md section 4D KB-procgen-02). No third-party library source (libnoise, FastNoiseLite, Unity Mathematics noise) is reproduced; those are cited as runtime lookup references only. Unity documentation is referenced, not copied."
+}

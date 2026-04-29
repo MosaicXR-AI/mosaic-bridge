@@ -1,0 +1,317 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-core-scriptable-objects",
+  "title": "ScriptableObjects: Asset-Backed Data, Serialization, Patterns",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "ScriptableObject is Unity's serializable data container that lives as an .asset file rather than a scene component. Use it for shared config (stats, settings, databases), decoupled event channels, and any data that should exist once and be referenced from many places. Mosaic's scriptableobject/* tools create, read, update, and list these assets. The #1 trap: constructing with `new T()` instead of ScriptableObject.CreateInstance<T>() — the object is not a proper UnityEngine.Object, cannot be saved, and will throw from any API that assumes main-thread editor context. The #2 trap: mutating fields at runtime and expecting them to reset on play-mode exit — they persist in the editor and silently corrupt authored data.",
+
+  "mosaicTools": [
+    "scriptableobject/create",
+    "scriptableobject/read",
+    "scriptableobject/update",
+    "scriptableobject/list"
+  ],
+
+  "relatedKb": [
+    "kb-core-asset-database",
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_creating_a_scriptableobject_instance":
+      "Always ScriptableObject.CreateInstance<T>(). Never `new T()`. Constructors on UnityEngine.Object subclasses bypass Unity's native object registration and every subsequent AssetDatabase / SerializedObject call will fail or throw 'must be called from main thread'.",
+    "when_persisting_a_new_scriptableobject_asset":
+      "CreateInstance<T>() → AssetDatabase.CreateAsset(so, \"Assets/Path/Foo.asset\") → AssetDatabase.SaveAssets(). Parent directory must exist. Extension must be .asset for Unity-native storage.",
+    "when_mutating_fields_on_an_existing_scriptableobject":
+      "Set fields → EditorUtility.SetDirty(so) → AssetDatabase.SaveAssets(). Skipping SetDirty means Unity does not know the asset changed; mutations evaporate on domain reload or editor restart. For scripted bulk edits, prefer SerializedObject + ApplyModifiedProperties() which handles dirty-marking and multi-object undo automatically.",
+    "when_declaring_a_field_that_should_serialize":
+      "Use `public` OR `[SerializeField] private`. Auto-properties (`public int X { get; set; }`) do NOT serialize — Unity needs a concrete backing field. Static, const, and readonly fields never serialize. Dictionary<K,V> does not serialize; use parallel List<K>/List<V> or a custom serializable wrapper.",
+    "when_storing_a_polymorphic_list_inside_a_scriptableobject":
+      "Use `[SerializeReference] public List<IBehavior> behaviors`. Without SerializeReference the list is treated as a single concrete type and all subtypes are coerced or dropped. Available 2019.3+ and stable in 2021.3+.",
+    "when_initializing_scriptableobject_state":
+      "Put init in OnEnable, not the constructor. The constructor is NOT called on deserialize — Unity re-hydrates the object from YAML and invokes OnEnable. Constructor-only init leaves fields in whatever the serialized form provides, which on first CreateInstance is the C# default.",
+    "when_an_so_should_reset_between_play_sessions":
+      "ScriptableObjects DO NOT reset when exiting play mode. Runtime mutations to an asset-backed SO persist in the editor until restart or manual revert. For per-session state, copy to a runtime instance (Instantiate(so)) or use a regular C# class. Never store mutable gameplay state directly on an authored SO.",
+    "when_picking_between_scriptableobject_and_monobehaviour":
+      "SO for shared data with no scene lifetime (config, database rows, event channels, shared static-ish settings). MonoBehaviour for anything needing Update, scene transform, or per-instance presence. If you find yourself using FindObjectOfType to locate a singleton, an SO reference is almost always cleaner.",
+    "when_building_an_event_system":
+      "Follow the Ryan Hipple pattern: GameEvent SO with a Raise() method and a List<GameEventListener> of subscribed MonoBehaviours. Listeners register in OnEnable, unregister in OnDisable. Decouples emitters from receivers with zero scene coupling.",
+    "when_referencing_an_so_from_many_places_with_memory_concerns":
+      "Addressables + AssetReference. A bare serialized field loads the referenced SO (and its transitive references) at scene load; a project with hundreds of SO refs in one scene will hitch. AssetReference<T> defers load to LoadAssetAsync, released via ReleaseAsset.",
+    "when_deleting_a_scriptableobject":
+      "AssetDatabase.DeleteAsset(path). Every serialized reference to that asset becomes (Missing) — Unity does NOT cascade-clean. Before deletion, FindAssets or AssetDatabase.GetDependencies to locate referrers, or use the Project window's Find References In Scene."
+  },
+
+  "full": {
+    "coreModel": {
+      "whatItIs": "ScriptableObject is a UnityEngine.Object subclass designed for data assets. Instances live as .asset files (single-object) or as sub-assets nested inside another .asset via AssetDatabase.AddObjectToAsset.",
+      "contrastWithMonoBehaviour": "MonoBehaviour instances are bound to a GameObject and follow scene lifetime (Awake/OnEnable/Start/Update/OnDisable/OnDestroy). ScriptableObject instances have no scene binding, no Update, and their lifetime tracks asset load/unload plus editor domain reloads.",
+      "contrastWithPlainCSharpClass": "A regular [Serializable] class embeds in a container (MonoBehaviour or SO) and is copied wherever it's referenced. A ScriptableObject is referenced by GUID — every referrer points to the same instance, so authoring once propagates everywhere.",
+      "nativePeer": "Like every UnityEngine.Object, a ScriptableObject has a native (C++) peer. `new MyScriptableObject()` creates only the managed shell; the native peer is missing, which is why half the API throws NullReferenceException or 'Object has been destroyed'."
+    },
+
+    "creationPatterns": [
+      {
+        "pattern": "Editor authoring via menu",
+        "api": "[CreateAssetMenu(fileName = \"NewConfig\", menuName = \"Mosaic/Config\")] class MyConfig : ScriptableObject { ... }",
+        "notes": "Adds an entry to Assets → Create. User-initiated. No scripting required on the consumer side."
+      },
+      {
+        "pattern": "Scripted creation",
+        "api": "var so = ScriptableObject.CreateInstance<MyConfig>(); AssetDatabase.CreateAsset(so, \"Assets/Configs/Foo.asset\"); AssetDatabase.SaveAssets();",
+        "notes": "The Mosaic tool path. scriptableobject/create does exactly this and validates the type exists and compiles cleanly first."
+      },
+      {
+        "pattern": "Runtime instance (non-asset)",
+        "api": "var so = ScriptableObject.CreateInstance<MyConfig>();",
+        "notes": "No CreateAsset call. Useful for temporary/runtime SOs — e.g. a freshly cloned stat sheet for an enemy. Garbage-collected when no Unity reference retains it; Destroy(so) to release explicitly."
+      },
+      {
+        "pattern": "Sub-asset nesting",
+        "api": "AssetDatabase.AddObjectToAsset(child, parentAsset); AssetDatabase.SaveAssets();",
+        "notes": "Multiple SOs inside one .asset file. Used by animator controllers, timelines, and complex graphs. Children appear indented under the parent in the Project window."
+      }
+    ],
+
+    "serializationRules": {
+      "whatSerializes": [
+        "public fields of supported types",
+        "[SerializeField] private / protected / internal fields",
+        "primitives (int, float, bool, long, double, string, enum)",
+        "UnityEngine.Object references (GameObject, Material, Texture, other ScriptableObjects)",
+        "Vector2/3/4, Quaternion, Color, Rect, Bounds, Matrix4x4 and other struct types Unity recognizes",
+        "arrays and List<T> of the above",
+        "user [Serializable] classes/structs (by value, not reference)",
+        "polymorphic fields marked [SerializeReference] (2019.3+)"
+      ],
+      "whatDoesNotSerialize": [
+        "auto-properties without a backing field",
+        "static fields",
+        "const fields",
+        "readonly fields",
+        "Dictionary<K,V>, HashSet<T>, generic types without [Serializable]",
+        "interfaces and abstract types without [SerializeReference]",
+        "delegates, events, Action/Func<>",
+        "fields of type object or dynamic"
+      ],
+      "referenceVsValueSemantics": "A field of type `OtherScriptableObject` serializes as a GUID reference — every referrer sees the same instance. A field of type `[Serializable] class MyData` serializes inline — every referrer gets its own copy. This is the most common point of confusion when converting plain classes to SOs.",
+      "polymorphism": "[SerializeReference] stores the concrete type name in the YAML and rehydrates the correct subclass. Enables `List<IBehavior>` with mixed subtypes inside one SO. Without it, the serializer picks the declared type and silently drops subclass fields.",
+      "supportedContainerDepth": "Unity serializes up to 7 levels of nested user types by default. Deeper graphs truncate. Break deep hierarchies with ScriptableObject references (each SO is its own serialization root)."
+    },
+
+    "lifecycle": {
+      "onEnable": "Called when the object is loaded — after deserialization. Fires on asset load, first reference, domain reload, and play-mode enter/exit in the editor. Use for init that depends on serialized fields being populated.",
+      "onDisable": "Called on domain reload start, asset unload, and editor shutdown. Symmetric partner to OnEnable — unregister listeners, flush caches.",
+      "onDestroy": "Called when the SO is actually destroyed (DestroyImmediate or Destroy). NOT called on simple domain reload.",
+      "onValidate": "Editor-only. Fires when a field changes in the Inspector or the script recompiles. Use for clamping values or regenerating derived data from authored inputs. Do NOT call AssetDatabase APIs from OnValidate — it runs during import and may deadlock.",
+      "constructorNote": "The managed constructor runs only when CreateInstance<T>() is called. On domain reload or scene open, Unity reconstructs from YAML without invoking the constructor. Treat the constructor as off-limits for init that must run every load; use OnEnable instead.",
+      "editorDomainReload": "Entering play mode reloads the C# domain. Every ScriptableObject is unloaded and reloaded — OnDisable fires on all, then OnEnable. Any non-serialized field is reset to default. This is why caching runtime state in a non-serialized field of an SO is unreliable across play-mode transitions unless you accept the reset."
+    },
+
+    "commonPatterns": [
+      {
+        "name": "Config / Stats",
+        "shape": "class EnemyStats : ScriptableObject { public float maxHP; public float moveSpeed; public DamageCurve damageCurve; }",
+        "use": "One .asset per archetype. MonoBehaviours take a serialized EnemyStats reference. Designers tune stats without touching prefabs or code."
+      },
+      {
+        "name": "Event channel",
+        "shape": "class GameEvent : ScriptableObject { List<GameEventListener> listeners; public void Raise() { for (int i = listeners.Count - 1; i >= 0; i--) listeners[i].OnEventRaised(); } public void Register(GameEventListener l); public void Unregister(GameEventListener l); }",
+        "use": "Emitter calls event.Raise(). Listeners register in OnEnable, unregister in OnDisable. Zero direct coupling between sender and receiver. Popularized by Ryan Hipple's Unite 2017 talk."
+      },
+      {
+        "name": "Variable reference",
+        "shape": "class FloatVariable : ScriptableObject { public float value; } plus a FloatReference wrapper choosing between local constant and SO reference.",
+        "use": "Shared, observable values (player health, score, boss phase). Any MonoBehaviour reads from or writes to the same SO."
+      },
+      {
+        "name": "Runtime set",
+        "shape": "class RuntimeSet<T> : ScriptableObject { public List<T> Items; public void Add(T t); public void Remove(T t); }",
+        "use": "Entities register themselves on OnEnable and deregister on OnDisable. Replaces FindObjectsOfType — cheap, no scene traversal, decoupled."
+      },
+      {
+        "name": "State machine config",
+        "shape": "class StateMachineDefinition : ScriptableObject { [SerializeReference] public List<IState> states; public List<Transition> transitions; }",
+        "use": "Author AI or gameplay state machines as assets. [SerializeReference] allows mixed concrete state types in the same list."
+      }
+    ],
+
+    "runtimeModificationWarning": {
+      "problem": "A ScriptableObject asset is a single shared instance. If code at runtime writes to its fields — even in a built player, and especially in the editor during play mode — those writes mutate the authoritative asset. In the editor, the changes persist after exiting play mode unless the user reverts via version control.",
+      "symptoms": [
+        "Player health is 0 in the Inspector after a play-test; no code 'reset' it.",
+        "Enemy damage values drift upward across play-test sessions.",
+        "Designer opens the project the next morning and finds tuning values unrecognizable."
+      ],
+      "solutions": [
+        "Treat authored SOs as read-only at runtime. Copy to a runtime instance via Instantiate(so) to get a mutable clone.",
+        "For per-entity state, use a plain C# class referenced alongside the SO config, not fields on the SO itself.",
+        "If mutation is intentional (save data), pair every write with EditorUtility.SetDirty + AssetDatabase.SaveAssets AND reset-on-play logic in OnEnable."
+      ],
+      "inBuiltPlayer": "In a player build, mutations persist in memory for the session but are NOT written to disk — AssetDatabase is editor-only. Builds do not suffer the editor-persistence bug, but any code that assumes 'the SO reset' is still wrong."
+    },
+
+    "serializedObjectAndMultiEdit": {
+      "serializedObject": "SerializedObject wraps a UnityEngine.Object for Inspector/scripted editing. SerializedProperty accesses fields by name; ApplyModifiedProperties commits with undo support and dirty-marking. Preferred over direct field writes for editor tooling.",
+      "multiObjectEditing": "new SerializedObject(new Object[] { so1, so2, so3 }) wraps multiple SOs at once. Writes apply to all; mixed values show as '—'. Out-of-box multi-select editing — no custom editor code required for standard fields.",
+      "undoIntegration": "Undo.RecordObject(so, \"Change Foo\") before mutation registers a single undo step. SerializedProperty writes do this automatically via ApplyModifiedProperties.",
+      "missingOnRuntime": "SerializedObject is UnityEditor-only. Do not use in runtime assemblies; guard with #if UNITY_EDITOR or place in an Editor/ folder."
+    },
+
+    "addressablesIntegration": {
+      "problem": "Dragging an SO reference into a scene field causes Unity to load the SO (and everything it transitively references) when the scene loads. A handful of refs is fine; a large content catalog (hundreds of item definitions, etc.) bloats scene-load time and memory.",
+      "solution": "Declare AssetReference<T> instead. The reference serializes as a GUID + label pair with no eager load. At runtime, AssetReference.LoadAssetAsync<T>() fetches via Addressables and returns an AsyncOperationHandle. Release with AssetReference.ReleaseAsset() when done.",
+      "buildRequirement": "Like all Addressables usage, requires a Build → New Build → Default Build Script pass before shipping. See kb-core-asset-database § addressables.",
+      "whenItMatters": "Config catalogs with >100 entries, or any SO whose transitive closure drags in textures/audio/prefabs. For a dozen small SOs, plain references are simpler and fine."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Need shared config that multiple MonoBehaviours read at runtime",
+        "rule": "ScriptableObject. One .asset, referenced from every consumer via serialized field. Beats static classes (no serialization, no Inspector) and singletons (scene coupling).",
+        "evidence": "Unity Manual — ScriptableObject overview; Ryan Hipple Unite 2017 talk 'Game Architecture with Scriptable Objects'."
+      },
+      {
+        "scenario": "Need per-entity mutable state (current HP, current target, cooldowns)",
+        "rule": "Plain C# class on the MonoBehaviour OR a runtime-Instantiated clone of a template SO. NOT a direct authored SO — runtime writes corrupt the authored asset.",
+        "evidence": "Observed bug: health drained to 0 in asset after editor play-mode exit, fixed by switching to runtime clone."
+      },
+      {
+        "scenario": "Need an event bus that doesn't depend on scene object wiring",
+        "rule": "GameEvent ScriptableObject with Raise() + listener list. Listeners register in OnEnable, unregister in OnDisable. Scales to any number of emitters/receivers.",
+        "evidence": "Ryan Hipple event-channel pattern, widely validated in community projects."
+      },
+      {
+        "scenario": "Need a list with multiple subtypes (e.g. different AI behavior nodes) inside one SO",
+        "rule": "[SerializeReference] public List<IBehavior> behaviors. Requires 2019.3+. Without SerializeReference the list flattens to the declared type.",
+        "evidence": "SerializeReference ScriptReference — 'Use this attribute to serialize a reference to a managed object by type.'"
+      },
+      {
+        "scenario": "Need to edit 50 item SOs at once to bump a field",
+        "rule": "Select all in Project window → Inspector shows multi-edit view automatically (SerializedObject handles it). For scripted bulk edit, iterate SOs, wrap in StartAssetEditing/StopAssetEditing, SetDirty each, SaveAssets once.",
+        "evidence": "SerializedObject ScriptReference — multi-object support; kb-core-asset-database § batchOperations."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Calling any AssetDatabase or SerializedObject API on a newly-created SO throws NullReferenceException or 'must be called from the main thread'.",
+        "cause": "SO was created with `new MyScriptableObject()`, so the native peer was never registered.",
+        "fix": "Replace with ScriptableObject.CreateInstance<MyScriptableObject>()."
+      },
+      {
+        "symptom": "SetDirty was called but changes still don't survive domain reload.",
+        "cause": "SaveAssets was not called. SetDirty marks the object dirty in memory; SaveAssets flushes dirty objects to disk.",
+        "fix": "EditorUtility.SetDirty(so); AssetDatabase.SaveAssets(); // both, in order."
+      },
+      {
+        "symptom": "Private field shows in Inspector during authoring but reads as default in built player.",
+        "cause": "Field is private and lacks [SerializeField] — Inspector may show it in debug mode but the serializer skips it.",
+        "fix": "Add [SerializeField] or make the field public."
+      },
+      {
+        "symptom": "Field of type `public Dictionary<string, int> table` is always empty after reload.",
+        "cause": "Unity does not serialize Dictionary<K,V>.",
+        "fix": "Use two parallel List<K>/List<V> fields and rebuild the dictionary in OnEnable, or use a ISerializationCallbackReceiver implementation."
+      },
+      {
+        "symptom": "Field of type `public int Value { get; set; }` shows no data in the asset YAML and reads 0.",
+        "cause": "Auto-property has no serializable backing field.",
+        "fix": "Convert to `[SerializeField] private int _value; public int Value => _value;` or make it a bare public field."
+      },
+      {
+        "symptom": "List<IStrategy> in an SO loses all entries after save/reload.",
+        "cause": "Interface type without [SerializeReference] — the serializer cannot pick a concrete type.",
+        "fix": "Mark the field [SerializeReference]. Ensure every concrete type is [Serializable]. Requires 2019.3+."
+      },
+      {
+        "symptom": "Constructor logs 'MyScriptableObject created' once, then never fires on subsequent loads, but OnEnable does.",
+        "cause": "This is expected — deserialization reconstructs from YAML and invokes OnEnable, not the constructor.",
+        "fix": "Move init from the constructor to OnEnable."
+      },
+      {
+        "symptom": "Play-test drains player health SO to 0; next session starts at 0.",
+        "cause": "Runtime code mutated the authored SO directly; editor persistence is retained after play-mode exit.",
+        "fix": "Runtime state belongs on a per-entity clone (Instantiate(so)) or on a plain C# class. Never mutate authored SOs from gameplay code."
+      },
+      {
+        "symptom": "Deleting an SO leaves prefabs with (Missing) references.",
+        "cause": "AssetDatabase.DeleteAsset does not walk dependents.",
+        "fix": "Before deletion, locate referrers with AssetDatabase.FindAssets and manually null out or reassign. Use MoveAssetToTrash for a reversible first step."
+      },
+      {
+        "symptom": "Scene-load time grows linearly as more items are added to a catalog SO referenced in the scene.",
+        "cause": "Direct SO references load transitively at scene load.",
+        "fix": "Switch catalog fields to AssetReference<T> and load on demand via Addressables."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "[SerializeReference] attribute added. Enables polymorphic fields and mixed-subtype lists inside ScriptableObjects.",
+        "breaking": false
+      },
+      {
+        "version": "2020.1",
+        "change": "Addressables 1.16+ reached GA. AssetReference<T> becomes the recommended way to reference large or optional ScriptableObject catalogs.",
+        "breaking": false
+      },
+      {
+        "version": "2021.3 LTS",
+        "change": "ScriptableObject, SerializedObject, and CreateAssetMenu semantics stable. Lifecycle callbacks (OnEnable/OnDisable/OnValidate) unchanged through 6000.4.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "Improved domain-reload configurability (Enter Play Mode Settings). Disabling domain reload skips OnDisable/OnEnable cycles on play-mode enter — code that relied on OnEnable for per-session reset must be revisited.",
+        "breaking": false,
+        "migrationNote": "If your project uses 'Disable Domain Reload' under Project Settings → Editor → Enter Play Mode Options, verify OnEnable-based init still runs when you expect it."
+      },
+      {
+        "version": "6000.0",
+        "change": "No behavioral changes to ScriptableObject API. Serialization, lifecycle, and editor tooling unchanged from 2022.3 LTS.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — ScriptableObject",                               "url": "https://docs.unity3d.com/Manual/class-ScriptableObject.html" },
+    { "title": "Unity Manual — Script Serialization",                           "url": "https://docs.unity3d.com/Manual/script-Serialization.html" },
+    { "title": "Unity Manual — Custom Serialization",                           "url": "https://docs.unity3d.com/Manual/script-Serialization-Custom.html" },
+    { "title": "Unity Manual — Enter Play Mode Options",                        "url": "https://docs.unity3d.com/Manual/ConfigurableEnterPlayMode.html" },
+    { "title": "ScriptReference — ScriptableObject",                            "url": "https://docs.unity3d.com/ScriptReference/ScriptableObject.html" },
+    { "title": "ScriptReference — ScriptableObject.CreateInstance",             "url": "https://docs.unity3d.com/ScriptReference/ScriptableObject.CreateInstance.html" },
+    { "title": "ScriptReference — CreateAssetMenuAttribute",                    "url": "https://docs.unity3d.com/ScriptReference/CreateAssetMenuAttribute.html" },
+    { "title": "ScriptReference — SerializeField",                              "url": "https://docs.unity3d.com/ScriptReference/SerializeField.html" },
+    { "title": "ScriptReference — SerializeReference",                          "url": "https://docs.unity3d.com/ScriptReference/SerializeReference.html" },
+    { "title": "ScriptReference — SerializedObject",                            "url": "https://docs.unity3d.com/ScriptReference/SerializedObject.html" },
+    { "title": "ScriptReference — SerializedProperty",                          "url": "https://docs.unity3d.com/ScriptReference/SerializedProperty.html" },
+    { "title": "ScriptReference — EditorUtility.SetDirty",                      "url": "https://docs.unity3d.com/ScriptReference/EditorUtility.SetDirty.html" },
+    { "title": "ScriptReference — AssetDatabase.CreateAsset",                   "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.CreateAsset.html" },
+    { "title": "ScriptReference — AssetDatabase.AddObjectToAsset",              "url": "https://docs.unity3d.com/ScriptReference/AssetDatabase.AddObjectToAsset.html" },
+    { "title": "ScriptReference — ISerializationCallbackReceiver",              "url": "https://docs.unity3d.com/ScriptReference/ISerializationCallbackReceiver.html" },
+    { "title": "Addressables — AssetReference",                                 "url": "https://docs.unity3d.com/Packages/com.unity.addressables@1.22/manual/AssetReferences.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — ScriptableObject",                               "url": "https://docs.unity3d.com/Manual/class-ScriptableObject.html" },
+    { "title": "Unity Manual — Script Serialization",                           "url": "https://docs.unity3d.com/Manual/script-Serialization.html" },
+    { "title": "ScriptReference — ScriptableObject",                            "url": "https://docs.unity3d.com/ScriptReference/ScriptableObject.html" },
+    { "title": "ScriptReference — CreateAssetMenuAttribute",                    "url": "https://docs.unity3d.com/ScriptReference/CreateAssetMenuAttribute.html" },
+    { "title": "ScriptReference — SerializedObject",                            "url": "https://docs.unity3d.com/ScriptReference/SerializedObject.html" },
+    { "title": "ScriptReference — SerializeReference",                          "url": "https://docs.unity3d.com/ScriptReference/SerializeReference.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, the Unity Manual (ScriptableObject, Script Serialization, Custom Serialization, Enter Play Mode Options), and ScriptReference pages covering ScriptableObject, SerializedObject, SerializedProperty, SerializeField, SerializeReference, CreateAssetMenuAttribute, EditorUtility.SetDirty, AssetDatabase.CreateAsset/AddObjectToAsset, and ISerializationCallbackReceiver. API signatures, serialization rules, lifecycle method names, and version-introduction facts are not copyrightable. Explanatory prose, pattern recommendations (config, event channel, variable reference, runtime set, state machine config), decision rules, llmGuidance scenarios, and commonPitfalls are original Mosaic editorial content informed by community patterns (Ryan Hipple's Unite 2017 'Game Architecture with Scriptable Objects' talk, cited as prior art) and by observed LLM tool-call failure modes (using `new` instead of CreateInstance, missing SetDirty/SaveAssets pair, runtime mutation persistence bug, Dictionary/auto-property serialization assumptions). No Unity documentation text is reproduced verbatim; all manual and script-reference pages are cited as externalReferences for the LLM to fetch when it needs source text."
+}

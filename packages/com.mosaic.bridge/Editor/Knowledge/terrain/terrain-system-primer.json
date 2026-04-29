@@ -1,0 +1,307 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-terrain-system-primer",
+  "title": "Unity Terrain System Primer",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "terrain",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Conceptual model for Unity's Terrain system: a Terrain MonoBehaviour renders a TerrainData ScriptableObject asset that stores a regular 2D heightmap grid (not a freeform mesh), plus alphamaps, detail layers, tree instances, and holes. Heights are normalized floats [0,1] scaled by terrainData.size.y. The dominant LLM failure is calling per-point height APIs in a loop — the heightmap is a grid and must be edited in batches via SetHeights. This entry grounds every terrain/* and procgen/terrain-* tool in the data model they manipulate.",
+
+  "mosaicTools": [
+    "terrain/create",
+    "terrain/height",
+    "terrain/paint-texture",
+    "terrain/place-trees",
+    "terrain/details",
+    "terrain/generate-mesh",
+    "terrain/holes",
+    "terrain/neighbors",
+    "terrain/layer-create",
+    "procgen/terrain-erode",
+    "procgen/terrain-hydraulic",
+    "procgen/terrain-noise",
+    "procgen/terrain-stamp",
+    "mesh/from-heightmap"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-pipeline-detection",
+    "kb-rendering-shader-properties"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_sculpt_a_ridge_mountain_or_multi_point_feature":
+      "Never loop per-point height APIs. Fetch a region with GetHeights(xBase, yBase, w, h), mutate the returned float[,] in memory using a brush/falloff pattern, then write back with a single SetHeights call. For a ridge of N points, N atomic calls is always wrong — one batched call is always right.",
+    "when_doing_multi_stage_sculpting_in_one_session":
+      "Use SetHeightsDelayLOD for each intermediate pass to skip collider/LOD rebuild, then call SyncHeightmap once at the end. A single SetHeights pass does not need this — delay only pays off across 2+ passes.",
+    "when_converting_world_position_to_heightmap_index":
+      "Index = floor((worldXZ - terrain.transform.position.xz) / terrainData.size.xz * (terrainData.heightmapResolution - 1)). Heightmap resolution is 2^n + 1 (513, 1025, 2049); the extra +1 is the shared edge with neighbor terrains.",
+    "when_reading_a_height_value_back_as_meters":
+      "GetHeight(x, z) already returns world meters. Raw heightmap samples via GetHeights are normalized [0,1]; multiply by terrainData.size.y to get meters.",
+    "when_painting_textures_via_alphamap":
+      "Weights per (x, y) point across all layers MUST sum to 1.0. Use SetAlphamaps(xBase, yBase, float[,,]) where the third dim is layer count. Validate sums before writing or textures blend as if diluted.",
+    "when_placing_trees":
+      "TreeInstance.position is NORMALIZED 0..1 across the terrain extents, not world meters. Multiply normalized by terrainData.size to preview world placement. prototypeIndex must already exist in terrainData.treePrototypes.",
+    "when_creating_a_new_terrain_in_URP_or_HDRP":
+      "TerrainLayer assets are shader-pipeline-specific at render time. In URP the terrain material must use 'Universal Render Pipeline/Terrain/Lit'; in HDRP 'HDRP/TerrainLit'; Built-in 'Nature/Terrain/Standard'. Detect pipeline via kb-rendering-pipeline-detection before creating layers.",
+    "when_terrain_renders_pink_or_magenta":
+      "Pink = shader missing for the active pipeline. The TerrainLayer or terrain material is referencing the wrong pipeline's terrain shader. Cross-ref kb-rendering-pipeline-detection + kb-rendering-shader-properties.",
+    "when_writes_do_not_appear_visually":
+      "Check for dangling SetHeightsDelayLOD without a final SyncHeightmap. Also verify you wrote to terrainData (shared asset) not a transient copy — Terrain.terrainData is the live reference.",
+    "when_creating_holes_caves_wells":
+      "SetHoles(xBase, yBase, bool[,]) on Unity 2019.3+. holesResolution is independent of heightmapResolution. A 'false' cell removes rendering AND collision at that cell.",
+    "when_dealing_with_multi_tile_terrains":
+      "Adjacent Terrain instances must share edge heights and call SetNeighbors(left, top, right, bottom) or enable Terrain.allowAutoConnect, otherwise LOD seams show. Heightmap resolution's 2^n+1 sizing exists specifically so edges align."
+  },
+
+  "full": {
+    "anatomy": {
+      "terrainComponent": "UnityEngine.Terrain — MonoBehaviour on a scene GameObject. Owns rendering, collision, and the reference to a TerrainData asset via the terrainData property. Multiple Terrain components can (but rarely should) reference the same TerrainData; edits propagate to every referencing instance.",
+      "terrainDataAsset": "UnityEngine.TerrainData — ScriptableObject asset on disk. Holds the heightmap, alphamaps, detail layers, tree instances, tree prototypes, terrain layers, holes, and size. This is the authoritative data; the Terrain component is just a renderer/collider wrapper.",
+      "companionComponents": "TerrainCollider reads the same TerrainData for physics. Tree colliders are spawned per TreeInstance when TreePrototype prefabs include collider components."
+    },
+
+    "heightmapModel": {
+      "storage": "A 2D grid of floats, dimensions heightmapResolution x heightmapResolution. Stored internally as an R16 or R32 heightmap texture (heightmapTexture).",
+      "normalization": "Each cell is a float in [0, 1]. World-space height = normalizedValue * terrainData.size.y. Negative heights are not representable without offsetting the terrain GameObject's Y.",
+      "resolution": "Always 2^n + 1 (65, 129, 257, 513, 1025, 2049, 4097). The +1 exists so edges can be shared bit-exact with neighbor terrains. Higher resolution = finer sculpting but larger GPU heightmap texture and collider rebuild cost.",
+      "worldGrid": "Terrain occupies the XZ rectangle [transform.position, transform.position + terrainData.size]. Heightmap index (i, j) maps to world XZ = transform.position + (i, j) / (resolution - 1) * size.xz."
+    },
+
+    "heightmapApis": {
+      "readSingle":   { "api": "TerrainData.GetHeight(x, z)",                          "returns": "float (world meters)",    "useFor": "Single-point query, read-only." },
+      "readBatch":    { "api": "TerrainData.GetHeights(xBase, yBase, width, height)", "returns": "float[,] normalized",     "useFor": "Reading a region for analysis or to edit in place." },
+      "writeBatch":   { "api": "TerrainData.SetHeights(xBase, yBase, heights)",       "returns": "void",                    "useFor": "The canonical sculpt path. Accepts a float[,] of normalized heights. Rebuilds LOD and collider." },
+      "writeDelayed": { "api": "TerrainData.SetHeightsDelayLOD(xBase, yBase, heights)", "returns": "void",                  "useFor": "Multi-pass sculpting. Skips LOD/collider rebuild. Must be followed by SyncHeightmap." },
+      "syncGpu":      { "api": "TerrainData.SyncHeightmap()",                          "returns": "void",                    "useFor": "Commits pending delayed writes to GPU and triggers a single LOD/collider rebuild." },
+      "heightmapTexture": { "api": "TerrainData.heightmapTexture",                     "returns": "RenderTexture",           "useFor": "Direct GPU access for compute-shader sculpting. Advanced — most code should stay on the CPU float[,] path." }
+    },
+
+    "coordinateSystems": {
+      "heightmapIndex":    "Integer (i, j) in [0, heightmapResolution - 1]. Row-major: heights[y, x].",
+      "worldMeters":       "float (x, z) in terrain.transform.position + [0, terrainData.size.xz].",
+      "normalizedUV":      "(u, v) in [0, 1], useful for alphamap, detail, and tree APIs.",
+      "indexToWorld":      "world.xz = terrain.transform.position.xz + (i, j) / (heightmapResolution - 1) * terrainData.size.xz",
+      "worldToIndex":      "(i, j) = round((world.xz - terrain.transform.position.xz) / terrainData.size.xz * (heightmapResolution - 1))",
+      "heightMeters":      "world.y = terrain.transform.position.y + heightmapValue * terrainData.size.y"
+    },
+
+    "alphamapAndLayers": {
+      "alphamapResolution": "TerrainData.alphamapResolution — independent of heightmapResolution, typically equal or lower. Governs splat texture fidelity.",
+      "alphamapLayers":     "TerrainData.alphamapLayers — number of active TerrainLayer assets. SetAlphamaps passes a float[,,] of shape [height, width, alphamapLayers].",
+      "weightSumInvariant": "At every (x, y) cell, sum of weights across layers must equal 1.0. Unity does not automatically renormalize; incorrect sums cause dim or over-bright blends.",
+      "terrainLayerAsset": {
+        "type": "UnityEngine.TerrainLayer (asset)",
+        "fields": [
+          "diffuseTexture — albedo",
+          "normalMapTexture — tangent-space normals",
+          "maskMapTexture — metallic / AO / height / smoothness pack (URP/HDRP)",
+          "tileSize — world-space tiling in meters",
+          "tileOffset — UV offset",
+          "metallic, smoothness — PBR scalars for Built-in fallback"
+        ],
+        "assignment": "terrainData.terrainLayers = new[] { layerA, layerB, ... } — order is index. Changing order after painting remaps existing splatmaps visually."
+      }
+    },
+
+    "detailLayers": {
+      "detailResolution": "TerrainData.detailResolution — grid dimension for detail (grass/pebble) density maps. Independent of heightmap.",
+      "detailResolutionPerPatch": "Patch granularity for GPU batching; not the density map resolution.",
+      "setApi": "TerrainData.SetDetailLayer(xBase, yBase, layerIndex, int[,] densities) — density per cell, 0..detailPrototype.maxDensity.",
+      "detailPrototype": "DetailPrototype struct: prototype (Texture2D billboard or prefab mesh), minWidth, maxWidth, minHeight, maxHeight, noiseSeed, renderMode (GrassBillboard / Grass / VertexLit)."
+    },
+
+    "treeInstances": {
+      "storage": "TerrainData.treeInstances — array of TreeInstance structs. Editing requires writing back the whole array.",
+      "instanceFields": [
+        "position : Vector3 normalized 0..1 across terrainData.size",
+        "prototypeIndex : int — indexes into terrainData.treePrototypes",
+        "widthScale, heightScale : float",
+        "rotation : float radians",
+        "color, lightmapColor : Color32"
+      ],
+      "prototype": "TreePrototype struct: prefab (GameObject), bendFactor. Prefab may carry LODGroup and colliders.",
+      "commonMistake": "Treating position as world meters. It is normalized. worldPos = terrain.transform.position + terrainData.size * instance.position."
+    },
+
+    "holes": {
+      "availability": "Unity 2019.3+. Not supported earlier.",
+      "storage": "Boolean grid at TerrainData.holesResolution — independent of heightmap.",
+      "api": "TerrainData.SetHoles(xBase, yBase, bool[,])",
+      "semantics": "false = hole (rendering AND collision removed at that cell). true = solid. Use for caves, wells, doorways into underground volumes."
+    },
+
+    "neighborsAndStitching": {
+      "rationale": "Unity renders terrains as LOD-patched heightmap tiles. Without neighbor links, adjacent terrains crack at LOD boundaries.",
+      "manualApi": "Terrain.SetNeighbors(leftNeighbor, topNeighbor, rightNeighbor, bottomNeighbor).",
+      "autoConnect": "Terrain.allowAutoConnect = true causes Unity to match neighbors by bounding box at runtime. Edges must carry identical heights (achievable because heightmapResolution is 2^n+1).",
+      "buildOrder": "Create all terrains first, then either set allowAutoConnect on each or call SetNeighbors once the full grid exists."
+    },
+
+    "paintingWorkflow": {
+      "canonicalHeightLoop": [
+        "1. Determine brush rect in heightmap indices: (xBase, yBase, w, h).",
+        "2. float[,] heights = terrainData.GetHeights(xBase, yBase, w, h).",
+        "3. For each (ix, iy) in heights: compute falloff (e.g., 1 - distance/radius) and apply delta: heights[iy, ix] = Mathf.Clamp01(heights[iy, ix] + strength * falloff).",
+        "4. terrainData.SetHeights(xBase, yBase, heights) — one call."
+      ],
+      "multiStepPattern": [
+        "Use SetHeightsDelayLOD for each pass (e.g., base noise, erosion, ridge stamp).",
+        "After the final pass, call SyncHeightmap once to rebuild LOD + collider + GPU upload."
+      ],
+      "stampVsStroke": {
+        "stamp": "Single application of a brush at one center. One GetHeights/SetHeights pair.",
+        "stroke": "Multiple stamps along a path. Either accumulate into a single float[,] that covers the stroke's bounding rect (preferred) or issue per-stamp SetHeightsDelayLOD + one SyncHeightmap."
+      }
+    },
+
+    "performance": {
+      "heightmapWriteCost": "SetHeights rebuilds: (a) CPU heightmap shadow copy for collider, (b) GPU heightmap texture upload, (c) LOD quadtree. Cost scales linearly with rect size.",
+      "colliderCost": "TerrainCollider rebuild dominates for large rects. Linear in heightmap cells touched, not in overall terrain size.",
+      "batchingRule": "One SetHeights of N cells is O(N) total work. N atomic SetHeight calls is O(N * fixedOverhead) where fixedOverhead includes a full collider rebuild each call. Empirically 10-100x slower.",
+      "delayLodUsage": "SetHeightsDelayLOD per pass + one SyncHeightmap collapses M passes of collider/LOD rebuilds into one. Only pays off for M >= 2."
+    },
+
+    "pipelineAwareness": {
+      "builtIn":  { "terrainShader": "Nature/Terrain/Standard",                    "layerMaterial": "Uses built-in lit fallback from TerrainLayer fields" },
+      "urp":      { "terrainShader": "Universal Render Pipeline/Terrain/Lit",      "layerMaterial": "Requires URP Terrain Lit; Mosaic must detect pipeline before creating the terrain material" },
+      "hdrp":     { "terrainShader": "HDRP/TerrainLit",                            "layerMaterial": "HDRP-only; requires maskMap for metallic/AO/height/smoothness" },
+      "detection": "Use GraphicsSettings.currentRenderPipeline — see kb-rendering-pipeline-detection."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "User asks to sculpt a ridge, mountain, crater, or any multi-point feature",
+        "rule": "Compute the bounding rect of the feature in heightmap indices. Single GetHeights + in-memory brush pass + single SetHeights. N > 5 points must never map to N API calls.",
+        "evidence": "Gemini terrain session 2026-04-XX: 40+ atomic terrain/height calls to build one ridge. Correct solution was a single batched pass."
+      },
+      {
+        "scenario": "Running multiple sculpt operations back-to-back (noise, then erosion, then ridge stamp)",
+        "rule": "SetHeightsDelayLOD for each intermediate step, SyncHeightmap once at the end. Single collider/LOD rebuild instead of M.",
+        "evidence": "Unity Manual — Terrain painting performance."
+      },
+      {
+        "scenario": "Painting textures",
+        "rule": "Edit the float[,,] alphamap in memory and ensure per-cell weights sum to 1.0 across layers. Pass to SetAlphamaps in one call.",
+        "evidence": "ScriptReference TerrainData.SetAlphamaps."
+      },
+      {
+        "scenario": "Creating terrains in a non-Built-in pipeline",
+        "rule": "Detect the render pipeline first (kb-rendering-pipeline-detection). Choose terrain shader and layer fields accordingly. Never assume Built-in.",
+        "evidence": "URP and HDRP ship distinct terrain shaders; using the wrong one renders pink."
+      },
+      {
+        "scenario": "Placing trees programmatically",
+        "rule": "Normalize positions to 0..1. Reject world-meter inputs at the boundary. Ensure prototypeIndex is within treePrototypes.Length.",
+        "evidence": "TreeInstance.position docs."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Terrain sculpt is extremely slow; Editor hangs when applying a ridge.",
+        "cause": "Per-point SetHeight calls inside a loop; each triggers a full collider/LOD rebuild.",
+        "fix": "Replace with one GetHeights / mutate / SetHeights pass over the feature's bounding rect."
+      },
+      {
+        "symptom": "Heights were written but don't show in Scene view or collider ignores them.",
+        "cause": "Used SetHeightsDelayLOD and never called SyncHeightmap.",
+        "fix": "Call terrainData.SyncHeightmap() once after the final delayed write."
+      },
+      {
+        "symptom": "Terrain textures look washed out or pitch black after painting.",
+        "cause": "Alphamap weights don't sum to 1.0 per cell.",
+        "fix": "Before SetAlphamaps, loop cells and renormalize: sum weights across layers, divide each by sum, or clamp+distribute residual."
+      },
+      {
+        "symptom": "Terrain renders pink/magenta.",
+        "cause": "TerrainLayer or terrain material references a shader that doesn't exist in the active render pipeline.",
+        "fix": "Detect pipeline (kb-rendering-pipeline-detection). Assign the matching terrain shader. Cross-ref kb-rendering-shader-properties."
+      },
+      {
+        "symptom": "Trees placed at nonsense locations (e.g., far off terrain or all at origin).",
+        "cause": "TreeInstance.position treated as world meters.",
+        "fix": "Divide world offset by terrainData.size to normalize 0..1 before assigning."
+      },
+      {
+        "symptom": "Visible seams between adjacent terrain tiles.",
+        "cause": "Neighbors not linked; LOD picks different levels across the border.",
+        "fix": "SetNeighbors on all four sides, or enable allowAutoConnect on every terrain. Ensure shared-edge heights match exactly (2^n+1 resolution helps)."
+      },
+      {
+        "symptom": "Hole API call has no effect.",
+        "cause": "Unity version < 2019.3, or holesResolution is 0.",
+        "fix": "Verify Unity version; initialize terrainData.SetHoles with a correctly sized bool[,] covering the target rect."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "Terrain holes added (SetHoles / holesResolution / holesTexture). Terrain Tools package introduced with advanced brushes.",
+        "breaking": false,
+        "migrationNote": "Hole APIs unavailable pre-2019.3; code that calls SetHoles must guard on Unity version or target 2019.3+."
+      },
+      {
+        "version": "2019.3",
+        "change": "TerrainLayer became a standalone asset type (previously SplatPrototype struct stored inline on TerrainData).",
+        "breaking": true,
+        "migrationNote": "Migrating pre-2019.3 projects requires converting SplatPrototype entries to TerrainLayer assets. Mosaic targets 2021.3+ so this is not a concern for supported versions."
+      },
+      {
+        "version": "2020.1",
+        "change": "Async terrain heightmap painting and GPU-path splatmap painting added (behind Terrain Tools).",
+        "breaking": false,
+        "migrationNote": "CPU SetHeights path remains canonical and works on all supported versions."
+      },
+      {
+        "version": "2022.2",
+        "change": "Terrain component enableHeightmapRayTracing and DXR integration for HDRP.",
+        "breaking": false,
+        "migrationNote": "HDRP-only; does not affect CPU authoring APIs."
+      }
+    ],
+
+    "coversToolCategories": ["terrain", "procgen"]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Terrain",                               "url": "https://docs.unity3d.com/Manual/script-Terrain.html" },
+    { "title": "Unity Manual — Creating and editing Terrains",         "url": "https://docs.unity3d.com/Manual/terrain-UsingTerrains.html" },
+    { "title": "Unity Manual — Terrain Settings",                      "url": "https://docs.unity3d.com/Manual/terrain-OtherSettings.html" },
+    { "title": "Unity Manual — Painting Textures on a Terrain",        "url": "https://docs.unity3d.com/Manual/terrain-PaintTexture.html" },
+    { "title": "Unity Manual — Adding Trees to a Terrain",             "url": "https://docs.unity3d.com/Manual/terrain-Trees.html" },
+    { "title": "Unity Manual — Adding Grass and Other Details",        "url": "https://docs.unity3d.com/Manual/terrain-Grass.html" },
+    { "title": "Unity Manual — Terrain Holes",                         "url": "https://docs.unity3d.com/Manual/terrain-PaintHoles.html" },
+    { "title": "ScriptReference — Terrain",                            "url": "https://docs.unity3d.com/ScriptReference/Terrain.html" },
+    { "title": "ScriptReference — TerrainData",                        "url": "https://docs.unity3d.com/ScriptReference/TerrainData.html" },
+    { "title": "ScriptReference — TerrainData.GetHeights",             "url": "https://docs.unity3d.com/ScriptReference/TerrainData.GetHeights.html" },
+    { "title": "ScriptReference — TerrainData.SetHeights",             "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHeights.html" },
+    { "title": "ScriptReference — TerrainData.SetHeightsDelayLOD",     "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHeightsDelayLOD.html" },
+    { "title": "ScriptReference — TerrainData.SyncHeightmap",          "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SyncHeightmap.html" },
+    { "title": "ScriptReference — TerrainData.SetAlphamaps",           "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetAlphamaps.html" },
+    { "title": "ScriptReference — TerrainData.SetHoles",               "url": "https://docs.unity3d.com/ScriptReference/TerrainData.SetHoles.html" },
+    { "title": "ScriptReference — TerrainLayer",                       "url": "https://docs.unity3d.com/ScriptReference/TerrainLayer.html" },
+    { "title": "ScriptReference — TreeInstance",                       "url": "https://docs.unity3d.com/ScriptReference/TreeInstance.html" },
+    { "title": "ScriptReference — TreePrototype",                      "url": "https://docs.unity3d.com/ScriptReference/TreePrototype.html" },
+    { "title": "ScriptReference — DetailPrototype",                    "url": "https://docs.unity3d.com/ScriptReference/DetailPrototype.html" },
+    { "title": "ScriptReference — Terrain.SetNeighbors",               "url": "https://docs.unity3d.com/ScriptReference/Terrain.SetNeighbors.html" },
+    { "title": "ScriptReference — Terrain.allowAutoConnect",           "url": "https://docs.unity3d.com/ScriptReference/Terrain-allowAutoConnect.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Terrain (authoring source)",            "url": "https://docs.unity3d.com/Manual/script-Terrain.html" },
+    { "title": "Unity ScriptReference — TerrainData (authoring source)", "url": "https://docs.unity3d.com/ScriptReference/TerrainData.html" },
+    { "title": "Unity Manual — Terrain Tools package",                 "url": "https://docs.unity3d.com/Packages/com.unity.terrain-tools@5.0/manual/index.html" },
+    { "title": "Mosaic Gemini terrain session transcript (evidence)",  "url": "internal://mosaic/_bmad/sessions/gemini-terrain-ridge-sculpt.json" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity APIs (Manual and ScriptReference). API names, struct fields, resolution formulas (2^n + 1), normalization conventions, and version deltas are factual and not copyrightable. All explanatory prose, decisionRules, commonPitfalls, llmGuidance, and the canonicalHeightLoop pattern are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and sources — NOT reproduced here."
+}

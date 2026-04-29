@@ -1,0 +1,318 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-navigation-navmesh-setup",
+  "title": "NavMesh: Baking, Agents, Obstacles, Links, AI Navigation Package",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "navigation",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Conceptual model for Unity's NavMesh pathfinding. Two coexisting workflows: (1) the legacy built-in Navigation window that bakes one scene-scoped NavMesh from Navigation Static geometry; (2) the modern AI Navigation package (com.unity.ai.navigation) whose NavMeshSurface components bake per-surface data into NavMeshData assets and support runtime rebuild. Agents (NavMeshAgent) consume the NavMesh; obstacles (NavMeshObstacle) block or carve it; NavMeshLinks connect disjoint surfaces. LLMs trip on: marking objects Navigation Static vs relying on NavMeshSurface include layers, reading a path before NavMeshAgent.pathPending becomes false, confusing Off-Mesh Links (legacy) with NavMesh Links (package), and missing that agent 'types' (radius/height/slope) bake separate NavMesh layers. Grounds every navigation/* tool plus nav/pathfind-astar and nav/sphere-pathfind.",
+
+  "mosaicTools": [
+    "navigation/bake",
+    "navigation/agent-create",
+    "navigation/set-destination",
+    "navigation/obstacle-create",
+    "navigation/link-create",
+    "navigation/sample-position",
+    "navigation/surface-rebuild",
+    "nav/pathfind-astar",
+    "nav/sphere-pathfind"
+  ],
+
+  "relatedKb": [
+    "kb-core-gameobject-transform-semantics",
+    "kb-core-scene-lifecycle",
+    "kb-terrain-system-primer"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_bake_a_navmesh_for_a_new_scene":
+      "Default to the AI Navigation package. Add a NavMeshSurface to an empty GameObject (or the environment root), set Collect Objects to Children or Volume, set agent type, call BuildNavMesh at edit time or runtime. Do NOT mark geometry Navigation Static and rely on the old Navigation window unless the project's manifest lacks com.unity.ai.navigation.",
+    "when_agent_does_not_move_after_SetDestination":
+      "Check in this order: (1) is there a baked NavMesh at the agent's position? Sample with NavMesh.SamplePosition. (2) Is the agent ON the NavMesh? NavMeshAgent.isOnNavMesh must be true. (3) Did SetDestination return true? False means the destination isn't on any NavMesh for the agent's agentTypeID. (4) Is pathStatus Complete or Partial? Partial means the goal is unreachable and the agent stops at the closest point.",
+    "when_checking_if_path_is_ready":
+      "Never read agent.remainingDistance, agent.path, or agent.pathEndPosition in the same frame as SetDestination. Gate on NavMeshAgent.pathPending == false before any path inspection. Pathfinding is async; values read before pathPending drops are stale or default.",
+    "when_pausing_an_agent":
+      "Set NavMeshAgent.isStopped = true, not .enabled = false. Disabling the component removes the agent from the NavMesh crowd and resets internal state; re-enabling teleport-warps behavior. isStopped keeps the agent registered and preserves the current path.",
+    "when_teleporting_an_agent":
+      "Call NavMeshAgent.Warp(position). Do not assign transform.position directly — the agent's internal NavMesh position desyncs from the transform and SetDestination silently fails. If the target position may not be on the NavMesh, first NavMesh.SamplePosition(target, out hit, maxDist, areaMask) and Warp to hit.position.",
+    "when_environment_changes_at_runtime":
+      "With AI Navigation package: call NavMeshSurface.BuildNavMesh() (sync, may stall) or UpdateNavMesh(navMeshData) with a NavMeshBuildSource list (async-friendly). Built-in workflow has no sanctioned runtime rebuild; use NavMeshBuilder.UpdateNavMeshDataAsync as a low-level alternative. Prefer NavMeshObstacle with carving for small dynamic changes — full rebuilds are 10-1000x more expensive.",
+    "when_placing_dynamic_blockers":
+      "Use NavMeshObstacle. Enable 'Carve' so the obstacle cuts a hole in the NavMesh and agents repath around it. Without carving the obstacle only applies local avoidance (agents still believe the path is walkable and push against it). Carving has a per-frame cost; keep total carving obstacles low (dozens, not thousands) or use 'Carve Only Stationary' with moveThreshold.",
+    "when_connecting_disjoint_surfaces":
+      "Use NavMeshLink (AI Navigation package) for authored jumps/teleports/doors between two NavMesh regions. Legacy Off-Mesh Links (auto-generated from bake settings 'Drop Height' / 'Jump Distance' or manually via OffMeshLink component) still work but are deprecated for new work. Links expose costModifier for preference tuning and bidirectional toggle.",
+    "when_agent_with_different_size_is_needed":
+      "Open Navigation (or Agents tab in AI Navigation window) and add a new Agent Type with its radius, height, step height, max slope. Agents reference the type via NavMeshAgent.agentTypeID. Each type bakes a separate NavMesh layer — bake all types that will be used before play.",
+    "when_querying_paths_without_an_agent":
+      "Use NavMesh.CalculatePath(from, to, areaMask, out NavMeshPath) for a one-shot path. For a nearest-edge query use FindClosestEdge. For straight-line walkability use NavMesh.Raycast. For snapping a world point to the mesh use SamplePosition with a reasonable maxDistance (commonly 1-5 meters).",
+    "when_agents_jitter_or_deadlock":
+      "Tune NavMeshAgent.avoidancePriority — lower number = higher priority, others yield. Give stationary or leader agents priority 0-10, followers 50+. Crowd size matters: > 50 agents with high-quality avoidance (Obstacle Avoidance = High Quality) spikes CPU; drop to Good or Medium for large crowds.",
+    "when_an_area_should_be_slow_or_preferred":
+      "Define a custom Area (Navigation > Areas). Set per-area cost (> 1 slower, < 1 preferred). Agents use areaMask on SetDestination or CalculatePath to include/exclude areas. Costs multiply path length during A* — a cost of 5 on 'Mud' makes the solver prefer a 4x longer walkable detour."
+  },
+
+  "full": {
+    "twoWorkflows": {
+      "builtInLegacy": {
+        "window": "Window > AI > Navigation",
+        "bakeInput": "GameObjects flagged Navigation Static in the StaticEditorFlags bitmask. Area override per object.",
+        "output": "One NavMesh per scene, stored in a .asset sibling of the scene file.",
+        "runtimeRebuild": "Not officially supported from the Navigation window. NavMeshBuilder API (UnityEngine.AI) exposes UpdateNavMeshData / UpdateNavMeshDataAsync for advanced use.",
+        "status": "Still functional in all supported Unity versions but considered the legacy path. New projects should prefer the AI Navigation package."
+      },
+      "aiNavigationPackage": {
+        "packageId": "com.unity.ai.navigation",
+        "window": "Window > AI > Navigation (new tabbed window when package installed)",
+        "bakeInput": "NavMeshSurface component — Collect Objects (All / Volume / Children), Include Layers, Use Geometry (Render Meshes or Physics Colliders).",
+        "output": "NavMeshData asset per NavMeshSurface. Multiple surfaces per scene. Can live on prefabs.",
+        "runtimeRebuild": "NavMeshSurface.BuildNavMesh() (sync) or NavMeshSurface.UpdateNavMesh(navMeshData) with BuildSources (supports async via NavMeshBuilder.UpdateNavMeshDataAsync).",
+        "extraComponents": "NavMeshLink (authored cross-surface connection), NavMeshModifier (per-object area/override), NavMeshModifierVolume (volumetric area override)."
+      }
+    },
+
+    "bakeSettings": {
+      "agentRadius": "Horizontal clearance required to walk past obstacles. Controls how far the NavMesh shrinks inward from walls. Smaller radius = tighter corridors, higher bake cost.",
+      "agentHeight": "Vertical clearance required. Voxel cells below this height are removed. Low-ceiling tunnels vanish if height > ceiling.",
+      "maxSlope": "Max walkable angle in degrees. Faces above this become non-walkable. Typical 30-45 for characters, 60 for vehicles.",
+      "stepHeight": "Max vertical discontinuity the agent auto-steps over without jumping. Typical 0.3-0.4m.",
+      "voxelSize": "Rasterization granularity. Finer = more accurate but exponential bake time. Default = agentRadius / 3.",
+      "minRegionArea": "Walkable islands below this area are culled. Prevents noisy micro-patches.",
+      "offMeshLinkGen": "Legacy auto-generation of Off-Mesh Links from Drop Height and Jump Distance. AI Navigation package prefers explicit NavMeshLink components."
+    },
+
+    "areaTypes": {
+      "builtIn": ["Walkable (0)", "Not Walkable (1)", "Jump (2)"],
+      "custom": "Up to 32 total area types (bitmask). Define in Navigation > Areas tab.",
+      "costSemantics": "Each area has a cost multiplier (default 1.0). A* solver multiplies edge length by area cost. Higher cost = avoided unless shorter path doesn't exist.",
+      "perAgentCosts": "NavMeshAgent.SetAreaCost(areaIndex, cost) overrides global area cost for that agent instance.",
+      "areaMask": "32-bit mask. SetDestination/CalculatePath filter to areas whose bit is set. NavMesh.AllAreas = -1 (all bits)."
+    },
+
+    "navMeshAgent": {
+      "coreProperties": {
+        "destination": "Vector3 goal. Assignment triggers async pathfinding.",
+        "isStopped": "bool — pause/resume without deregistering. Preferred over .enabled for runtime toggling.",
+        "pathPending": "bool — true while A* is solving. Gate all path-inspection reads on !pathPending.",
+        "pathStatus": "Complete / Partial / Invalid. Partial = goal unreachable, agent walks to closest point.",
+        "remainingDistance": "Meters along the path to destination. Only valid when !pathPending and pathStatus == Complete.",
+        "velocity": "Current world-space velocity. Driven by the crowd simulation, not by the transform directly.",
+        "isOnNavMesh": "bool — must be true for SetDestination to succeed. False = agent was placed off mesh (fix with Warp + SamplePosition).",
+        "agentTypeID": "int hash of the agent type. Must match a baked agent type or pathing fails.",
+        "avoidancePriority": "0-99. Lower number = higher priority, others yield. Default 50."
+      },
+      "movementApis": {
+        "SetDestination":  "Assign a goal. Returns bool (false = destination not on any NavMesh for this agent type).",
+        "ResetPath":       "Clear current path; agent stops immediately.",
+        "Warp":            "Teleport both transform AND internal NavMesh position. Correct way to move an agent without pathing.",
+        "Move":            "Apply a world delta while respecting the NavMesh (projects onto surface).",
+        "CalculatePath":   "Compute a path without assigning it. Useful for previewing or validating reachability."
+      },
+      "obstacleAvoidance": {
+        "quality": "None / Low / Medium / Good / High. Higher quality = smoother crowds, more CPU.",
+        "radius/height": "Agent physical dimensions. Distinct from bake agent radius/height (which govern NavMesh shape).",
+        "crowdBehavior": "Local RVO-style avoidance. Agents steer around each other within the current NavMesh."
+      }
+    },
+
+    "navMeshObstacle": {
+      "modes": {
+        "pureAvoidance": "Carve disabled. Obstacle only participates in local avoidance; the NavMesh is unchanged. Suitable for fast-moving dynamic objects where repathing is overkill.",
+        "carving": "Carve enabled. Obstacle cuts a hole in the NavMesh in real time; agents repath around it. Required for stationary blockers or doors."
+      },
+      "carveSettings": {
+        "moveThreshold": "Position change required to trigger re-carve. Too low = carve every frame. Typical 0.1-0.5m.",
+        "timeToStationary": "Seconds before a paused obstacle is considered stationary (carves while held).",
+        "carveOnlyStationary": "If true, obstacle only carves when stationary — large moving objects fall back to avoidance while moving, carve when they stop."
+      },
+      "cost": "Each carve triggers a partial NavMesh rebuild in the affected tile. 5-20 carving obstacles is safe; 100+ carves per frame stalls.",
+      "shape": "Box / Capsule, matching a collider-like primitive. Does NOT have to match the object's render mesh."
+    },
+
+    "linksAndOffMeshLinks": {
+      "offMeshLinkLegacy": {
+        "auto": "Generated during bake from Drop Height and Jump Distance thresholds.",
+        "manual": "OffMeshLink component with start/end Transforms, costOverride, biDirectional, area index.",
+        "status": "Deprecated for new projects; still functional."
+      },
+      "navMeshLinkPackage": {
+        "component": "NavMeshLink (AI Navigation package).",
+        "fields": ["agentTypeID", "startPoint (local)", "endPoint (local)", "width", "bidirectional", "costModifier", "area", "autoUpdatePositions"],
+        "useCases": ["Doorways between rooms", "Jump gaps", "Teleporters", "Ladder top/bottom", "Cross-surface connections in multi-NavMeshSurface scenes"],
+        "agentBehavior": "When an agent traverses a link, NavMeshAgent.isOnOffMeshLink becomes true. Custom traversal code can animate the transition (jump arc, ladder climb) and call CompleteOffMeshLink() to hand control back to the crowd simulator."
+      }
+    },
+
+    "pathQueries": {
+      "calculatePath":   "NavMesh.CalculatePath(from, to, areaMask, out path) — synchronous single-path A*. No agent required. Use for previews, validators, and non-agent actors.",
+      "samplePosition":  "NavMesh.SamplePosition(worldPos, out hit, maxDistance, areaMask) — snaps a world point to the nearest NavMesh surface within maxDistance. Returns false if nothing within range.",
+      "findClosestEdge": "NavMesh.FindClosestEdge(worldPos, out hit, areaMask) — nearest NavMesh boundary edge. Useful for 'flee to cover' or edge-hugging logic.",
+      "raycast":         "NavMesh.Raycast(from, to, out hit, areaMask) — straight-line walkability test on the NavMesh. Hits the first impassable boundary. Different from Physics.Raycast.",
+      "whenToUse": {
+        "CalculatePath":   "You need the full polyline, not just reachability.",
+        "Raycast":         "You only need yes/no walkability along a segment (cheaper than CalculatePath).",
+        "SamplePosition":  "You have a world point (mouse click, spawn location, Warp target) and need the nearest valid NavMesh point.",
+        "FindClosestEdge": "You need the nearest boundary (for cover, retreat, edge patrol)."
+      }
+    },
+
+    "runtimeBaking": {
+      "whenNeeded": "Procedural level geometry, destructible buildings, dynamically placed large obstacles, streaming chunks.",
+      "syncPath": "NavMeshSurface.BuildNavMesh() — blocks the main thread. Acceptable during load screens or small surfaces.",
+      "asyncPath": "NavMeshBuilder.UpdateNavMeshDataAsync(navMeshData, buildSettings, sources, bounds) — returns an AsyncOperation. Yield in a coroutine. Preferred for mid-gameplay rebuilds.",
+      "incremental": "Collect NavMeshBuildSource entries only for the changed region and call UpdateNavMeshData with a tight bounds to limit cost. Full-scene rebuild is rarely necessary.",
+      "tradeoff": "Dynamic obstacles with carving are cheaper than rebuilding the NavMesh for small changes. Rebuild only when carving is insufficient (e.g., terrain height changes, buildings spawn)."
+    },
+
+    "multiAgentType": {
+      "concept": "Each agent type (radius, height, slope, step) bakes a separate NavMesh layer. Large and small agents get different walkable surfaces (a large agent can't fit through a corridor a small one can).",
+      "setup": "Navigation > Agents (legacy) or AI Navigation > Agents tab. Define each type with a stable name and ID.",
+      "apiAccess": "NavMesh.GetSettingsByID(agentTypeID) or NavMesh.GetSettingsByIndex(i). NavMeshAgent.agentTypeID selects which layer that agent uses.",
+      "bakeStep": "Both built-in and package workflows bake all defined agent types in one pass. Surfaces in the AI Navigation package each target a single agent type — multi-type scenes need one NavMeshSurface per type (often stacked on the same GameObject)."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "New project, no existing NavMesh workflow",
+        "rule": "Install com.unity.ai.navigation. Use NavMeshSurface components. Skip Navigation Static flags entirely.",
+        "evidence": "Unity Manual — AI Navigation package overview; package is the documented modern path since 2022."
+      },
+      {
+        "scenario": "Environment is mostly static with a few dynamic blockers",
+        "rule": "Bake once at scene load. Use NavMeshObstacle with carving for dynamic blockers. Do not rebuild the NavMesh per frame.",
+        "evidence": "NavMeshObstacle docs; carve is specifically designed for this case."
+      },
+      {
+        "scenario": "Agent assigned SetDestination then code reads remainingDistance same frame",
+        "rule": "Insert a wait until !agent.pathPending. Without this gate, remainingDistance is 0 or stale on the first frame and the caller thinks the agent has arrived.",
+        "evidence": "NavMeshAgent.pathPending docs — 'true while a path is being computed but not yet ready'."
+      },
+      {
+        "scenario": "Need to move an agent instantaneously",
+        "rule": "NavMeshAgent.Warp(targetPos). Never transform.position =. Sample first if target may be off mesh.",
+        "evidence": "NavMeshAgent.Warp docs; assigning transform.position leaves internal position desynced."
+      },
+      {
+        "scenario": "Two NavMesh regions must be connected",
+        "rule": "Add a NavMeshLink (package) or OffMeshLink (legacy). Never try to coerce the bake to bridge them by widening agent step height — that makes everything else break.",
+        "evidence": "NavMeshLink docs."
+      },
+      {
+        "scenario": "Large crowd (>50 agents) stutters",
+        "rule": "Drop obstacleAvoidanceType quality. Stagger SetDestination calls across frames. Use NavMeshAgent.avoidancePriority tiers to prevent deadlock clumps.",
+        "evidence": "Unity Manual — NavMesh Agent performance notes."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Agent spawned but doesn't move; SetDestination returns false.",
+        "cause": "No NavMesh baked, or agent is off mesh, or destination uses an area excluded by areaMask, or agentTypeID doesn't match a baked type.",
+        "fix": "Verify bake exists for the agent's type. NavMesh.SamplePosition at both agent and destination. Check agent.isOnNavMesh and agent.agentTypeID."
+      },
+      {
+        "symptom": "Agent reports arrived (remainingDistance ~0) but is nowhere near the goal.",
+        "cause": "Read remainingDistance before pathPending became false, or pathStatus is Partial (goal unreachable).",
+        "fix": "Gate reads on !pathPending. Check pathStatus; if Partial, the destination was off-mesh or fenced off."
+      },
+      {
+        "symptom": "Agent walks through or past a dynamic obstacle.",
+        "cause": "NavMeshObstacle has Carve disabled; agent only sees local avoidance and treats the area as walkable.",
+        "fix": "Enable Carve. If the obstacle moves, set Carve Only Stationary with a reasonable moveThreshold."
+      },
+      {
+        "symptom": "Agents jitter or oscillate near each other.",
+        "cause": "Equal avoidancePriority with tight crowd; neither yields.",
+        "fix": "Assign avoidancePriority tiers. Lower obstacleAvoidanceType quality if CPU is saturated."
+      },
+      {
+        "symptom": "After Warp, agent stops responding to SetDestination.",
+        "cause": "Warp target was off the NavMesh; agent.isOnNavMesh became false.",
+        "fix": "SamplePosition first, Warp to hit.position. Confirm isOnNavMesh == true before SetDestination."
+      },
+      {
+        "symptom": "Environment geometry changed but agents still path through the old layout.",
+        "cause": "NavMesh wasn't rebuilt; no carving obstacle covers the change.",
+        "fix": "Call NavMeshSurface.BuildNavMesh or UpdateNavMeshDataAsync. For small changes, add a NavMeshObstacle with carving instead."
+      },
+      {
+        "symptom": "Large agents path through corridors too small for them.",
+        "cause": "Single agent type baked; no per-type NavMesh layer for the large agent.",
+        "fix": "Define a second Agent Type with larger radius/height. Bake. Set the large agent's agentTypeID."
+      },
+      {
+        "symptom": "OffMeshLink / NavMeshLink traversal plays no animation; agent snaps across.",
+        "cause": "No traversal coroutine handling isOnOffMeshLink; default behavior is a straight-line slide.",
+        "fix": "Detect isOnOffMeshLink, drive custom motion (jump arc, teleport fade), call CompleteOffMeshLink()."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2022.2",
+        "change": "AI Navigation package (com.unity.ai.navigation) promoted to verified. NavMeshSurface, NavMeshLink, NavMeshModifier, NavMeshModifierVolume moved here from the old NavMeshComponents GitHub repo.",
+        "breaking": false,
+        "migrationNote": "Projects using the old NavMeshComponents repo should migrate to the official package. Class names are compatible; namespace is now Unity.AI.Navigation."
+      },
+      {
+        "version": "2022.2",
+        "change": "Navigation window reworked with Agents/Areas/Bake/Object tabs when the AI Navigation package is installed.",
+        "breaking": false,
+        "migrationNote": "Both workflows coexist; the tabbed window is only visible with the package."
+      },
+      {
+        "version": "2021.2",
+        "change": "NavMeshData runtime APIs (NavMeshBuilder.UpdateNavMeshDataAsync, BuildSources-from-sources patterns) stabilized for incremental runtime rebuild.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 ships the AI Navigation package as a default dependency for new 3D templates.",
+        "breaking": false,
+        "migrationNote": "New Unity 6 projects should assume the package is present and author against NavMeshSurface."
+      }
+    ],
+
+    "coversToolCategories": ["navigation", "nav"]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Navigation Overview",                  "url": "https://docs.unity3d.com/Manual/nav-NavigationSystem.html" },
+    { "title": "Unity Manual — Building a NavMesh",                    "url": "https://docs.unity3d.com/Manual/nav-BuildingNavMesh.html" },
+    { "title": "Unity Manual — NavMesh Agent",                         "url": "https://docs.unity3d.com/Manual/class-NavMeshAgent.html" },
+    { "title": "Unity Manual — NavMesh Obstacle",                      "url": "https://docs.unity3d.com/Manual/class-NavMeshObstacle.html" },
+    { "title": "Unity Manual — Off-Mesh Link",                         "url": "https://docs.unity3d.com/Manual/class-OffMeshLink.html" },
+    { "title": "Unity Manual — AI Navigation package",                 "url": "https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/index.html" },
+    { "title": "AI Navigation — NavMeshSurface",                       "url": "https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/NavMeshSurface.html" },
+    { "title": "AI Navigation — NavMeshLink",                          "url": "https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/NavMeshLink.html" },
+    { "title": "AI Navigation — NavMeshModifier",                      "url": "https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/NavMeshModifier.html" },
+    { "title": "ScriptReference — NavMesh",                            "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.html" },
+    { "title": "ScriptReference — NavMeshAgent",                       "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshAgent.html" },
+    { "title": "ScriptReference — NavMeshObstacle",                    "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshObstacle.html" },
+    { "title": "ScriptReference — NavMeshBuilder",                     "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshBuilder.html" },
+    { "title": "ScriptReference — NavMesh.CalculatePath",              "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.CalculatePath.html" },
+    { "title": "ScriptReference — NavMesh.SamplePosition",             "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.SamplePosition.html" },
+    { "title": "ScriptReference — NavMesh.Raycast",                    "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.Raycast.html" },
+    { "title": "ScriptReference — NavMesh.FindClosestEdge",            "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.FindClosestEdge.html" },
+    { "title": "ScriptReference — NavMeshAgent.Warp",                  "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshAgent.Warp.html" },
+    { "title": "ScriptReference — NavMeshPath",                        "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshPath.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Navigation (authoring source)",             "url": "https://docs.unity3d.com/Manual/nav-NavigationSystem.html" },
+    { "title": "Unity Manual — AI Navigation package (authoring source)", "url": "https://docs.unity3d.com/Packages/com.unity.ai.navigation@2.0/manual/index.html" },
+    { "title": "Unity ScriptReference — AI.NavMesh (authoring source)",    "url": "https://docs.unity3d.com/ScriptReference/AI.NavMesh.html" },
+    { "title": "Unity ScriptReference — AI.NavMeshAgent (authoring source)", "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshAgent.html" },
+    { "title": "Unity ScriptReference — AI.NavMeshObstacle (authoring source)", "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshObstacle.html" },
+    { "title": "Unity ScriptReference — AI.NavMeshBuilder (authoring source)", "url": "https://docs.unity3d.com/ScriptReference/AI.NavMeshBuilder.html" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity APIs (Manual, ScriptReference, and the AI Navigation package documentation). API names, component fields, agent-type baking semantics, area-cost multiplication rules, and version deltas are factual and not copyrightable. All explanatory prose, decisionRules, commonPitfalls, llmGuidance, the two-workflow split narrative, and the failure-mode diagnosis orderings are original Mosaic editorial content. Unity Manual, ScriptReference, and AI Navigation package pages are cited as externalReferences and sources — NOT reproduced here."
+}

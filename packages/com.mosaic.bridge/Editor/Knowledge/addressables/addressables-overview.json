@@ -1,0 +1,194 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "addressables/addressables-overview",
+  "title": "Addressables: Runtime Asset Loading, Groups, Labels, Remote Catalogs",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's Addressable Asset System (package com.unity.addressables) is the supported successor to the Resources folder and hand-rolled AssetBundles. Assets are flagged addressable and given a string address plus optional labels; at runtime you call Addressables.LoadAssetAsync<T>(key) and receive an AsyncOperationHandle you must Release. Assets are packed into groups with local or remote bundle paths, described by a content catalog that can itself be hosted remotely for live updates without a full player rebuild. Mosaic tools in addressables/* drive this pipeline. The #1 failure mode is forgetting to Release handles (leak refcounts), followed by unassigned AssetReference fields and remote-catalog/player-hash mismatch after an out-of-band content redeploy.",
+
+  "mosaicTools": [
+    "addressables/group-create",
+    "addressables/entry-add",
+    "addressables/entry-remove",
+    "addressables/build"
+  ],
+
+  "relatedKb": [
+    "kb-core-asset-database",
+    "kb-core-scene-lifecycle",
+    "kb-editor-profiler-tests-build"
+  ],
+
+  "llmGuidance": {
+    "when_user_wants_runtime_asset_loading_new_project":
+      "Default to Addressables. Resources/ is legacy and bloats every build; manual AssetBundle APIs are unmaintained. Use addressables/group-create then addressables/entry-add to tag assets.",
+    "when_user_is_in_editor_tooling_only":
+      "Do NOT use Addressables. Editor scripts should go through AssetDatabase (kb-core-asset-database). Addressables is a runtime/player system.",
+    "when_user_mentions_live_content_updates_or_dlc":
+      "Point them at remote catalogs. Set the group's BuildPath and LoadPath to the Remote profile variables, enable 'Build Remote Catalog' on AddressableAssetSettings, and host catalog_*.json + .hash + bundles on a CDN. Explain that the player ships with a bootstrap catalog and replaces it at runtime when the remote .hash changes.",
+    "when_debugging_'asset_not_found_at_runtime'":
+      "Check three things in order: (1) the asset is actually marked addressable and its address matches the key used in code (case-sensitive), (2) BuildPlayerContent() was invoked before BuildPipeline.BuildPlayer (stale catalog is the most common cause), (3) for remote, client catalog hash matches what the server is serving.",
+    "when_debugging_'memory_keeps_growing'":
+      "Every LoadAssetAsync / InstantiateAsync returns an AsyncOperationHandle with a refcount. Every load needs a matching Release (for assets) or ReleaseInstance (for spawned GameObjects). Do not call Release twice — the refcount clamps at 0 but the warning is real and usually means a double-Release bug elsewhere.",
+    "when_user_writes_MonoBehaviour_with_addressable_asset_field":
+      "Prefer AssetReference / AssetReferenceT<T> over a raw string key. AssetReference is serializable, drag-and-drop in the Inspector, and LoadAssetAsync() is a member method. String keys silently survive asset renames; AssetReference tracks by GUID.",
+    "when_user_asks_'sync_or_async'":
+      "Always async. WaitForCompletion() exists on AsyncOperationHandle but it spin-waits on the main thread and can deadlock if the operation needs a frame to progress — only use it for cold-start bootstraps or editor tools, never per-frame gameplay.",
+    "when_building_for_ship":
+      "Build content first (AddressableAssetSettings.BuildPlayerContent), THEN player (BuildPipeline.BuildPlayer). Mosaic's addressables/build tool does content-build only; it must run before any player-build tool. Stale content = last-build's bundles shipped with this-build's code."
+  },
+
+  "full": {
+    "packageIdentity": {
+      "name": "com.unity.addressables",
+      "manifestHint": "Added via Package Manager → Addressables, or manually in Packages/manifest.json. Installing the package drops an Assets/AddressableAssetsData/ folder (AddressableAssetSettings asset, groups, profiles).",
+      "replaces": "Resources/ folder auto-include and hand-rolled AssetBundles.Load calls. New projects on Unity 2021.3+ should start here."
+    },
+
+    "coreConcepts": {
+      "addressableAsset": "Any asset with its 'Addressable' checkbox ticked. Gains a string address (defaults to the asset path) and optional labels. The address is the runtime key.",
+      "addressableAssetSettings": "Singleton ScriptableObject at Assets/AddressableAssetsData/AddressableAssetSettings.asset. Holds groups, active profile, labels, build scripts. Accessed via AddressableAssetSettingsDefaultObject.Settings.",
+      "groups": "A group is a bundling unit. All entries in one group build into AssetBundles sharing a BuildPath/LoadPath pair. Split groups by locality (local vs remote) and churn rate.",
+      "labels": "Tag strings on entries. Load many assets in one call: Addressables.LoadAssetsAsync<T>(label, callback). Survive renames; preferable to hand-maintained address lists.",
+      "assetReference": "Serializable field type (AssetReference, AssetReferenceT<T>, AssetReferenceSprite, AssetReferenceGameObject). Tracks by GUID + sub-object, drag-target in Inspector, exposes its own LoadAssetAsync / InstantiateAsync.",
+      "contentCatalog": "JSON mapping keys + labels → bundle locations + dependencies. Local catalog embedded in StreamingAssets; optional remote catalog on a CDN enables live updates."
+    },
+
+    "loadingApi": {
+      "signatures": [
+        "AsyncOperationHandle<T> Addressables.LoadAssetAsync<T>(object key)",
+        "AsyncOperationHandle<IList<T>> Addressables.LoadAssetsAsync<T>(object key, Action<T> callback)",
+        "AsyncOperationHandle<GameObject> Addressables.InstantiateAsync(object key, Transform parent = null)",
+        "Addressables.Release(AsyncOperationHandle handle)",
+        "Addressables.ReleaseInstance(GameObject instance)"
+      ],
+      "handleLifecycle": "Each handle carries a reference count. LoadAssetAsync → 1. A second LoadAssetAsync on the same key → still 1 handle but internal refcount 2. Release decrements; when it hits 0 the bundle is eligible to unload. Keep the handle in a field if you need to Release later — discarding it does not auto-release.",
+      "completionSignals": "Register handle.Completed += h => { ... } for callback style, or await handle.Task for async/await. handle.Status becomes Succeeded or Failed; check it before dereferencing handle.Result.",
+      "waitForCompletion": "AsyncOperationHandle.WaitForCompletion() blocks the calling thread until the op finishes. Exists for editor tooling and boot-time critical loads. Avoid in Update/FixedUpdate — it can stall a frame or deadlock against operations that themselves need a frame to progress."
+    },
+
+    "buildPipeline": {
+      "twoStepRule": "Addressables content is NOT built by BuildPipeline.BuildPlayer. You must invoke AddressableAssetSettings.BuildPlayerContent() (or the equivalent menu: Window → Asset Management → Addressables → Groups → Build → New Build → Default Build Script) BEFORE BuildPipeline.BuildPlayer. Skip this and the player ships last build's catalog.",
+      "outputLocations": "Local content lands in Library/com.unity.addressables/aa/<platform>/ and is copied into StreamingAssets at player build. Remote content lands in ServerData/<platform>/ by default; ship it to your CDN.",
+      "contentUpdateBuilds": "For already-shipped games, use 'Update a Previous Build' to produce a delta catalog + only-changed bundles. Requires the previous build's addressables_content_state.bin. This is how you push DLC or balance patches without a store resubmit."
+    },
+
+    "profiles": {
+      "purpose": "A profile is a named set of path variables (BuildPath, LoadPath, RemoteBuildPath, RemoteLoadPath, etc.). Switching profiles swaps every group's effective paths. Typical set: Default (fully local), Dev (local + localhost remote server), Staging, Production.",
+      "pattern": "Per-group dropdown chooses whether BuildPath/LoadPath resolve from Local.* or Remote.* variables. Profile defines those variables. Never hardcode CDN URLs in the group itself — always through a profile variable so you can switch environments from one dropdown."
+    },
+
+    "dependencyTracking": {
+      "automatic": "Addressables walks each marked asset's serialized references and pulls dependent assets (materials, shaders, textures, sub-prefabs) into the build. Shared dependencies across groups get deduped into a shared bundle.",
+      "implicit_vs_explicit": "An asset only loaded transitively (e.g. a material referenced by an addressable prefab) is called an implicit dependency. Its address is auto-generated; you cannot load it by the implicit address reliably across builds. Mark it explicitly addressable if user code needs to load it directly."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "New mobile/console project needs runtime content loading",
+        "rule": "Use Addressables. Mark gameplay assets addressable, group by churn and locality, ship local groups with the player, optionally host a remote group + remote catalog.",
+        "evidence": "Resources/ is legacy; Addressables is the actively-developed replacement."
+      },
+      {
+        "scenario": "Writing an editor-only tool that reads project assets",
+        "rule": "Use AssetDatabase, not Addressables. See kb-core-asset-database. Addressables APIs do not work in edit-mode reliably.",
+        "evidence": "Addressables build is a player concern; editor tooling uses the raw asset database."
+      },
+      {
+        "scenario": "Team needs DLC or live-balance patches after launch",
+        "rule": "Put variable content in a Remote group, enable Build Remote Catalog, use 'Update a Previous Build' for deltas, host catalog + bundles on a CDN.",
+        "evidence": "Content-update is the flagship shipped-title use case."
+      },
+      {
+        "scenario": "Small prototype with <50 runtime-loaded assets",
+        "rule": "Resources/ is acceptable. Migrate when runtime asset count grows or remote delivery is planned.",
+        "evidence": "Addressables overhead is fixed; benefit scales with count and update frequency."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Memory climbs every scene load, never drops",
+        "cause": "AsyncOperationHandles loaded but never Released. Each Load increments a refcount pinning the bundle.",
+        "fix": "Cache the handle, call Addressables.Release(handle) on scene unload or OnDestroy (ReleaseInstance for InstantiateAsync)."
+      },
+      {
+        "symptom": "NullReferenceException on AssetReference.LoadAssetAsync",
+        "cause": "AssetReference field never assigned in the Inspector; defaults to 'None'.",
+        "fix": "Guard with AssetReference.RuntimeKeyIsValid() before loading, or enforce assignment in OnValidate."
+      },
+      {
+        "symptom": "'Asset not found' or wrong asset after renaming",
+        "cause": "Code uses a string key; asset renamed, address auto-updated, but the string literal did not.",
+        "fix": "Use AssetReference (tracks by GUID) or centralize keys in a single constants file."
+      },
+      {
+        "symptom": "Built player loads yesterday's assets",
+        "cause": "BuildPipeline.BuildPlayer ran without AddressableAssetSettings.BuildPlayerContent() first.",
+        "fix": "Always build content first. addressables/build must run before any player-build step."
+      },
+      {
+        "symptom": "Remote catalog clients 'failed to load' after redeploy",
+        "cause": "catalog_<hash>.json filename on the CDN no longer matches the cached hash — partial upload.",
+        "fix": "Deploy catalog .json + .hash + bundles atomically. Validate .hash URL from a test client before rollout."
+      },
+      {
+        "symptom": "Warning: 'ResourceManager handle released more times than acquired'",
+        "cause": "Double Release — often OnDisable and OnDestroy both release the same cached handle.",
+        "fix": "Pick one ownership point. Null out the handle after Release so a second call is detectable."
+      },
+      {
+        "symptom": "Player size larger than expected; duplicate-inclusion warning",
+        "cause": "Asset is both addressable AND reachable via Resources/ or a direct scene reference; bundled twice.",
+        "fix": "Addressables build log flags duplicates. Remove from Resources/ or inline references; Addressables is the source of truth."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.3",
+        "change": "Addressables 1.19.x baseline; stable LoadAssetAsync / Release API, local+remote catalogs, Build Remote Catalog toggle.",
+        "breaking": false
+      },
+      {
+        "version": "2022.3 LTS",
+        "change": "Addressables 1.21.x; Content Update workflow refinements, improved build-script API for CI. No public runtime API breaks for LoadAssetAsync family.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Addressables 2.x track; internal build pipeline reworked to share infrastructure with SBP (Scriptable Build Pipeline) improvements. Most user-visible LoadAssetAsync/Release signatures stable; group settings UI restructured.",
+        "breaking": false,
+        "migrationNote": "Projects upgrading from 1.x to 2.x should re-run content-update state, rebuild catalogs fresh, and verify custom build scripts against the new IBuildScript hooks."
+      },
+      {
+        "version": "6000.4",
+        "change": "Addressables 2.x maintenance; LTS-track stability. No new public runtime API required for basic load/release flows covered here.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Addressables Package Manual (Unity)", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest" },
+    { "title": "Addressables ScriptReference Root", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest/api/UnityEngine.AddressableAssets.Addressables.html" },
+    { "title": "AsyncOperationHandle", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest/api/UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle.html" },
+    { "title": "AssetReference", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest/api/UnityEngine.AddressableAssets.AssetReference.html" },
+    { "title": "AddressableAssetSettings", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest/api/UnityEditor.AddressableAssets.Settings.AddressableAssetSettings.html" }
+  ],
+
+  "sources": [
+    { "title": "Addressables Package Documentation (Unity Technologies, public)", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest" },
+    { "title": "Addressables API ScriptReference (Unity Technologies, public)", "url": "https://docs.unity3d.com/Packages/com.unity.addressables@latest/api/index.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity Addressables package manual and ScriptReference pages. API signatures, type names, and workflow step names are facts (not copyrightable). All explanatory prose, decision rules, failure-mode diagnoses, and versionDelta commentary are original Mosaic editorial content. Unity's docs are cited as external references and NOT reproduced verbatim. No code samples were copied from Unity's documentation; signatures listed are canonical public API surfaces."
+}

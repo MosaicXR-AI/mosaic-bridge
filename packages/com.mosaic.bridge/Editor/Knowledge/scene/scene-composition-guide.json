@@ -1,0 +1,309 @@
+{
+  "$schema": "../SCHEMA.md",
+  "id": "scene/scene-composition-guide",
+  "title": "Scene Composition Guide — Interview Protocol + Spatial Execution Pipeline",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "scene",
+  "unityVersions": ["6000.0+"],
+  "summary": "When a user asks to 'build a scene', 'create an environment', or gives a vague location/mood description without spatial specifics, the LLM must NOT start placing objects immediately. It must first run the 5-tier interview, generate a structured ScenePlan, then execute in the prescribed pipeline order: terrain → water → sky/lighting → large structures → vegetation → details → atmosphere/post-process. Skipping the interview causes the mountain-on-water-on-village stacking failure observed in sessions where objects share Y=0. The spatial coherence contract is: every placed object's world Y must be terrain.SampleHeight(x,z) + localOffset, never a hardcoded constant.",
+
+  "mosaicTools": [
+    "terrain/create", "terrain/height", "terrain/sculpt", "terrain/texture",
+    "terrain/trees", "terrain/grass", "terrain/sample-height",
+    "gameobject/create", "gameobject/snap-to-ground",
+    "lighting/set-directional", "lighting/set-skybox", "lighting/set-ambient",
+    "graphics/set-post-processing", "urp/volume", "hdrp/volume",
+    "water/create", "water/configure",
+    "camera/create", "camera/configure",
+    "prefab/instantiate", "asset/import",
+    "scene/create", "scene/save",
+    "procgen/terrain", "procgen/scatter"
+  ],
+
+  "relatedKb": [
+    "terrain/terrain-system-primer",
+    "rendering/lighting-and-baking",
+    "rendering/urp-material-workflow",
+    "core/gameobject-transform-semantics",
+    "core/scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_user_sends_vague_scene_prompt": {
+      "trigger": "User prompt contains any of: 'make a scene', 'create an environment', 'build a level', 'design a world', a place name ('desert', 'forest', 'city'), or a mood/theme without spatial details.",
+      "action": "STOP. Do not call any Mosaic tools. Run the Scene Interview Protocol first.",
+      "critical": "A vague prompt executed without interview will produce spatially incoherent scenes — objects floating at Y=0, terrain disconnected from props, no thematic consistency."
+    },
+
+    "scene_interview_protocol": {
+      "description": "5-tier question framework. Ask all Tier 1 questions in a single message. Only ask Tier 2-5 if answers are missing or ambiguous after Tier 1.",
+
+      "tier1_scene_identity": {
+        "label": "Scene Identity (always ask — single message with all 4)",
+        "questions": [
+          {
+            "id": "T1.1",
+            "question": "What TYPE of scene is this? Choose one: (a) game level / playable, (b) cinematic / cutscene, (c) archviz / showcase, (d) prototype / greybox, (e) something else",
+            "maps_to": ["camera setup", "LOD aggressiveness", "lighting quality", "whether scripts are needed"]
+          },
+          {
+            "id": "T1.2",
+            "question": "What is the GEOGRAPHIC or THEMATIC REFERENCE? Examples: 'Wadi Rum Jordan', 'Pacific Northwest forest', 'dystopian Tokyo', 'fantasy medieval village', 'generic sci-fi base'. Be specific — generic = generic output.",
+            "maps_to": ["terrain heightmap style", "biome textures", "vegetation types", "lighting mood", "color palette"]
+          },
+          {
+            "id": "T1.3",
+            "question": "What is the SCALE? Choose one: (a) small / room-scale < 100m, (b) medium / district 100m–1km, (c) large / landscape 1km–10km, (d) massive / open world 10km+",
+            "maps_to": ["terrain size", "LOD distances", "chunk strategy", "detail density"]
+          },
+          {
+            "id": "T1.4",
+            "question": "What is the PLAYER PERSPECTIVE? Choose one: (a) first person, (b) third person, (c) top-down / isometric, (d) drone / flight, (e) no player — cinematic camera only",
+            "maps_to": ["camera rig", "controller scripts", "near-clip plane", "horizon LOD priority"]
+          }
+        ]
+      },
+
+      "tier2_visual_quality": {
+        "label": "Visual Quality (ask if not stated in user message)",
+        "questions": [
+          {
+            "id": "T2.1",
+            "question": "What VISUAL STYLE? (a) photorealistic, (b) stylized-realistic, (c) cel-shaded / toon, (d) low-poly / flat, (e) match current project pipeline",
+            "maps_to": ["render pipeline recommendation", "material type", "post-processing stack"]
+          },
+          {
+            "id": "T2.2",
+            "question": "TIME OF DAY and WEATHER? E.g. 'midday clear', 'golden hour hazy', 'overcast rainy', 'night with city lights'",
+            "maps_to": ["directional light angle/color/intensity", "skybox preset", "fog density", "bloom threshold"]
+          }
+        ]
+      },
+
+      "tier3_scene_content": {
+        "label": "Scene Content (ask for each major biome)",
+        "questions": [
+          {
+            "id": "T3.1",
+            "question": "List the main REGIONS / BIOMES in this scene. For each region, what are the dominant visual characteristics? (e.g. 'Region A: red sandstone cliffs, sparse scrub; Region B: flat cultivated valley with irrigation lines')",
+            "maps_to": ["terrain layer assignments", "vegetation scatter zones", "alphamap painting regions"]
+          },
+          {
+            "id": "T3.2",
+            "question": "Are there any FOCAL POINTS or LANDMARKS? (e.g. 'a ruined tower', 'a river bend', 'a large rock formation') If so, at what relative positions?",
+            "maps_to": ["GameObject placement coordinates", "camera POI targets", "LOD priority zones"]
+          },
+          {
+            "id": "T3.3",
+            "question": "STRUCTURES: Are there man-made elements? Roads, buildings, ruins, fences? Rough count and style.",
+            "maps_to": ["prefab selection", "ProBuilder usage", "road spline tools"]
+          },
+          {
+            "id": "T3.4",
+            "question": "VEGETATION DENSITY: (a) none, (b) very sparse / isolated specimens, (c) moderate / patchy, (d) dense / forest canopy",
+            "maps_to": ["terrain tree prototypes", "grass density", "vegetation scatter radius"]
+          }
+        ]
+      },
+
+      "tier4_performance_constraints": {
+        "label": "Performance & Constraints",
+        "questions": [
+          {
+            "id": "T4.1",
+            "question": "TARGET PLATFORM: (a) desktop high-end, (b) desktop mid, (c) mobile, (d) VR, (e) console",
+            "maps_to": ["shadow resolution", "terrain detail density", "texture compression", "LOD multiplier"]
+          },
+          {
+            "id": "T4.2",
+            "question": "ASSET PREFERENCE: (a) fully procedural (Mosaic tools only), (b) use Asset Store / PolyHaven assets, (c) I have my own assets, (d) mix",
+            "maps_to": ["whether asset/import is called", "whether editor/execute-code is needed for downloads"]
+          }
+        ]
+      },
+
+      "tier5_execution_preference": {
+        "label": "Execution Preference",
+        "questions": [
+          {
+            "id": "T5.1",
+            "question": "Should I build this in PHASES (I confirm each phase before you continue) or in ONE SHOT (build everything and report at the end)?",
+            "maps_to": ["execution strategy", "checkpoint frequency"]
+          },
+          {
+            "id": "T5.2",
+            "question": "Target QUALITY TIER: (a) MVP / grey-box to validate layout, (b) production-ready with textures and lighting, (c) showcase / portfolio quality",
+            "maps_to": ["detail passes", "post-processing stack depth", "asset fidelity"]
+          }
+        ]
+      }
+    },
+
+    "scene_plan_format": {
+      "description": "After interview, generate a ScenePlan JSON in this format and show it to the user for confirmation before executing any tools.",
+      "template": {
+        "sceneName": "string",
+        "sceneType": "game_level | cinematic | archviz | prototype",
+        "geographicRef": "string — specific as possible",
+        "scale": { "x_meters": "number", "z_meters": "number", "max_height_meters": "number" },
+        "renderPipeline": "URP | HDRP | BuiltIn",
+        "timeOfDay": "string",
+        "weather": "string",
+        "playerType": "fps | tps | top_down | drone | none",
+        "regions": [
+          {
+            "id": "string",
+            "name": "string",
+            "bounds": { "x_min": "number", "x_max": "number", "z_min": "number", "z_max": "number" },
+            "heightRange": { "min_meters": "number", "max_meters": "number" },
+            "dominantTextures": ["string"],
+            "vegetationDensity": "none | sparse | moderate | dense",
+            "landmarks": ["string"]
+          }
+        ],
+        "executionPhases": [
+          "1. Terrain: create, size, sculpt height regions",
+          "2. Water: if applicable",
+          "3. Terrain textures: layer assignment + splatmap paint",
+          "4. Sky + directional light: time-of-day setup",
+          "5. Large structures: buildings, ruins, rock formations",
+          "6. Vegetation: trees then grass then details",
+          "7. Post-processing: fog, bloom, color grading",
+          "8. Camera / player controller: if interactive",
+          "9. Points of interest + markers: if requested"
+        ],
+        "spatialConstraintContract": "ALL gameobject placement must use terrain/sample-height to resolve Y. No hardcoded Y=0 placements except for flat man-made platforms."
+      }
+    },
+
+    "spatial_coherence_rules": {
+      "critical": "This is the most common failure mode. Objects placed at Y=0 while terrain has non-zero height creates the 'objects buried underground' or 'floating in air' bug.",
+      "rule_terrain_first": "Always create and sculpt terrain BEFORE placing any objects. Terrain Y is the ground truth.",
+      "rule_sample_before_place": "Before every gameobject/create or prefab/instantiate call, call terrain/sample-height at that XZ position. Use the returned height as the Y component.",
+      "rule_local_offset": "Add a small positive Y offset (0.05m for small objects, 0.1m for buildings) to prevent z-fighting with the ground surface.",
+      "rule_no_absolute_y": "Never use Y=0 as a placement coordinate unless the scene is explicitly flat (e.g. indoor, greybox).",
+      "rule_water_height": "Water plane Y must be set explicitly. Objects near water (rocks, docks) may need Y = waterLevel + small_offset.",
+      "implementation_note": "If terrain/sample-height tool is not yet available, use editor/execute-code with: 'float y = terrain.SampleHeight(new Vector3(x, 0, z)); go.transform.position = new Vector3(x, y + offset, z);'"
+    },
+
+    "execution_pipeline_order": {
+      "description": "Always execute in this order. Skipping steps or reversing order causes visual artifacts.",
+      "phases": [
+        {
+          "phase": 1,
+          "name": "Scene + Terrain Foundation",
+          "tools": ["scene/create", "terrain/create", "terrain/height (sculpt major features)", "terrain/height (add secondary detail)"],
+          "why": "Terrain defines the coordinate space. Everything else is placed relative to it."
+        },
+        {
+          "phase": 2,
+          "name": "Water (if any)",
+          "tools": ["water/create", "water/configure"],
+          "why": "Water plane Y defines the shoreline. Terrain near water needs to respect this boundary."
+        },
+        {
+          "phase": 3,
+          "name": "Terrain Textures",
+          "tools": ["terrain/texture (add layers)", "terrain/sculpt (paint alpha)", "terrain/texture (slope rules)"],
+          "why": "Material appearance depends on final heightmap. Texture before placing vegetation."
+        },
+        {
+          "phase": 4,
+          "name": "Sky + Lighting",
+          "tools": ["lighting/set-skybox", "lighting/set-directional", "lighting/set-ambient", "settings/get-render (validate pipeline)"],
+          "why": "Lighting affects how vegetation and structures look — set it before adding details."
+        },
+        {
+          "phase": 5,
+          "name": "Large Structures + Landmarks",
+          "tools": ["gameobject/create", "prefab/instantiate (use terrain/sample-height for Y)"],
+          "why": "Large objects cast shadows and affect local lighting. Place them before small details."
+        },
+        {
+          "phase": 6,
+          "name": "Vegetation",
+          "tools": ["terrain/trees (add prototypes then paint)", "terrain/grass (add detail then paint)"],
+          "why": "Trees and grass use Unity terrain system — they auto-adapt to terrain height. Trees must have MeshRenderer on root."
+        },
+        {
+          "phase": 7,
+          "name": "Atmosphere + Post-Processing",
+          "tools": ["urp/volume or hdrp/volume", "graphics/set-post-processing", "render/atmosphere"],
+          "why": "Final layer. Color grade, bloom, fog, and depth-of-field go last after all geometry is placed."
+        },
+        {
+          "phase": 8,
+          "name": "Camera + Player (if interactive)",
+          "tools": ["camera/create", "script/create (drone controller)", "editor/execute-code (input bindings)"],
+          "why": "Camera is calibrated last once the scene has correct scale and lighting."
+        }
+      ]
+    },
+
+    "vague_prompt_to_rich_prompt_example": {
+      "vague_input": "make me a desert scene",
+      "interview_output_example": {
+        "T1.1": "game_level",
+        "T1.2": "Wadi Rum, Jordan — red sandstone desert with isolated mesas and flat valley floors",
+        "T1.3": "large / 4km x 4km",
+        "T1.4": "drone",
+        "T2.1": "photorealistic",
+        "T2.2": "golden hour, slight haze",
+        "T3.1": "Region A: flat sandy valley, red-orange sand, wind ripples, sparse scrub. Region B: sandstone massifs and cliff walls",
+        "T3.2": "Central mesa formation 400m wide, isolated rock tower at NE quadrant",
+        "T3.3": "None — pristine natural landscape",
+        "T3.4": "sparse",
+        "T4.1": "desktop high-end",
+        "T4.2": "procedural + PolyHaven textures",
+        "T5.1": "phased",
+        "T5.2": "production-ready"
+      },
+      "rich_execution_plan": "Phase 1: terrain/create (4000x4000m, height 300m). terrain/height region B (sculpt mesa plateau at 280m, cliff edges). terrain/height region A (flat valley at 40m, subtle dune noise amplitude 3m). Phase 2: terrain/texture (4 layers: red sand, dark gravel, sandstone face, cliff rock). lighting/set-directional (angle 15° elevation, warm orange 1.8 intensity). urp/volume (bloom 0.4, color grade warm orange lift). terrain/trees (3 prototypes: desert scrub). Phase 3 (if confirmed): drone controller script."
+    },
+
+    "common_mistakes_to_avoid": [
+      "Placing objects at Y=0 without sampling terrain height first",
+      "Creating vegetation before terrain textures are set (wrong splat baseline)",
+      "Setting post-processing before all geometry is in place",
+      "Using a flat 512x512 terrain for a 10km+ scene (insufficient resolution)",
+      "Adding trees with nested-child MeshRenderer (Unity tree system ignores child visuals)",
+      "Skipping the interview for 'quick' scenes — vague scenes are always slower to fix than to plan",
+      "Using defaultRenderPipeline instead of currentRenderPipeline for pipeline detection"
+    ]
+  },
+
+  "full": {
+    "scene_composition_overview": "A Unity scene for environment/game purposes requires structured planning across multiple overlapping systems: terrain, lighting, water, vegetation, structures, atmosphere, and camera. The LLM failure mode is treating scene building as a list of object placements at Y=0. The correct mental model is that terrain defines a height field, and every subsequent system is constrained to that height field. The spatial coherence contract — sample height before placing anything — is the single most important rule in this entry.",
+
+    "interview_philosophy": "The perfect scene prompt (Wadi Rum example) works because it encodes: (1) role/expert context, (2) geographic specificity, (3) per-biome visual characteristics, (4) anti-requirements, (5) data sources, (6) scale, (7) player perspective, (8) phased execution. A vague prompt 'make a desert' has none of these. The interview extracts the missing dimensions in 5-10 questions. Better to spend 2 minutes interviewing than 20 minutes rebuilding a spatially incoherent scene.",
+
+    "tool_sequence_rationale": "The 8-phase pipeline is not arbitrary. Each phase depends on the previous: terrain height → water plane → texture (height-based) → lighting (affects material appearance) → structures (shadow casting) → vegetation (adapts to terrain) → atmosphere (final pass) → camera (calibrated to scale). Reversing even one step causes visible rework.",
+
+    "spatial_coherence_deep_dive": "The most common failure in AI-driven scene building is the 'stacked layers' bug: the LLM places a mountain at Y=200, water at Y=0, and a village at Y=0 — all logically disconnected. The fix requires: (a) terrain/sample-height before every placement, (b) understanding that Unity terrain height is in world space, (c) treating the terrain as the authoritative Y reference. Until terrain/sample-height is a dedicated Mosaic tool, use editor/execute-code with terrain.SampleHeight().",
+
+    "scale_guidance": {
+      "50m_100m": "Single-mesh terrain or ProBuilder floor. No LOD needed. Detail density can be maximum.",
+      "100m_1km": "Single Unity Terrain (512-1024 heightmap res). LOD on all significant props.",
+      "1km_10km": "Single terrain (2048-4096 res) or 2x2 terrain grid. Impostor trees beyond 300m. Aggressive LOD.",
+      "10km_plus": "Terrain tiling required. Floating origin if player moves far from 0,0. Heightmap streaming. Consider World Building tools."
+    },
+
+    "render_pipeline_selection": {
+      "URP": "Use for: mobile targets, large open worlds, performance-first, single-player. Lighter post-processing stack. Very good default choice for terrain scenes.",
+      "HDRP": "Use for: showcase/archviz, interior+exterior, VR high-end, physically-based atmosphere. Requires higher GPU. Best for photorealistic goals.",
+      "BuiltIn": "Avoid for new scenes. Only if project is locked to old Unity version."
+    }
+  },
+
+  "externalReferences": [
+    "https://docs.unity3d.com/Manual/terrain-UsingTerrains.html",
+    "https://docs.unity3d.com/Manual/terrain-Trees.html",
+    "https://docs.unity3d.com/Manual/PostProcessing-Stack.html",
+    "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/index.html"
+  ],
+
+  "sources": ["internal — synthesized from session transcripts, Unity docs, competitive analysis"],
+
+  "authorshipNotes": "Designed from the 'Wadi Rum perfect prompt' session analysis (April 2026). The interview protocol directly extracts the 12 dimensions found in that prompt. The spatial coherence rules are derived from the mountain-on-top-of-water scene failure observed in the same session."
+}

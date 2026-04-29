@@ -1,0 +1,301 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "probuilder/probuilder-overview",
+  "title": "ProBuilder: In-Editor Mesh Authoring, Primitives, Editing",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "editor",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "ProBuilder (com.unity.probuilder) is Unity's in-Editor polygon modeler for blockouts, greyboxing, and lightweight production geometry. It ships a custom ProBuilderMesh component (not a vanilla MeshFilter) that stores editable topology — vertices, edges, faces, per-face materials, and UV modes — and bakes to a runtime UnityEngine.Mesh on demand. Primary failure modes when LLMs drive it: editing ProBuilderMesh vertex data without calling ToMesh/Refresh so the rendered mesh stays stale, assuming runtime builds include the ProBuilder assembly (they do, but topology edits at runtime require the package), and confusing per-face materials with submesh assignment. Use ProBuilder for greybox/blockout and hand-authored level geometry; use mesh/* tools for procedural runtime meshes and DCC imports for production-ready modular sets.",
+
+  "mosaicTools": [
+    "probuilder/create-shape",
+    "probuilder/extrude-face",
+    "probuilder/bevel-edge",
+    "probuilder/subdivide-face",
+    "probuilder/merge-objects",
+    "probuilder/bake-to-mesh"
+  ],
+
+  "relatedKb": [
+    "core/asset-database",
+    "rendering/shader-properties",
+    "core/gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_blockout_or_greybox_a_level":
+      "Reach for ProBuilder. Create shapes via ProBuilderMesh.CreateShapeFromPoly / ShapeGenerator.CreateShape (Cube, Plane, Stair, Cylinder, Prism, Sphere, Arch, Pipe, Door, Cone, Torus). Never synthesize geometry from raw vertex arrays when a primitive + extrude would do it in two calls.",
+    "when_asked_for_runtime_procedural_geometry":
+      "Do NOT use ProBuilder. ProBuilder's editing APIs are authoring-time — they live in UnityEditor.ProBuilder and are stripped from player builds. Use the mesh/* tools (UnityEngine.Mesh + MeshFilter) instead. ProBuilderMesh components can still exist at runtime as baked geometry, but you cannot edit topology without the editor assembly.",
+    "when_modifying_probuildermesh_vertices_or_faces":
+      "After any topology or position edit you MUST call pbMesh.ToMesh() to regenerate the underlying UnityEngine.Mesh, then pbMesh.Refresh() to rebuild normals/tangents/UVs/collider, and optionally pbMesh.Optimize() to merge coincident vertices. Skipping this leaves the Scene view rendering the previous state.",
+    "when_extruding_a_face":
+      "Use UnityEditor.ProBuilder.MeshOperations.ExtrudeElements.Extrude(pbMesh, selectedFaces, ExtrudeMethod.FaceNormal, distance). ExtrudeMethod options: FaceNormal, VertexNormal, IndividualFaces. Always Refresh() afterwards. Distance is in world units pre-transform.",
+    "when_beveling_an_edge":
+      "Use Bevel.BevelEdges(pbMesh, edges, amount). Amount is the inset distance; too large relative to adjacent faces collapses topology. Clamp to < 0.5 * shortest adjacent edge length.",
+    "when_bridging_two_faces":
+      "Faces must have the same number of vertices AND be on different connected components (or separated in topology). Use MergeElements.Bridge. If the bridge fails silently, the likely cause is differing vertex counts or coplanar adjacent faces.",
+    "when_merging_multiple_probuilder_objects":
+      "CombineMeshes.Combine(pbMeshes, targetMesh). The result is one ProBuilderMesh with preserved per-face materials stored as submeshes. Original objects are NOT destroyed — caller must handle cleanup.",
+    "when_applying_a_material_to_one_face":
+      "Assign material per-face via face.submeshIndex, then call pbMesh.ToMesh() which builds a submesh per unique index. Do NOT just swap MeshRenderer.sharedMaterials — that breaks on the next Refresh because ProBuilder rebuilds submesh assignment from face metadata.",
+    "when_uvs_look_stretched_after_extrude_or_bevel":
+      "AutoUnwrapSettings may not regenerate cleanly on non-planar faces. Either switch the affected faces to Manual UV mode and unwrap in the UV Editor, or tweak AutoUnwrapSettings (anchor, scale, offset, fill) and call pbMesh.RefreshUV() on those faces.",
+    "when_baking_to_a_runtime_mesh_asset":
+      "Call pbMesh.ToMesh() to populate the UnityEngine.Mesh, then persist via AssetDatabase.CreateAsset(pbMesh.mesh, path) — see core/asset-database. For player builds that do NOT need editing, remove the ProBuilderMesh component and keep only MeshFilter + MeshRenderer to drop the authoring overhead.",
+    "when_pb_geometry_renders_pink_in_a_build":
+      "Not a ProBuilder issue — the material's shader is missing for the active render pipeline. Cross-ref rendering/shader-properties. ProBuilder ships a default material per pipeline; verify the correct one is assigned.",
+    "when_asked_to_export_for_dcc_roundtrip":
+      "Use the Export menu (Tools > ProBuilder > Export) which supports OBJ, STL, PLY, and (with FBX Exporter package) FBX. Programmatic export is via pb_Obj_Exporter / ExportObj; FBX requires UnityEditor.Formats.Fbx.Exporter from the FBX Exporter package.",
+    "when_deciding_probuilder_vs_dcc_vs_mesh_tools":
+      "Blockout / greybox / iteration-heavy level geometry → ProBuilder. Production-ready modular art, skinned meshes, high-poly detail → Blender/Maya + FBX import. Runtime-generated or data-driven geometry → mesh/* tools with UnityEngine.Mesh directly."
+  },
+
+  "full": {
+    "packageModel": {
+      "packageName": "com.unity.probuilder",
+      "installation": "Window > Package Manager > Unity Registry > ProBuilder. The package brings runtime assemblies (Unity.ProBuilder.dll) and editor assemblies (Unity.ProBuilder.Editor.dll). Editing APIs live under UnityEditor.ProBuilder.MeshOperations and are Editor-only.",
+      "runtimePresence": "The runtime assembly IS included in player builds by default because ProBuilderMesh is a MonoBehaviour. A built player can render ProBuilder geometry but cannot modify its topology because MeshOperations are Editor-only.",
+      "coreType": "UnityEngine.ProBuilder.ProBuilderMesh — sits alongside a MeshFilter, MeshRenderer, and optional MeshCollider. Holds the editable topology; the MeshFilter's sharedMesh is what gets rendered after ToMesh()."
+    },
+
+    "topologyModel": {
+      "vertices": "ProBuilderMesh.positions (Vector3[]) — position per unique vertex. Shared across faces via the sharedVertices lookup.",
+      "sharedVertices": "SharedVertex[] — each entry groups vertex indices that occupy the same position. Critical for edge/face operations; editing positions via positionsInternal without syncing sharedVertices corrupts topology.",
+      "faces": "Face[] — each Face carries: indexes (triangulation), submeshIndex (material slot), smoothingGroup, textureGroup, uv (AutoUnwrapSettings), manualUV (bool flag), material (per-face).",
+      "edges": "Derived from Face.edges and SharedVertex groupings. Not stored as a first-class array; queries use ElementSelection or WingedEdge helpers.",
+      "meshSync": "After ANY edit: pbMesh.ToMesh() regenerates UnityEngine.Mesh from ProBuilder topology; pbMesh.Refresh(RefreshMask) rebuilds derived data (normals, tangents, UVs, collider). Optimize() removes unused vertices and merges coincident ones."
+    },
+
+    "primitiveShapes": {
+      "factory": "UnityEngine.ProBuilder.ShapeGenerator.CreateShape(ShapeType) — returns ProBuilderMesh with sensible defaults. Menu equivalent: Tools > ProBuilder > New Shape (Ctrl+Shift+K).",
+      "shapeTypes": [
+        "Cube — parameterized by size (Vector3) and subdivisions per axis.",
+        "Plane — width, height, widthSegments, heightSegments. Single-sided by default.",
+        "Stair — steps, size, buildSides (solid or open).",
+        "Prism — triangular extrusion.",
+        "Cylinder — axisDivisions, heightCuts, radius, height, smooth.",
+        "Sphere — icosphere subdivisions (not UV-sphere). Higher subdivision doubles face count.",
+        "Arch — radialCuts, thickness, depth, endCaps.",
+        "Pipe — like Cylinder but hollow with inner radius.",
+        "Door — width, height, depth, ledge, legs.",
+        "Cone — axisDivisions, radius, height.",
+        "Torus — rows, columns, innerRadius, outerRadius, horizontalCircumference, verticalCircumference."
+      ],
+      "defaults": "Most shapes return with per-face submeshIndex 0 and AutoUV enabled. Override via the New Shape inspector or by setting Face.uv post-creation."
+    },
+
+    "editModes": {
+      "object":  "Transform the whole ProBuilderMesh like any GameObject. No topology editing.",
+      "vertex":  "Select individual vertices (or shared vertex groups). Move, weld, collapse.",
+      "edge":    "Select edges. Operations: bevel, connect, subdivide, insert loop.",
+      "face":    "Select faces. Operations: extrude, subdivide, flip normals, detach, merge, bridge.",
+      "switching": "Toolbar buttons or keyboard: H (Object), G (toggle element/object), 1 (Vertex), 2 (Edge), 3 (Face). Programmatic via ProBuilderEditor.selectMode."
+    },
+
+    "coreOperations": {
+      "extrude": {
+        "api": "UnityEditor.ProBuilder.MeshOperations.ExtrudeElements.Extrude(pbMesh, faces, ExtrudeMethod method, float distance)",
+        "methods": ["FaceNormal — one capped extrusion along averaged face normal", "VertexNormal — per-vertex normal (useful for curved extrusions)", "IndividualFaces — extrudes each face separately"],
+        "postCall": "pbMesh.ToMesh(); pbMesh.Refresh();"
+      },
+      "bevel": {
+        "api": "UnityEditor.ProBuilder.MeshOperations.Bevel.BevelEdges(pbMesh, edges, float amount)",
+        "notes": "Amount is inset distance. Excessive values relative to adjacent edge length cause face collapse."
+      },
+      "subdivide": {
+        "faceApi": "UnityEditor.ProBuilder.MeshOperations.ConnectElements.Connect(pbMesh, faces) — inserts loop cuts.",
+        "edgeApi": "UnityEditor.ProBuilder.MeshOperations.SubdivideEdges (adds vertices along selected edges).",
+        "useCases": "Add density before organic deformation or for finer material seams."
+      },
+      "bridge": {
+        "api": "UnityEditor.ProBuilder.MeshOperations.MergeElements.Bridge(pbMesh, face1, face2)",
+        "requirement": "Both faces must have equal vertex count. Deletes source faces and spans the gap."
+      },
+      "mergeObjects": {
+        "api": "UnityEditor.ProBuilder.MeshOperations.CombineMeshes.Combine(IEnumerable<ProBuilderMesh>, ProBuilderMesh target)",
+        "notes": "Merges into target preserving per-face materials as submeshes. Source objects remain; caller handles destruction."
+      },
+      "flipNormals": {
+        "api": "UnityEditor.ProBuilder.MeshOperations.SurfaceTopology.ReverseWindingOrder(pbMesh, faces)",
+        "useCase": "Interior-facing rooms, reversed-hull shells."
+      },
+      "smoothNormals": {
+        "api": "Face.smoothingGroup = <1-24 soft / 25-42 hard>",
+        "notes": "Faces sharing a smoothing group average their normals at shared edges. 0 = unsmoothed."
+      }
+    },
+
+    "uvModel": {
+      "autoUv": {
+        "structure": "AutoUnwrapSettings per face (Face.uv). Fields: anchor, scale, offset, rotation, fill (Fit/Tile/Stretch), useWorldSpace, flipU, flipV, swapUV.",
+        "refresh": "Changes apply after pbMesh.RefreshUV(faces). AutoUV is procedural — survives topology edits like extrude without re-unwrapping."
+      },
+      "manualUv": {
+        "flag": "Face.manualUV = true disables AutoUV for that face. UVs then editable in Tools > ProBuilder > UV Editor.",
+        "islands": "UV Editor groups selected faces into islands. Planar / Box / Sphere projection available.",
+        "limitation": "Manual UVs do NOT auto-update after extrude/subdivide — must re-unwrap affected faces."
+      },
+      "commonFailure": "Extruding an AutoUV face onto a non-coplanar continuation causes stretched UVs because AutoUV projects per-face. Fix: switch affected face to manual, or set Face.uv.fill = Fit and tweak scale."
+    },
+
+    "materials": {
+      "perFaceAssignment": "Each Face has a submeshIndex. All faces with the same index share a material. ToMesh() builds one submesh per unique index and assigns renderer.sharedMaterials accordingly.",
+      "palette": "ProBuilder's Material Editor (Tools > ProBuilder > Material Editor) is a quick palette for hotkey-based per-face material application.",
+      "programmaticApi": "pbMesh.SetMaterial(faces, material) — walks faces, assigns material, builds submesh mapping, and updates ProBuilderMesh.materialCount.",
+      "rule": "Never directly assign MeshRenderer.sharedMaterials on a ProBuilderMesh-owned GameObject — ProBuilder will overwrite it on next ToMesh."
+    },
+
+    "scriptingModel": {
+      "create": {
+        "primitive": "ShapeGenerator.CreateShape(ShapeType.Cube) returns a new ProBuilderMesh on a fresh GameObject.",
+        "fromData": "ProBuilderMesh.Create(IEnumerable<Vector3> positions, IEnumerable<Face> faces) — build from scratch.",
+        "fromMesh": "MeshImporter.Import(UnityEngine.Mesh source) — convert an existing mesh into a ProBuilderMesh for further editing (quality depends on source topology)."
+      },
+      "baking": {
+        "toMesh": "pbMesh.ToMesh() regenerates the UnityEngine.Mesh inside the MeshFilter from ProBuilder topology.",
+        "optimize": "pbMesh.Optimize() welds coincident vertices and rebuilds the collision mesh.",
+        "persist": "For asset creation: after ToMesh/Refresh, AssetDatabase.CreateAsset(pbMesh.mesh, \"Assets/.../Baked.asset\"). For builds where editing isn't needed, Object.DestroyImmediate the ProBuilderMesh component."
+      },
+      "refreshMask": "pbMesh.Refresh(RefreshMask) — flags: All, Normals, Tangents, UV, Colors, Collisions. Default All is safe; narrow for perf-critical loops."
+    },
+
+    "exportFormats": {
+      "builtIn": ["OBJ (Tools > ProBuilder > Export > Export Obj)", "STL", "PLY", "Asset (Unity .asset with baked UnityEngine.Mesh)"],
+      "fbx": "Requires the com.unity.formats.fbx package. Export preserves submesh/material assignment; smoothing groups become FBX smoothing.",
+      "useCase": "Round-trip to Blender/Maya for texturing, UV cleanup, or higher-fidelity modeling."
+    },
+
+    "integrations": {
+      "timelineAnimation": "ProBuilderMesh GameObjects animate via Transform like any GameObject. Topology animation (shape keys) is not supported — bake to skinned mesh in DCC if needed.",
+      "physics": "MeshCollider is rebuilt automatically by Refresh(RefreshMask.Collisions). Non-convex colliders supported. For performance, reduce poly count via Optimize or bake convex hulls.",
+      "visualScripting": "ProBuilderMesh is a MonoBehaviour and appears in Bolt/Visual Scripting unit discovery, but the MeshOperations namespace is Editor-only — runtime graphs cannot call extrude/bevel.",
+      "nestedPrefabs": "Safe. ProBuilderMesh serialization uses Unity's normal prefab system. Override propagation follows standard prefab rules."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "User wants to sketch a level layout with walls, stairs, and rooms",
+        "rule": "ShapeGenerator.CreateShape for each primitive, position via Transform, use face extrude for openings. Bake only at handoff to the art team.",
+        "evidence": "Unity Manual — ProBuilder: Using ProBuilder for level design."
+      },
+      {
+        "scenario": "User wants runtime-generated walls from a nav graph",
+        "rule": "Do NOT use ProBuilder. Build UnityEngine.Mesh directly via mesh/* tools. ProBuilder's MeshOperations are Editor-only.",
+        "evidence": "ProBuilder package structure — UnityEditor.ProBuilder assembly is editor-only."
+      },
+      {
+        "scenario": "User wants to convert a ProBuilder blockout to a shippable asset",
+        "rule": "pbMesh.ToMesh + pbMesh.Optimize + AssetDatabase.CreateAsset to save the UnityEngine.Mesh. For builds without further editing, strip the ProBuilderMesh component.",
+        "evidence": "ProBuilder Manual — Exporting and ProBuilderMesh API."
+      },
+      {
+        "scenario": "User reports that an extrude 'didn't do anything'",
+        "rule": "Check for missing ToMesh/Refresh after the MeshOperations call. Topology was edited but the rendered mesh wasn't regenerated.",
+        "evidence": "ProBuilderMesh.ToMesh / Refresh API docs."
+      },
+      {
+        "scenario": "User wants DCC round-trip for painting/texturing",
+        "rule": "Export to FBX (requires FBX Exporter package) or OBJ. Preserve smoothing groups and per-face materials.",
+        "evidence": "ProBuilder Manual — Exporting."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Topology edit APIs succeed but Scene view shows the old mesh.",
+        "cause": "Missing pbMesh.ToMesh() and/or pbMesh.Refresh() after the MeshOperations call.",
+        "fix": "Always pair edits with ToMesh + Refresh. For batches, do one pair at the end rather than per-edit."
+      },
+      {
+        "symptom": "Per-face material assignments revert after a subsequent edit.",
+        "cause": "Assigned materials directly via MeshRenderer.sharedMaterials instead of Face.submeshIndex + pbMesh.SetMaterial.",
+        "fix": "Use ProBuilder's material APIs; they persist through ToMesh because they live on Face metadata."
+      },
+      {
+        "symptom": "UVs stretch or tile incorrectly after extrude or bevel.",
+        "cause": "AutoUV's per-face projection is wrong for the new non-coplanar geometry.",
+        "fix": "Either tweak AutoUnwrapSettings (fill=Fit, re-anchor) or switch affected faces to manualUV and unwrap in the UV Editor."
+      },
+      {
+        "symptom": "Bridge operation fails silently.",
+        "cause": "Source and target faces have different vertex counts, or are on the same connected loop.",
+        "fix": "Subdivide the smaller face to match vertex count, or detach one face first."
+      },
+      {
+        "symptom": "Pink/magenta material in built player only.",
+        "cause": "Default ProBuilder material uses a pipeline shader not present in the build's active pipeline.",
+        "fix": "Cross-ref rendering/shader-properties. Replace with the URP/HDRP/Built-in equivalent before build."
+      },
+      {
+        "symptom": "Runtime code throws 'type or namespace UnityEditor.ProBuilder not found' in build.",
+        "cause": "MeshOperations are Editor-only; code referencing them must be wrapped in #if UNITY_EDITOR or moved to an Editor asmdef.",
+        "fix": "Guard with #if UNITY_EDITOR, or use mesh/* tools for runtime geometry."
+      },
+      {
+        "symptom": "ProBuilderMesh saved as prefab shows zero geometry in a fresh scene.",
+        "cause": "The underlying UnityEngine.Mesh wasn't persisted as an asset; only the ProBuilder topology was saved on the prefab.",
+        "fix": "Call pbMesh.ToMesh then AssetDatabase.CreateAsset on pbMesh.mesh, or mark the prefab as 'rebuild mesh on load' via ProBuilder's Rebuild option."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.3",
+        "change": "ProBuilder 5.0 baseline. ShapeGenerator API and ProBuilderMesh stable. Editor integrates with the new Overlays system.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "ProBuilder 5.1+ ships with refined Shape tool (drag-to-create primitives directly in Scene view) and improved Poly Shape for custom 2D footprints.",
+        "breaking": false
+      },
+      {
+        "version": "2023.1",
+        "change": "ProBuilder 6.0 — reworked UV Editor, better Auto UV stability on non-planar extrudes, and tool overlay integration aligned with Unity's tool framework.",
+        "breaking": false,
+        "migrationNote": "Custom editor tooling that hooked the old UV Editor may need updating to the 6.x element-mode API."
+      },
+      {
+        "version": "6000.0",
+        "change": "ProBuilder 6.x continues as the supported line in Unity 6. Full compatibility with URP and HDRP materials; Tools > ProBuilder menu remains the canonical entry point.",
+        "breaking": false
+      }
+    ],
+
+    "coversToolCategories": ["probuilder"]
+  },
+
+  "externalReferences": [
+    { "title": "ProBuilder package manual",                          "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/index.html" },
+    { "title": "ProBuilder manual — Shape tool",                     "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/shape-tool.html" },
+    { "title": "ProBuilder manual — Editing meshes",                 "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/editing-meshes.html" },
+    { "title": "ProBuilder manual — Materials tools",                "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/material-tools.html" },
+    { "title": "ProBuilder manual — UV Editor",                      "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/uv-editor.html" },
+    { "title": "ProBuilder manual — Export",                         "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/Object_Export.html" },
+    { "title": "ScriptReference — ProBuilderMesh",                   "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEngine.ProBuilder.ProBuilderMesh.html" },
+    { "title": "ScriptReference — ShapeGenerator",                   "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEngine.ProBuilder.ShapeGenerator.html" },
+    { "title": "ScriptReference — Face",                             "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEngine.ProBuilder.Face.html" },
+    { "title": "ScriptReference — AutoUnwrapSettings",               "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEngine.ProBuilder.AutoUnwrapSettings.html" },
+    { "title": "ScriptReference — ExtrudeElements",                  "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEditor.ProBuilder.MeshOperations.ExtrudeElements.html" },
+    { "title": "ScriptReference — Bevel",                            "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEditor.ProBuilder.MeshOperations.Bevel.html" },
+    { "title": "ScriptReference — CombineMeshes",                    "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEditor.ProBuilder.MeshOperations.CombineMeshes.html" },
+    { "title": "ScriptReference — MergeElements (Bridge)",           "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEditor.ProBuilder.MeshOperations.MergeElements.html" },
+    { "title": "ScriptReference — SurfaceTopology (FlipNormals)",    "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/UnityEditor.ProBuilder.MeshOperations.SurfaceTopology.html" }
+  ],
+
+  "sources": [
+    { "title": "ProBuilder package manual (authoring source)",       "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/manual/index.html" },
+    { "title": "ProBuilder ScriptReference (authoring source)",      "url": "https://docs.unity3d.com/Packages/com.unity.probuilder@6.0/api/index.html" },
+    { "title": "Unity FBX Exporter package (export round-trip)",     "url": "https://docs.unity3d.com/Packages/com.unity.formats.fbx@5.0/manual/index.html" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity APIs (ProBuilder package manual and ScriptReference). API names, struct fields, ShapeType enumeration values, ExtrudeMethod values, and version deltas are facts and not copyrightable. All explanatory prose, decisionRules, commonPitfalls, llmGuidance, and the ToMesh/Refresh discipline rules are original Mosaic editorial content. ProBuilder manual and ScriptReference pages are cited as externalReferences and sources — NOT reproduced here."
+}

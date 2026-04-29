@@ -1,0 +1,255 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "shadergraph/authoring-overview",
+  "title": "ShaderGraph: Nodes, Properties, Keywords, Subgraphs",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Visual shader authoring via ShaderGraph: master-stack graphs (Lit / Unlit / Fullscreen / Fog) that compile to URP or HDRP shaders only. Covers the node-category map, exposed properties vs. keywords, subgraphs for reuse, Custom Function for HLSL escape hatches, and graph settings (precision, surface, blend). Use before any mosaic shadergraph/* tool call or when generating authored shaders (shader/parallax-create, shader/sss-create) that must drop into a URP project. Key gotcha: ShaderGraph has no Built-in target — assigning a graph-authored shader to a Built-in project renders pink.",
+
+  "mosaicTools": [
+    "shadergraph/create",
+    "shadergraph/open",
+    "shadergraph/list",
+    "shadergraph/info",
+    "shadergraph/get-properties",
+    "shadergraph/set-property-default",
+    "shader/parallax-create",
+    "shader/sss-create",
+    "shader/create-raymarcher",
+    "material/create",
+    "material/set-property"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-shader-properties",
+    "kb-rendering-urp-material-workflow",
+    "kb-rendering-pipeline-detection"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_create_a_new_shader_on_urp_or_hdrp":
+      "Prefer shadergraph/create with ShaderType='Lit' unless the surface is explicitly unlit (FX, UI, skybox). The generated .shadergraph carries a master stack that already targets the active URP/HDRP pipeline — do not hand-author HLSL unless a Custom Function is required.",
+    "when_the_active_pipeline_is_Built-in":
+      "ShaderGraph does NOT support Built-in. Do not create a .shadergraph; the resulting material renders pink. Fall back to a hand-written .shader (Standard / legacy surface shader) or direct the user to install URP. See kb-rendering-pipeline-detection to confirm the pipeline first.",
+    "when_exposing_a_material_parameter":
+      "Add a ShaderGraph Property (not a Keyword) and mark it Exposed. Supported types: Texture2D / Texture2DArray / Texture3D / Cubemap, Color (with HDR flag for emission), Float, Vector2-4, Boolean, Matrix4. The Property's Reference string (e.g. '_BaseColor') is what code uses with Material.SetColor / SetFloat / SetTexture — always set Reference explicitly so it survives graph refactors.",
+    "when_adding_a_toggle_to_a_graph":
+      "Use a Boolean Keyword (shader variant) only if the branch affects code generation or the optimizer can eliminate dead samplers. Otherwise use a Float property + Branch node — no variant explosion. A Boolean Keyword doubles the variant count; four booleans = 16 variants = slow compiles and big builds.",
+    "when_adding_an_enum_toggle":
+      "Use an Enum Keyword with 2-4 entries. Past 4 entries the variant count becomes painful. For >4 options prefer a Float property + Switch node unless each branch contains cost-asymmetric code that benefits from static dispatch.",
+    "when_factoring_reusable_node_chains":
+      "Create a Subgraph (Asset > Create > Shader Graph > Sub Graph). Give it typed input/output ports and Exposed Properties for anything the parent must drive. Good candidates: custom BRDF helpers, triplanar mapping, UV warps, noise stacks. Subgraphs compile into the parent — no runtime cost vs. inlining.",
+    "when_graph_nodes_cannot_express_the_math":
+      "Drop in a Custom Function node. Two modes: File (point at an .hlsl file with a named function) or String (inline HLSL). Prefer File mode for anything longer than ~10 lines — it survives copy/paste and gets diff-friendly version control.",
+    "when_shader_property_default_needs_updating_from_a_tool":
+      "Call shadergraph/set-property-default with the graph path and the Property Reference string. This mutates the .shadergraph asset directly (JSON edit). For runtime value changes, use material/set-property against an instance instead — don't touch the graph asset at runtime.",
+    "when_debugging_'graph_renders_pink'":
+      "Four causes ranked by frequency: 1) active pipeline is Built-in (no ShaderGraph target); 2) target pipeline mismatch (HDRP graph in a URP project or vice versa); 3) keyword combination was stripped from the build; 4) subgraph output not connected to anything. Check pipeline first.",
+    "when_precision_artifacts_appear_at_large_world_positions":
+      "Graph defaults to Single (fp32) precision per node, but nodes can be set to Half (fp16) for perf. If position/UV math uses Half at far world coordinates, you'll see stepping. Fix by setting Graph Settings > Precision to Single globally, or selectively on the affected nodes."
+  },
+
+  "full": {
+    "overview": "ShaderGraph is a node-based shader authoring tool distributed as a Unity package (com.unity.shadergraph). It targets Scriptable Render Pipelines only — URP and HDRP. A graph compiles into a Unity .shader through a code generator whose output depends on the master stack, the connected nodes, and the graph's declared keywords. Nothing in a graph runs in the Built-in Render Pipeline; attempting to convert a graph for Built-in requires re-authoring against legacy surface shaders.",
+
+    "masterStack": {
+      "concept": "The master stack is the graph's terminal node — the point where color, normal, alpha, and other surface outputs are written. Replaces the pre-10.x 'Master Node' with two typed blocks (Vertex stack + Fragment stack) you can add or remove block nodes on.",
+      "targets": [
+        { "name": "Lit",        "pipeline": "URP + HDRP", "use": "PBR surfaces. Drives base color, metallic, smoothness, normal, emission, occlusion." },
+        { "name": "Unlit",      "pipeline": "URP + HDRP", "use": "Self-illuminated or stylized surfaces. No lighting. FX, UI overlays, skyboxes." },
+        { "name": "Sprite Lit / Unlit", "pipeline": "URP 2D", "use": "2D renderer. Uses SpriteRenderer path." },
+        { "name": "Fullscreen", "pipeline": "URP 14+ / HDRP", "use": "Post-process and blit effects via Fullscreen Pass Renderer Feature. Operates in screen space." },
+        { "name": "Fog",        "pipeline": "HDRP",       "use": "Volumetric fog overrides. HDRP-only." },
+        { "name": "Decal",      "pipeline": "URP + HDRP", "use": "Projected decals on opaque surfaces." },
+        { "name": "Canvas",     "pipeline": "URP 15+",    "use": "UI Toolkit and uGUI elements." }
+      ],
+      "stacks": "Vertex stack receives Position / Normal / Tangent blocks. Fragment stack receives Base Color / Normal / Metallic / Smoothness / Emission / Alpha / Alpha Clip Threshold / etc. Only the blocks you connect are written — unconnected blocks default."
+    },
+
+    "nodeCategories": {
+      "summary": "Graph palette is organized into categories. The LLM doesn't need to remember individual node names — it needs to know which category to reach for.",
+      "categories": [
+        { "category": "Input",     "use": "Properties, Geometry (Position, Normal, UV, Tangent), Scene (Time, Screen, Camera), Matrix constants." },
+        { "category": "Math",      "use": "Arithmetic, trig, vector ops, interpolation, range remap, derivatives. The biggest category." },
+        { "category": "Artistic",  "use": "Color adjustments (hue/saturation, levels), blend modes, dither, posterize, contrast." },
+        { "category": "Procedural","use": "Gradient noise, Simplex noise, Voronoi, checkerboard. For hand-made textures without sampler cost." },
+        { "category": "UV",        "use": "Flipbook, Rotate, Tile+Offset, Twirl, Polar Coordinates, Parallax (heightmap offset)." },
+        { "category": "Channel",   "use": "Combine/Split/Swizzle. Reinterpret vectors component-wise." },
+        { "category": "Utility",   "use": "Preview, Branch (if), Custom Function, Subgraph, Keyword, Redirect." },
+        { "category": "Texture",   "use": "Sample Texture 2D / 2D Array / 3D / Cubemap, Sampler State, Texel Size, Triplanar." }
+      ]
+    },
+
+    "properties": {
+      "concept": "Properties appear in the Material Inspector when Exposed, and are settable at runtime via Material.SetColor / SetFloat / SetTexture using the property's Reference string (e.g. '_BaseColor'). Unexposed properties behave as graph-local constants with a default value.",
+      "types": [
+        { "type": "Texture2D",      "inspector": "Object field", "code": "material.SetTexture(ref, tex)" },
+        { "type": "Texture2D Array","inspector": "Object field", "code": "SetTexture" },
+        { "type": "Texture3D",      "inspector": "Object field", "code": "SetTexture" },
+        { "type": "Cubemap",        "inspector": "Object field", "code": "SetTexture" },
+        { "type": "Color",          "inspector": "Color picker (HDR toggle)", "code": "material.SetColor(ref, c)" },
+        { "type": "Float",          "inspector": "Slider / Field (with Min/Max mode)", "code": "material.SetFloat(ref, v)" },
+        { "type": "Vector2/3/4",    "inspector": "Field", "code": "material.SetVector(ref, v)" },
+        { "type": "Boolean",        "inspector": "Toggle — NOTE: implemented as a float 0/1, not a keyword unless marked as Keyword", "code": "material.SetFloat(ref, b?1:0)" },
+        { "type": "Matrix2/3/4",    "inspector": "Fields", "code": "material.SetMatrix(ref, m)" }
+      ],
+      "referenceStringRule": "Always set Reference explicitly (e.g. '_BaseColor') before shipping. If left auto-generated, it becomes a random GUID-like string that breaks downstream code that does material.SetColor('_BaseColor', ...)."
+    },
+
+    "keywords": {
+      "concept": "Keywords generate distinct shader variants at compile time — each keyword combination produces a separate compiled shader. Useful for dead-code elimination of cost-asymmetric branches (e.g. with/without normal map sampling). Dangerous because the variant count is multiplicative.",
+      "kinds": [
+        { "kind": "Boolean", "variantsPerKeyword": 2, "notes": "On/Off. Enable at runtime with material.EnableKeyword / DisableKeyword. Global keywords share across materials; Local keywords are per-material." },
+        { "kind": "Enum",    "variantsPerKeyword": "N",  "notes": "Multiple named states (e.g. _QUALITY_LOW / _MED / _HIGH). Set exactly one active per material." }
+      ],
+      "variantExplosion": "Four boolean keywords = 2^4 = 16 variants. Six = 64. URP/HDRP also add pipeline-scoped keywords on top (shadows, GI, XR, etc.), multiplying further. Build-time shader compilation scales with the product. Rule: budget 3-4 graph-authored keywords max per shader. Convert borderline cases to Float + Branch node (no variant, runtime dynamic branch)."
+    },
+
+    "subgraphs": {
+      "concept": "A Sub Graph is a reusable fragment of graph logic with typed input ports and a single Output node. Consumers drop a Subgraph node into their main graph; Unity inlines the subgraph's body during shader code generation.",
+      "useCases": [
+        "Shared custom BRDF computation used by multiple Lit graphs.",
+        "Triplanar sampling helper (accepts base texture + scale + blend sharpness, outputs blended color + normal).",
+        "Noise stacks (fBM of Gradient Noise at multiple octaves) authored once and reused.",
+        "UV warps (polar, radial, scrolling, displaced) factored out of main graph.",
+        "Preserving visual clarity in a big graph by folding logical sections behind a single node."
+      ],
+      "rules": [
+        "Sub Graph Output node accepts multiple typed outputs. Connect them in the parent graph as needed.",
+        "Exposed properties on a sub graph become ports on the consumer node — they do NOT appear in the consumer material's inspector. Propagate through the parent graph.",
+        "Sub graphs can reference other sub graphs but must not cycle."
+      ]
+    },
+
+    "customFunctionNode": {
+      "concept": "Escape hatch for HLSL that the node palette cannot express — custom lighting, loops, external includes, platform intrinsics. The function is pasted into the generated shader at the node's position.",
+      "modes": [
+        { "mode": "File",   "use": "Point at an .hlsl asset and specify a function name. Preferred for >10 lines or code under version control." },
+        { "mode": "String", "use": "Inline snippet. Use for 1-2 liners and prototypes." }
+      ],
+      "signatureRules": [
+        "Inputs declared on the node become function parameters in declared order.",
+        "Outputs declared on the node become 'out' parameters.",
+        "Function name on the node must match the HLSL function name exactly.",
+        "Precision (half/float) must be consistent with the graph's precision setting or explicitly annotated."
+      ]
+    },
+
+    "graphSettings": {
+      "summary": "Graph-level settings control compile targets and surface behavior. Accessed via the Graph Inspector > Graph Settings tab.",
+      "keySettings": [
+        { "setting": "Active Targets",   "options": "URP, HDRP (multi-select possible)", "notes": "A graph can target both pipelines simultaneously; each target produces a separate compiled sub-shader." },
+        { "setting": "Material",         "options": "Lit, Unlit, Fullscreen, Fog, Decal, Canvas", "notes": "Determines which master stack blocks are valid." },
+        { "setting": "Surface Type",     "options": "Opaque, Transparent", "notes": "Transparent adds Blend settings and removes depth write by default." },
+        { "setting": "Blending Mode",    "options": "Alpha, Premultiply, Additive, Multiply", "notes": "Transparent-only." },
+        { "setting": "Render Face",      "options": "Front, Back, Both", "notes": "Back/Both disables culling." },
+        { "setting": "Alpha Clipping",   "options": "On/Off", "notes": "Enables Alpha Clip Threshold block in fragment stack." },
+        { "setting": "Precision",        "options": "Single (fp32), Half (fp16)", "notes": "Default per-node; override globally here." },
+        { "setting": "Cast Shadows",     "options": "On/Off", "notes": "Opaque default on, transparent default off." }
+      ]
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Creating any new non-trivial shader on URP or HDRP",
+        "rule": "Use shadergraph/create with ShaderType='Lit' (or 'Unlit' for FX). Do not hand-author HLSL unless Custom Function is needed for something the nodes cannot express.",
+        "evidence": "ShaderGraph is Unity's supported URP/HDRP authoring surface; hand-written .shader files bypass the target system and tend to break on pipeline upgrades."
+      },
+      {
+        "scenario": "Target project uses Built-in Render Pipeline",
+        "rule": "Do not emit a .shadergraph. Fall back to a hand-authored Standard or legacy surface shader; warn the user ShaderGraph is URP/HDRP-only.",
+        "evidence": "ShaderGraph package explicitly excludes a Built-in target. Output assigned to Built-in project renders pink."
+      },
+      {
+        "scenario": "Graph needs a toggle between two cost-asymmetric branches",
+        "rule": "Use a Boolean Keyword so the optimizer strips the disabled branch. Budget total keyword count ≤ 4 (including enum keywords weighted by N-1).",
+        "evidence": "Variants multiply: 4 bool keywords = 16 variants; plus pipeline variants, build-time compile grows fast."
+      },
+      {
+        "scenario": "Graph needs a toggle between two cheap branches",
+        "rule": "Use Float property + Branch node. No shader variant, runtime dynamic branch on a GPU-friendly scalar. Saves compile time.",
+        "evidence": "Modern GPUs handle uniform-branch predication cheaply; variant explosion is the bigger risk in content-heavy projects."
+      },
+      {
+        "scenario": "Same lighting math reused in multiple graphs",
+        "rule": "Factor into a Sub Graph. Update once, propagates to all consumers. Use typed ports and Exposed Properties for driven parameters.",
+        "evidence": "Sub Graphs inline at compile time; no runtime cost vs. inlining."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Material using a .shadergraph renders pink in the scene.",
+        "cause": "Active pipeline is Built-in (no target) OR graph targets a different pipeline than the project (HDRP graph on URP project, or vice versa).",
+        "fix": "Confirm pipeline via GraphicsSettings.currentRenderPipeline. Ensure Graph Settings > Active Targets includes the project's pipeline. For Built-in projects, abandon ShaderGraph."
+      },
+      {
+        "symptom": "Build time balloons and player shader memory is huge.",
+        "cause": "Keyword explosion — boolean/enum keywords multiply pipeline-provided keywords.",
+        "fix": "Replace runtime-cheap toggles with Float + Branch node. Reduce enum keyword entries. Target ≤ 4 graph-authored keywords per shader."
+      },
+      {
+        "symptom": "material.SetColor('_BaseColor', ...) has no effect on a ShaderGraph material.",
+        "cause": "Property's Reference string is not '_BaseColor' — likely the auto-generated GUID-looking default.",
+        "fix": "Open the graph, select the property, set Reference explicitly. Re-save. Verify with shadergraph/get-properties."
+      },
+      {
+        "symptom": "Surface looks coarse / stepped at far world positions.",
+        "cause": "Precision mismatch — Half (fp16) used on position or UV math where fp32 was required.",
+        "fix": "Set Graph Settings > Precision to Single globally, or flip the offending nodes to Single precision."
+      },
+      {
+        "symptom": "Sub Graph preview looks correct but consumer graph outputs black.",
+        "cause": "Sub Graph's Output node has unconnected ports, or the consumer didn't connect the sub graph node's output.",
+        "fix": "Every port on the Sub Graph Output must drive from somewhere inside the sub graph; consumer must connect the sub graph node to a master stack block or downstream node."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.2 (ShaderGraph 12)",
+        "change": "Master Node replaced by Master Stack (Vertex + Fragment block stacks). Old graphs auto-upgrade on open. Target system introduced — one graph can now compile to URP and HDRP simultaneously.",
+        "breaking": false,
+        "migrationNote": "Graphs from earlier versions upgrade automatically; review block connections after upgrade."
+      },
+      {
+        "version": "2022.2 (ShaderGraph 14)",
+        "change": "Fullscreen master stack target added for URP post-process / blit. Canvas target added for UI. Unified URP/HDRP master stack improvements.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0 (ShaderGraph 17)",
+        "change": "Unity 6 series. Stable master stack, no breaking API changes for existing graphs. URP Fullscreen Pass Renderer Feature becomes the standard consumer of Fullscreen graphs.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — ShaderGraph package overview",         "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/index.html" },
+    { "title": "Unity Manual — ShaderGraph Master Stack",             "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Master-Stack.html" },
+    { "title": "Unity Manual — ShaderGraph Blackboard and properties","url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Blackboard.html" },
+    { "title": "Unity Manual — ShaderGraph Keywords",                 "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Keywords.html" },
+    { "title": "Unity Manual — ShaderGraph Sub Graphs",               "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Sub-graph.html" },
+    { "title": "Unity Manual — Custom Function Node",                 "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Custom-Function-Node.html" },
+    { "title": "Unity Manual — Graph Settings",                       "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/Graph-Settings-Tab.html" },
+    { "title": "ScriptReference — Material.SetFloat",                 "url": "https://docs.unity3d.com/ScriptReference/Material.SetFloat.html" },
+    { "title": "ScriptReference — Material.EnableKeyword",            "url": "https://docs.unity3d.com/ScriptReference/Material.EnableKeyword.html" }
+  ],
+
+  "sources": [
+    { "title": "com.unity.shadergraph package documentation (Unity Manual)", "url": "https://docs.unity3d.com/Packages/com.unity.shadergraph@latest/manual/index.html" },
+    { "title": "Unity-Technologies/Graphics — ShaderGraph package source",   "url": "https://github.com/Unity-Technologies/Graphics/tree/master/Packages/com.unity.shadergraph" },
+    { "title": "Unity Manual — SRP Core targeting and shader stripping",     "url": "https://docs.unity3d.com/Manual/shader-variants.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity ShaderGraph package APIs, the ShaderGraph user manual, and open-source ShaderGraph package source (BSD-family licensed Unity-Technologies/Graphics). Node category names, master stack target names, property type names, and graph setting enum values are factual data (not copyrightable). Explanatory prose, decisionRules, llmGuidance, commonPitfalls, and the variant-explosion budget heuristic are original Mosaic editorial content. Unity Manual and package documentation pages are cited as externalReferences and NOT reproduced here."
+}

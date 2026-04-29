@@ -1,0 +1,262 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-rendering-compute-buffer-lifecycle",
+  "title": "ComputeBuffer, GraphicsBuffer, and Indirect Instancing Lifecycle",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "GPU buffer + indirect instancing lifecycle for Unity scripts that allocate ComputeBuffer / GraphicsBuffer and issue Graphics.DrawMeshInstancedIndirect or Graphics.RenderMeshIndirect. Covers constructor arguments (count, stride, ComputeBufferType), OnEnable/OnDisable allocation pattern, args-buffer layout (5 uints), procedural instancing keyword, compute-shader dispatch, and the 2021.2+ GraphicsBuffer unification plus Unity 6 RenderMeshIndirect migration. Use whenever a Mosaic tool generates a script that allocates GPU buffers — physics/fluid-create, simulation/*, procgen/spawn, mesh/instanced-draw, compute/dispatch, shader/create-compute, shader/create-raymarcher. The #1 failure mode is leaked buffers from missing Release() in OnDisable; the #2 is zero instances rendered because args[1] was never written.",
+
+  "mosaicTools": [
+    "compute/create",
+    "compute/dispatch",
+    "compute/texture-process",
+    "shader/create-compute",
+    "shader/create-raymarcher",
+    "physics/fluid-create",
+    "simulation/fluid",
+    "simulation/smoke",
+    "simulation/boids",
+    "simulation/agent-based",
+    "procgen/spawn",
+    "procgen/noise-3d-texture",
+    "mesh/instanced-draw",
+    "mesh/voxel-to-mesh",
+    "procgen/marching-cubes",
+    "procgen/sdf-generate"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-shader-properties",
+    "kb-rendering-pipeline-detection",
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_generating_a_script_that_allocates_computebuffer":
+      "Allocate in OnEnable, release in OnDisable. Never Start + OnDestroy (editor tools with ExecuteAlways need the OnEnable path). Guard Release() with a null check and set the field to null after.",
+    "when_targeting_unity_6_or_newer":
+      "Prefer GraphicsBuffer + Graphics.RenderMeshIndirect over ComputeBuffer + DrawMeshInstancedIndirect. GraphicsBuffer is the unified API (2021.2+) and RenderMeshIndirect is the Unity 6 replacement accepting RenderParams + commandBuffer. ComputeBuffer still works but is on the legacy path.",
+    "when_computing_buffer_stride":
+      "Use Marshal.SizeOf<T>() for managed structs, never sizeof(T) which only works on unmanaged types in unsafe blocks. For an HLSL struct with float3 fields, prefer float4 packing in C# — HLSL aligns float3 to 16 bytes in StructuredBuffer, so a C# struct using Vector3 (12 bytes) will mismatch a naive HLSL layout.",
+    "when_setting_up_procedural_instancing":
+      "Material must have instancing enabled. In code: material.enableInstancing = true plus material.EnableKeyword(\"PROCEDURAL_INSTANCING_ON\"). Shader needs #pragma multi_compile_instancing and #pragma instancing_options procedural:setup. Without the keyword the draw call issues but the GPU reads instance 0 for every primitive.",
+    "when_building_the_args_buffer_for_drawmeshinstancedindirect":
+      "Allocate with ComputeBufferType.IndirectArguments, 5 uints, stride 20. Layout: [indexCountPerInstance, instanceCount, startIndexLocation, baseVertexLocation, startInstanceLocation]. indexCountPerInstance = mesh.GetIndexCount(submesh). Update args[1] every frame when instance count is dynamic — do NOT reallocate the args buffer.",
+    "when_user_reports_zero_instances_rendered":
+      "Check in order: (1) args[1] = instance count actually set? (2) bounds argument large enough to contain the instances? (3) instancing keyword enabled on material? (4) StructuredBuffer bound via material.SetBuffer after buffer creation? (5) pipeline supports instanced indirect (all three do, but HDRP + some URP renderer features can cull).",
+    "when_user_reports_performance_spikes_or_stalls":
+      "Look for GetData() or AsyncGPUReadback.WaitForCompletion() calls on the main-thread update path — these stall the pipeline until GPU work completes. Use AsyncGPUReadback.Request with a callback, or cache results and only read when needed.",
+    "when_debugging_'ComputeBuffer_was_garbage_collected'_log":
+      "A ComputeBuffer field lost its Release() call and the finalizer caught it. The log is one-per-buffer-leak. Fix the OnDisable path — in editor mode every play-mode enter/exit leaks again until fixed.",
+    "when_script_must_work_in_edit_mode_and_play_mode":
+      "Add [ExecuteAlways]. Allocate in OnEnable and release in OnDisable so scene-view previews work and play-mode transitions clean up. Unity calls OnDisable→OnEnable across play-mode enter; guard against double-allocation by null-checking before new."
+  },
+
+  "full": {
+    "bufferBasics": {
+      "computeBufferConstructor": "new ComputeBuffer(count, stride, ComputeBufferType). count = number of elements. stride = bytes per element. Type defaults to Default (generic StructuredBuffer). Other types: Structured, Raw (ByteAddressBuffer), Append/Counter (AppendStructuredBuffer), IndirectArguments (DrawProceduralIndirect / DrawMeshInstancedIndirect args).",
+      "graphicsBufferConstructor": "new GraphicsBuffer(GraphicsBuffer.Target target, int count, int stride). Target flags (can be OR'd): Vertex, Index, Structured, Append, Counter, CopySource, CopyDestination, IndirectArguments, Constant, Raw. 2021.2+ replaces most ComputeBuffer usage.",
+      "strideMath": "stride = byte size of the element struct. Use Marshal.SizeOf<T>() or UnsafeUtility.SizeOf<T>() — avoid sizeof(T) outside unsafe context. A struct with Vector3 position + Vector3 velocity + float density is 4+4+4+4+4+4+4 = 28 bytes C#-side, but HLSL StructuredBuffer may align float3 to 16 bytes giving 48 bytes GPU-side. Use explicit Vector4 padding in C# or explicit float4 in HLSL to match.",
+      "alignmentRules": "HLSL StructuredBuffer: float3 is 16-byte aligned when followed by non-float. Constant buffers: 16-byte aligned across the whole struct. RWStructuredBuffer: no automatic padding — whatever the HLSL struct says. IndirectArguments buffer: exactly 20 bytes (5 uints) per command. If generated HLSL does not match generated C#, writes go to the wrong lanes and the symptom is garbled simulation or silent zeros."
+    },
+
+    "lifecyclePattern": {
+      "canonical": "void OnEnable() { if (buffer == null) buffer = new ComputeBuffer(count, stride); } void OnDisable() { if (buffer != null) { buffer.Release(); buffer = null; } }",
+      "rationale": "OnEnable/OnDisable fire on component enable, scene load, play-mode enter, play-mode exit, domain reload, and hot reload. Start/OnDestroy fire only on play-mode lifetime — editor tools with [ExecuteAlways] never hit them at all. Missing OnDisable leaks across every domain reload in the editor.",
+      "executeAlwaysNote": "[ExecuteAlways] runs OnEnable/OnDisable/Update in edit mode. Without it, a scene-view preview that allocates buffers on Awake leaks on scene reload. With it plus the OnEnable/OnDisable pattern the buffer survives hot reloads cleanly.",
+      "nullCheckRule": "Always null-check before Release. Calling Release on a buffer that was never constructed (e.g. when OnDisable fires before OnEnable due to initial disable state) NullReferences. Setting field to null after Release allows OnEnable re-entry to re-allocate cleanly.",
+      "domainReloadGuard": "Unity serializes fields across domain reloads but ComputeBuffer is not serializable — the reference becomes stale. OnDisable on old domain releases; OnEnable on new domain allocates fresh. The pattern handles this automatically."
+    },
+
+    "dataTransfer": {
+      "setData": "buffer.SetData(array) uploads the full array. buffer.SetData(array, managedBufferStartIndex, graphicsBufferStartIndex, count) uploads a range — avoids realloc when only a region changed. SetData blocks briefly on CPU-GPU sync but not on the full pipeline.",
+      "getData": "buffer.GetData(array) downloads GPU→CPU and BLOCKS the render thread until the copy completes. Calling per frame in Update destroys the frame budget. Acceptable only for one-shot debug reads or editor tools that already accept a stall.",
+      "asyncReadback": "AsyncGPUReadback.Request(buffer, callback) schedules the download and invokes the callback 1-3 frames later. AsyncGPUReadback.RequestIntoNativeArray avoids a managed allocation. Use this for any per-frame readback (particle positions for CPU-side logic, collision-result scans, metrics)."
+    },
+
+    "indirectInstancing": {
+      "api": "Graphics.DrawMeshInstancedIndirect(Mesh mesh, int submeshIndex, Material material, Bounds bounds, ComputeBuffer bufferWithArgs, int argsOffset = 0, MaterialPropertyBlock properties = null, ShadowCastingMode castShadows, bool receiveShadows, int layer). Issues one draw call; GPU reads instance data from a StructuredBuffer bound on the material.",
+      "argsBufferLayout": "5 uint32 values (20 bytes total), allocated with ComputeBufferType.IndirectArguments: [0]=indexCountPerInstance (mesh.GetIndexCount(submesh)), [1]=instanceCount (the number actually drawn — THIS is the dynamic knob), [2]=startIndexLocation (almost always 0), [3]=baseVertexLocation (almost always 0), [4]=startInstanceLocation (almost always 0).",
+      "dynamicInstanceCount": "For a varying instance count (fluid particles, LOD-driven crowds) do NOT reallocate the args buffer — update args[1] in place. Pattern: argsArray[1] = currentCount; argsBuffer.SetData(argsArray); then issue DrawMeshInstancedIndirect. The StructuredBuffer holding per-instance data stays the same capacity; unused slots are simply not drawn.",
+      "boundsSemantics": "bounds is used for frustum culling of the entire instanced draw. Too tight = visible instances get culled (one lost instance can look like a draw bug). Too loose = GPU wastes time on off-screen work but correctness is preserved. For simulations, compute bounds that encompass the entire possible particle volume; for static crowds, use the tile bounding box."
+    },
+
+    "shaderSide": {
+      "materialSetup": "material.enableInstancing = true. material.EnableKeyword(\"PROCEDURAL_INSTANCING_ON\") or INSTANCING_ON depending on the shader's multi_compile set. For procedural instancing (data from StructuredBuffer, not from MaterialPropertyBlock arrays) PROCEDURAL_INSTANCING_ON is the correct variant. Bind the instance data via material.SetBuffer(\"_ParticleBuffer\", dataBuffer) AFTER the buffer exists — SetBuffer does not retain a reference if the buffer is later released.",
+      "shaderPragmas": "#pragma multi_compile_instancing (declares the variants), #pragma instancing_options procedural:setup (says 'this shader drives instance index via procedural path and calls setup() per instance'). The setup() function is authored in the shader and typically reads StructuredBuffer<T> via unity_InstanceID.",
+      "structuredBufferBinding": "StructuredBuffer<Particle> _ParticleBuffer; (in HLSL). The Particle struct MUST have the same layout as the C# struct bound on the CPU side. Shader side defines it once; C# side uses Marshal.SizeOf to compute stride from the same struct definition (or a mirrored one).",
+      "keywordFailureSymptom": "If PROCEDURAL_INSTANCING_ON is not enabled, the shader compiles the non-instanced variant. Draw call succeeds but every instance renders at instance-0 data — you see one particle worth of work repeated, usually stacked at origin."
+    },
+
+    "computeShaders": {
+      "kernelLookup": "int kernel = computeShader.FindKernel(\"CSMain\"). Cache the int; FindKernel does a string lookup. Multiple kernels per shader are common (Init, Step, Emit).",
+      "binding": "computeShader.SetBuffer(kernel, \"_Particles\", particleBuffer). Per-kernel — if two kernels use the same buffer, bind it twice.",
+      "dispatch": "computeShader.Dispatch(kernel, threadGroupsX, threadGroupsY, threadGroupsZ). Group counts are the number of [numthreads] groups, NOT the number of threads. For [numthreads(64,1,1)] with 1024 particles, dispatch (16, 1, 1) = 16 * 64 = 1024 threads.",
+      "threadGroupSizing": "Mobile / older hardware: 64 is the safe multiple-of-wavefront number. Desktop: 128 or 256. Always a power of two. Guard against overrun inside the kernel: if (id.x >= _Count) return;",
+      "kernelIdCaching": "Cache FindKernel results in OnEnable alongside buffer allocation. If kernels are looked up every Update, the overhead is small but real; also fragile to shader recompiles."
+    },
+
+    "memoryManagement": {
+      "release": "ComputeBuffer.Release() frees the GPU allocation. Must be called explicitly — there is no RAII in C#. GraphicsBuffer has the same contract.",
+      "dispose": "ComputeBuffer implements IDisposable. Dispose() is equivalent to Release() for the runtime buffer types. Use with using-block for short-lived scope, or explicit Release() in OnDisable for component-owned buffers.",
+      "finalizerLeakDetection": "Unity's finalizer for ComputeBuffer logs 'GarbageCollector disposing of ComputeBuffer allocated in [frame]. Please use ComputeBuffer.Release() or .Dispose() to manually release the buffer.' One log line per leaked buffer per GC cycle. Treat any such log as a bug — it means the owning component never released.",
+      "editorModeLeak": "In the editor, every play-mode-start re-runs OnEnable. Without OnDisable Release, every session leaves a ghost buffer. GC eventually collects but behavior is non-deterministic and memory usage climbs across editor sessions until restart."
+    },
+
+    "graphicsBufferMigration": {
+      "versionLanded": "Unity 2021.2 introduced GraphicsBuffer as a unified buffer API that can serve as vertex buffer, index buffer, structured buffer, constant buffer, indirect args buffer — controlled by the Target enum. ComputeBuffer remains supported but maps internally to a GraphicsBuffer with Target.Structured | Target.CopySource | Target.CopyDestination.",
+      "target_enum": "GraphicsBuffer.Target.Vertex, Index, Structured, Append, Counter, CopySource, CopyDestination, IndirectArguments, Constant, Raw. Bitwise OR to combine — e.g. a buffer that is both vertex data and structured readback: Target.Vertex | Target.Structured.",
+      "renderMeshIndirect": "Unity 2022.1 added Graphics.RenderMeshIndirect(in RenderParams rparams, Mesh mesh, GraphicsBuffer commandBuffer, int commandCount = 1, int startCommand = 0). Unity 6 documents this as the preferred path. RenderParams replaces the positional arg bag (camera, shadow mode, layer, material property block). commandBuffer holds one or more IndirectDrawIndexedArgs (same 5-uint layout as before).",
+      "whenToMigrate": "New scripts on 2022+ projects: use GraphicsBuffer + RenderMeshIndirect. Existing ComputeBuffer + DrawMeshInstancedIndirect code: no urgent migration — the legacy API is still supported. Unity has not announced a removal date but marks RenderMeshIndirect as the 'current' API."
+    },
+
+    "structLayout": {
+      "hlslFloat3": "float3 in an HLSL StructuredBuffer is typically 12 bytes but is padded to 16 when followed by another field to preserve 16-byte alignment for constant-buffer-style access. Safer: author all GPU structs with float4 where possible, and mirror with Vector4 on C# side.",
+      "csharpLayout": "[StructLayout(LayoutKind.Sequential)] or [StructLayout(LayoutKind.Explicit)] with FieldOffset for full control. Default C# struct layout is Auto which Unity's IL2CPP may reorder — always declare Sequential for GPU-bound structs.",
+      "sizeComputation": "Marshal.SizeOf<Particle>() gives the packed C# size. If C# says 28 and HLSL says 32 (because of float3 padding), you get a silent stride mismatch — particle N reads from the wrong offset. Always match explicitly or test a known canary value round-trip.",
+      "bestPractice": "Declare the GPU-facing struct once (e.g. in a shared cginc + a mirrored C# struct with identical Sequential layout, both using float4/Vector4 for all vector fields). Compute stride with Marshal.SizeOf<T>() and assert it equals the HLSL size (e.g. via a known-good test dispatch)."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Mosaic tool generates a script that allocates a ComputeBuffer or GraphicsBuffer",
+        "rule": "MUST allocate in OnEnable and release in OnDisable. MUST null-check before Release and null the field after. MUST NOT use Start + OnDestroy for buffer lifecycle — those fire only in play mode and leak in editor-mode tools.",
+        "evidence": "Gemini fluid session 2026-04-20: generated script leaked a 65K-particle buffer on every play-mode toggle until editor restart; finalizer 'ComputeBuffer was garbage collected' log appeared in console."
+      },
+      {
+        "scenario": "Script targets Unity 6.0+ (project.version >= 6000.0)",
+        "rule": "Prefer GraphicsBuffer + Graphics.RenderMeshIndirect over ComputeBuffer + DrawMeshInstancedIndirect. Use RenderParams struct instead of positional args. ComputeBuffer still compiles but is on the legacy path.",
+        "evidence": "Unity 6 Manual flags RenderMeshIndirect as current. GraphicsBuffer unification landed 2021.2. RenderMeshIndirect landed 2022.1."
+      },
+      {
+        "scenario": "Procedural instancing (StructuredBuffer-driven) is used",
+        "rule": "Material MUST have instancing keyword enabled via code (material.EnableKeyword(\"PROCEDURAL_INSTANCING_ON\")) OR the 'Enable GPU Instancing' checkbox ticked in the asset. Shader MUST declare #pragma multi_compile_instancing and #pragma instancing_options procedural:setup. Without the keyword the draw call succeeds but renders one instance's data for all instances.",
+        "evidence": "Gemini fluid session: first pass rendered a single particle at origin instead of 65K; root cause was missing PROCEDURAL_INSTANCING_ON keyword on the runtime-cloned material."
+      },
+      {
+        "scenario": "Instance count changes per frame (dynamic fluid, LOD crowd, emitter)",
+        "rule": "Update args[1] (instanceCount) on the existing args buffer each frame; do NOT reallocate. Allocate the StructuredBuffer at maximum capacity once; unused slots are not drawn because args[1] bounds the read.",
+        "evidence": "Common anti-pattern in generated scripts: new ComputeBuffer(...) inside Update for the args buffer, leaking one per frame."
+      },
+      {
+        "scenario": "Per-frame CPU read of GPU results is needed",
+        "rule": "Use AsyncGPUReadback.Request with a callback. Never call buffer.GetData() in Update on the main thread — it stalls the pipeline until all pending GPU work drains.",
+        "evidence": "GetData is a pipeline stall documented in Unity's AsyncGPUReadback manual as the reason AsyncGPUReadback exists."
+      },
+      {
+        "scenario": "Script must work in scene-view (edit mode) for preview",
+        "rule": "Decorate class with [ExecuteAlways]. Keep allocation in OnEnable, release in OnDisable. Handle null-field after OnDisable so re-enable works. The same lifecycle then serves both modes.",
+        "evidence": "Edit-mode-safe pattern is the canonical Mosaic template for simulation tools."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Console logs 'GarbageCollector disposing of ComputeBuffer' on play-mode exit or domain reload.",
+        "cause": "Missing Release() call — typically no OnDisable, or Release was attempted only in OnDestroy (which does not fire on domain reload in editor).",
+        "fix": "Move Release() to OnDisable with null-check + null-after pattern. Add [ExecuteAlways] if the script needs to live in edit mode."
+      },
+      {
+        "symptom": "Graphics.DrawMeshInstancedIndirect issues but nothing renders.",
+        "cause": "args[1] (instanceCount) is 0 — the args buffer was allocated but never populated with a non-zero instance count.",
+        "fix": "Before the draw call: argsArray[1] = (uint)instanceCount; argsBuffer.SetData(argsArray);"
+      },
+      {
+        "symptom": "One instance visible at origin instead of N instances at their positions.",
+        "cause": "Instancing keyword not enabled on the material. Shader rendered the non-instanced variant and ignored unity_InstanceID.",
+        "fix": "material.enableInstancing = true; material.EnableKeyword(\"PROCEDURAL_INSTANCING_ON\"); Verify shader has #pragma multi_compile_instancing and #pragma instancing_options procedural:setup."
+      },
+      {
+        "symptom": "Per-frame stutter / FPS spike that scales with particle count.",
+        "cause": "buffer.GetData() or AsyncGPUReadback.WaitForCompletion() on the main-thread update path — pipeline stalls until GPU finishes.",
+        "fix": "Replace with AsyncGPUReadback.Request(buffer, callback). Cache last-known-good data on the CPU side between readbacks."
+      },
+      {
+        "symptom": "Simulation looks corrupted — particles in wrong positions, NaN spew, wrong colors.",
+        "cause": "Stride mismatch between C# struct and HLSL struct. Classic case: C# uses Vector3 (12 bytes) but HLSL StructuredBuffer aligns float3 to 16.",
+        "fix": "Either pad C# struct with explicit Vector4 / float fields or switch HLSL to packed layout. Compute stride via Marshal.SizeOf<T>() and round-trip a canary value to verify."
+      },
+      {
+        "symptom": "Instances rendered only near origin; disappear when camera looks at where they should be.",
+        "cause": "Bounds argument too tight — frustum culling treats the whole batch as off-screen when the declared bounds don't contain it.",
+        "fix": "Pass bounds that encompass the full possible instance volume. For world-space fluids, use the simulation domain. When in doubt, an over-sized bounds is correct; it only costs GPU time, not correctness."
+      },
+      {
+        "symptom": "sizeof(MyStruct) doesn't compile or returns wrong number.",
+        "cause": "sizeof only works on unmanaged types in unsafe context. Managed structs need Marshal.SizeOf<T>().",
+        "fix": "Replace with int stride = Marshal.SizeOf<MyStruct>(); (requires using System.Runtime.InteropServices;)."
+      },
+      {
+        "symptom": "Allocating a new ComputeBuffer every Update for dynamic counts.",
+        "cause": "Misunderstanding that 'instance count changed' means 'buffer must be recreated'.",
+        "fix": "Allocate once at max capacity. Update args[1] per frame. Only reallocate when max capacity itself needs to grow (rare — do it at a level / phase boundary, not per frame)."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.2",
+        "change": "GraphicsBuffer unified buffer API introduced. Single type with Target enum replaces separate ComputeBuffer / vertex-buffer / index-buffer paths.",
+        "breaking": false,
+        "migrationNote": "ComputeBuffer still supported; no migration required. New code may prefer GraphicsBuffer for uniformity with vertex/index buffer use cases."
+      },
+      {
+        "version": "2022.1",
+        "change": "Graphics.RenderMeshIndirect added as the successor to DrawMeshInstancedIndirect. Uses RenderParams struct and GraphicsBuffer command buffer.",
+        "breaking": false,
+        "migrationNote": "Old API remains. Prefer the new API for new scripts on 2022+."
+      },
+      {
+        "version": "2022.2",
+        "change": "AsyncGPUReadback gained RequestIntoNativeArray and RequestIntoNativeSlice variants, avoiding managed allocation on the readback path.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 documents RenderMeshIndirect and GraphicsBuffer as the primary path. No removals of ComputeBuffer or DrawMeshInstancedIndirect. URP/HDRP 17 both consume GraphicsBuffer natively.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "ScriptReference — ComputeBuffer",                      "url": "https://docs.unity3d.com/ScriptReference/ComputeBuffer.html" },
+    { "title": "ScriptReference — ComputeBuffer constructor",          "url": "https://docs.unity3d.com/ScriptReference/ComputeBuffer-ctor.html" },
+    { "title": "ScriptReference — ComputeBufferType",                  "url": "https://docs.unity3d.com/ScriptReference/ComputeBufferType.html" },
+    { "title": "ScriptReference — ComputeBuffer.Release",              "url": "https://docs.unity3d.com/ScriptReference/ComputeBuffer.Release.html" },
+    { "title": "ScriptReference — GraphicsBuffer",                     "url": "https://docs.unity3d.com/ScriptReference/GraphicsBuffer.html" },
+    { "title": "ScriptReference — GraphicsBuffer.Target",              "url": "https://docs.unity3d.com/ScriptReference/Rendering.GraphicsBuffer.Target.html" },
+    { "title": "ScriptReference — Graphics.DrawMeshInstancedIndirect", "url": "https://docs.unity3d.com/ScriptReference/Graphics.DrawMeshInstancedIndirect.html" },
+    { "title": "ScriptReference — Graphics.RenderMeshIndirect",        "url": "https://docs.unity3d.com/ScriptReference/Graphics.RenderMeshIndirect.html" },
+    { "title": "ScriptReference — RenderParams",                       "url": "https://docs.unity3d.com/ScriptReference/RenderParams.html" },
+    { "title": "ScriptReference — ComputeShader",                      "url": "https://docs.unity3d.com/ScriptReference/ComputeShader.html" },
+    { "title": "ScriptReference — ComputeShader.Dispatch",             "url": "https://docs.unity3d.com/ScriptReference/ComputeShader.Dispatch.html" },
+    { "title": "ScriptReference — AsyncGPUReadback",                   "url": "https://docs.unity3d.com/ScriptReference/Rendering.AsyncGPUReadback.html" },
+    { "title": "Unity Manual — Compute shaders",                       "url": "https://docs.unity3d.com/Manual/class-ComputeShader.html" },
+    { "title": "Unity Manual — GPU instancing",                        "url": "https://docs.unity3d.com/Manual/GPUInstancing.html" },
+    { "title": "Unity 6 Manual — Draw meshes with GraphicsBuffer",     "url": "https://docs.unity3d.com/6000.0/Documentation/Manual/gpu-instancing-render-mesh-indirect.html" }
+  ],
+
+  "sources": [
+    { "title": "ScriptReference — ComputeBuffer",                      "url": "https://docs.unity3d.com/ScriptReference/ComputeBuffer.html" },
+    { "title": "ScriptReference — GraphicsBuffer",                     "url": "https://docs.unity3d.com/ScriptReference/GraphicsBuffer.html" },
+    { "title": "ScriptReference — Graphics.DrawMeshInstancedIndirect", "url": "https://docs.unity3d.com/ScriptReference/Graphics.DrawMeshInstancedIndirect.html" },
+    { "title": "ScriptReference — Graphics.RenderMeshIndirect",        "url": "https://docs.unity3d.com/ScriptReference/Graphics.RenderMeshIndirect.html" },
+    { "title": "ScriptReference — ComputeShader",                      "url": "https://docs.unity3d.com/ScriptReference/ComputeShader.html" },
+    { "title": "ScriptReference — AsyncGPUReadback",                   "url": "https://docs.unity3d.com/ScriptReference/Rendering.AsyncGPUReadback.html" },
+    { "title": "Unity Manual — GPU instancing",                        "url": "https://docs.unity3d.com/Manual/GPUInstancing.html" },
+    { "title": "Unity Manual — Compute shaders",                       "url": "https://docs.unity3d.com/Manual/class-ComputeShader.html" },
+    { "title": "Unity 6 Manual — Render mesh indirect",                "url": "https://docs.unity3d.com/6000.0/Documentation/Manual/gpu-instancing-render-mesh-indirect.html" },
+    { "title": "Unity Blog — GraphicsBuffer introduction (2021.2)",    "url": "https://blog.unity.com/engine-platform/graphics-focused-updates-in-unity-2021-2" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity ScriptReference and Manual pages covering ComputeBuffer, GraphicsBuffer, Graphics.DrawMeshInstancedIndirect, Graphics.RenderMeshIndirect, ComputeShader, and AsyncGPUReadback. API signatures, method names, enum values, and args-buffer layout constants are factual data (not copyrightable). Explanatory prose, decision rules, llmGuidance, commonPitfalls, and the lifecycle-pattern recommendations are original Mosaic editorial content derived from the Gemini fluid-sim session evidence and Unity's public documentation. Unity Manual and ScriptReference pages are cited in externalReferences and NOT reproduced here."
+}

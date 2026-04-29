@@ -1,0 +1,235 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "particle/particle-systems",
+  "title": "ParticleSystem: Emission, Shape, Lifetime, VFX Graph Alternative",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's built-in ParticleSystem (Shuriken) is a MonoBehaviour composed of ~15 configurable modules: Main, Emission, Shape, Velocity/Color/Size/Rotation over Lifetime, Collision, Triggers, Sub Emitters, Noise, Texture Sheet Animation, Lights, Trails, Custom Data, and Renderer. It remains the default CPU-side particle system in 2021.3 through Unity 6 and is the target for mosaic tools particle/create, particle/info, particle/playback, particle/set-emission, particle/set-main, and particle/set-shape. Use ParticleSystem when you need fewer than ~10k particles with tight C# control, gameplay hooks, or when the project targets Built-in RP. Use VFX Graph (URP 12+ / HDRP only) when you need millions of GPU particles and node-graph authoring. The #1 failure mode on the C# side is that module accessors (main, emission, shape) return struct copies — setting fields through the chained accessor silently no-ops and you must reassign the struct back or use the module's own setter properties.",
+
+  "mosaicTools": [
+    "particle/create",
+    "particle/info",
+    "particle/playback",
+    "particle/set-emission",
+    "particle/set-main",
+    "particle/set-shape"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-urp-material-workflow",
+    "kb-rendering-shader-properties"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_create_a_particle_effect":
+      "Default to particle/create (built-in ParticleSystem). Only recommend VFX Graph when the user explicitly needs >10k particles, asks for GPU simulation, or the project is confirmed URP 12+ or HDRP. Built-in ParticleSystem is universally available, scripts cleanly, and ships with the editor.",
+    "when_setting_main_module_fields":
+      "Use particle/set-main. Internally the module must be captured as a local var: `var m = ps.main; m.startLifetime = 2f; m.startColor = Color.red;` — chaining `ps.main.startLifetime = 2f` compiles but writes to a discarded struct copy. Same pattern for emission, shape, velocityOverLifetime, etc.",
+    "when_configuring_emission":
+      "particle/set-emission sets rateOverTime (continuous spawning) and bursts (discrete salvos). A burst is {time, count, cycles, interval, probability}. For explosions use a single burst at time 0 with rateOverTime = 0. For flames use rateOverTime only.",
+    "when_configuring_shape":
+      "particle/set-shape selects the emission volume. Cone for directed jets/fire, Sphere/Hemisphere for omnidirectional bursts, Box for rain/snow columns, Circle/Edge for 2D, Mesh/SkinnedMeshRenderer to emit from model surfaces, Sprite for 2D. radius/angle/arc/position/rotation/scale live on ShapeModule.",
+    "when_controlling_playback_at_runtime":
+      "particle/playback wraps Play / Stop / Pause / Clear / Emit / Simulate. Stop has a StopBehavior (StopEmitting vs StopEmittingAndClear). For one-shots set main.playOnAwake=false and call Play() explicitly; for scripted counts call Emit(count) or Emit(EmitParams, count) to override start properties per burst.",
+    "when_asked_'why_is_my_particle_system_not_starting'":
+      "Check in order: (1) playOnAwake is off and no script calls Play(), (2) Emission module disabled, (3) rateOverTime=0 with no bursts, (4) maxParticles reached, (5) GameObject or ParticleSystem component disabled, (6) Renderer module disabled or Material null (system simulates invisibly).",
+    "when_asked_'why_did_startColor_not_change'":
+      "Caller is using `ps.main.startColor = ...` directly. MainModule is a struct returned by value — assignment is lost. Capture into a local (`var m = ps.main; m.startColor = ...;`), or for MinMaxGradient fields use `m.startColor = new ParticleSystem.MinMaxGradient(color)` to avoid mode confusion.",
+    "when_choosing_between_ParticleSystem_and_VFX_Graph":
+      "ParticleSystem if: Built-in RP, <10k particles, heavy C# interaction, per-particle collision callbacks needed. VFX Graph if: URP 12+/HDRP, >100k particles, node-based authoring acceptable, GPU-side simulation wanted. Do not mix in the same effect — each has its own renderer and buffers.",
+    "when_asked_about_collisions":
+      "Collision module has two types: World (cheap, uses depth-buffer planes) and Planes (manual). Collider-based World collision with Collision Mode = 3D is more accurate but per-particle cost scales with collider count. For gameplay hooks enable Send Collision Messages then implement OnParticleCollision(GameObject) on colliders.",
+    "when_asked_about_sub_emitters":
+      "Sub Emitters spawn a secondary ParticleSystem on Birth, Collision, Death, or Trigger of parent particles. Assign the child ParticleSystem in the SubEmitters module; Unity drives it automatically — do not call Play() on the child yourself."
+  },
+
+  "full": {
+    "modules": {
+      "main": {
+        "role": "Always enabled. Global defaults for the system.",
+        "keyFields": ["duration", "loop", "prewarm", "startDelay", "startLifetime", "startSpeed", "startSize", "startRotation", "startColor", "gravityModifier", "simulationSpace (Local|World|Custom)", "simulationSpeed", "scalingMode (Hierarchy|Local|Shape)", "playOnAwake", "maxParticles", "stopAction", "cullingMode", "ringBufferMode"],
+        "note": "All float/color fields are MinMaxCurve or MinMaxGradient — they can be constant, curve, two constants, or two curves. Use the appropriate ctor when assigning from script."
+      },
+      "emission": {
+        "role": "Controls when new particles spawn.",
+        "keyFields": ["rateOverTime (particles/sec)", "rateOverDistance (particles/metre)", "bursts[] (Burst struct)"],
+        "burstShape": "{ time, count (MinMaxCurve), cycles, repeatInterval, probability }"
+      },
+      "shape": {
+        "role": "Spatial volume particles spawn from and initial direction.",
+        "shapeTypes": ["Sphere", "Hemisphere", "Cone", "Donut", "Box", "BoxShell", "BoxEdge", "Circle", "SingleSidedEdge", "Mesh", "MeshRenderer", "SkinnedMeshRenderer", "Sprite", "SpriteRenderer", "Rectangle"],
+        "commonFields": ["radius", "radiusThickness", "angle", "arc", "arcMode", "position", "rotation", "scale", "randomDirectionAmount", "sphericalDirectionAmount", "alignToDirection"]
+      },
+      "overLifetime": {
+        "role": "Animated properties driven by normalized particle age (0→1).",
+        "variants": ["velocityOverLifetime", "limitVelocityOverLifetime", "inheritVelocity", "forceOverLifetime", "colorOverLifetime", "colorBySpeed", "sizeOverLifetime", "sizeBySpeed", "rotationOverLifetime", "rotationBySpeed"]
+      },
+      "physicsAndInteraction": {
+        "collision": "World / Planes; sends OnParticleCollision when Send Collision Messages on.",
+        "triggers": "Fires OnParticleTrigger when particles enter/exit/stay user-specified colliders; query via GetTriggerParticles.",
+        "externalForces": "Applies ParticleSystemForceField components in the scene.",
+        "noise": "Perlin-based turbulence in position/rotation/size."
+      },
+      "rendering": {
+        "textureSheetAnimation": "Sprite-sheet flipbook; modes: Grid, Sprites.",
+        "lights": "Attaches point lights to a fraction of particles (expensive).",
+        "trails": "Per-particle ribbon trails.",
+        "renderer": "Material + mesh/billboard mode, sort mode, render queue, cast/receive shadows."
+      },
+      "subEmitters": "Children spawn on Birth / Collision / Death / Trigger / Manual of parent particles."
+    },
+
+    "runtimeAPI": {
+      "namespace": "UnityEngine.ParticleSystem",
+      "playbackMethods": [
+        "Play(bool withChildren = true)",
+        "Stop(bool withChildren, ParticleSystemStopBehavior)",
+        "Pause(bool withChildren)",
+        "Clear(bool withChildren)",
+        "Emit(int count)",
+        "Emit(EmitParams emitParams, int count)",
+        "Simulate(float t, bool withChildren = true, bool restart = true, bool fixedTimeStep = true)"
+      ],
+      "stateProperties": ["isPlaying", "isPaused", "isStopped", "isEmitting", "time", "particleCount"],
+      "moduleAccessors": "Read-only properties returning struct copies: main, emission, shape, velocityOverLifetime, limitVelocityOverLifetime, inheritVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, rotationBySpeed, externalForces, noise, collision, trigger, subEmitters, textureSheetAnimation, lights, trails, customData."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Project is Built-in RP or 2D and user wants a basic effect",
+        "rule": "Use ParticleSystem via particle/create. VFX Graph is not supported on Built-in RP.",
+        "evidence": "Unity Manual: VFX Graph requires URP 12+ or HDRP."
+      },
+      {
+        "scenario": "User mentions 'millions of particles' or GPU simulation",
+        "rule": "Recommend VFX Graph. ParticleSystem maxParticles is CPU-bound and practically caps around 10k–100k before frame budget collapses.",
+        "evidence": "Unity Manual — VFX Graph overview."
+      },
+      {
+        "scenario": "Effect must react to gameplay (collisions, triggers, per-particle C# logic)",
+        "rule": "Stick with ParticleSystem. VFX Graph lacks OnParticleCollision-style GameObject callbacks.",
+        "evidence": "ScriptReference: ParticleSystem.trigger, MonoBehaviour.OnParticleCollision."
+      },
+      {
+        "scenario": "Need burst of N particles at a precise time",
+        "rule": "Use particle/set-emission with a Burst at the target time, or call Emit(N) from script. Do not stack rateOverTime spikes.",
+        "evidence": "ScriptReference: ParticleSystem.EmissionModule.SetBursts."
+      },
+      {
+        "scenario": "Particles must follow the moving emitter",
+        "rule": "Set main.simulationSpace = Local. For world-trailing (smoke left behind), use World.",
+        "evidence": "ScriptReference: ParticleSystem.MainModule.simulationSpace."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Setting ps.main.startLifetime = 2f has no effect.",
+        "cause": "MainModule is a struct; the property getter returns a copy, and field assignment writes to the temporary.",
+        "fix": "var m = ps.main; m.startLifetime = 2f;   // the property setter on ParticleSystem writes it back, but you must assign through the local."
+      },
+      {
+        "symptom": "startColor change not visible.",
+        "cause": "startColor is a MinMaxGradient. Direct Color assignment works via implicit conversion but mode may be wrong (TwoColors vs Color).",
+        "fix": "m.startColor = new ParticleSystem.MinMaxGradient(Color.red); — explicit ctor pins mode to Color."
+      },
+      {
+        "symptom": "System never emits at runtime.",
+        "cause": "playOnAwake off with no Play() call, or Emission module disabled, or rateOverTime=0 with empty bursts.",
+        "fix": "Enable Emission, set rateOverTime or a burst, and either enable playOnAwake or call ps.Play()."
+      },
+      {
+        "symptom": "Emit(count) spawns particles but they immediately vanish.",
+        "cause": "Default EmitParams inherits main.startLifetime. If that is near zero the particle dies the same frame.",
+        "fix": "Check main.startLifetime, or pass an EmitParams with startLifetime explicitly set."
+      },
+      {
+        "symptom": "Child particles spawned by SubEmitter never appear.",
+        "cause": "Child ParticleSystem had playOnAwake enabled and was played once at scene load, then Unity refuses to re-trigger it as a sub-emitter.",
+        "fix": "On the child system, disable playOnAwake and let the parent drive it exclusively."
+      },
+      {
+        "symptom": "Material looks pink / particles invisible.",
+        "cause": "Renderer module has no material, or the shader is Built-in on a URP project.",
+        "fix": "Assign a URP/Particles/Unlit material on URP or a Particles/Standard Unlit material on Built-in. See kb-rendering-urp-material-workflow."
+      },
+      {
+        "symptom": "CPU spikes when thousands of particles collide.",
+        "cause": "Collision module in World mode with Collision Quality = High (uses actual colliders) and Send Collision Messages on.",
+        "fix": "Drop to Medium/Low quality (depth-buffer sampling) or cap Max Collision Shapes."
+      }
+    ],
+
+    "particleSystemVsVfxGraph": {
+      "ParticleSystem": {
+        "executionSite": "CPU (main + jobs)",
+        "typicalBudget": "hundreds to a few thousand particles",
+        "authoring": "Inspector modules + C# API",
+        "pipelines": "Built-in, URP, HDRP",
+        "strengths": ["Runtime C# control", "OnParticleCollision gameplay hooks", "SubEmitters driven by events", "2D sprite workflow", "works on every RP"],
+        "weaknesses": ["Scales poorly past ~10k", "No GPU-only effects", "Module struct gotcha"]
+      },
+      "VFXGraph": {
+        "executionSite": "GPU (compute shader)",
+        "typicalBudget": "tens of thousands to millions of particles",
+        "authoring": "Node graph (Visual Effect Graph package)",
+        "pipelines": "URP 12+ (Unity 2021.2+), HDRP",
+        "strengths": ["Massive particle counts", "Signed-distance-field collision", "Output events to C#", "Mesh / strip / ribbon outputs"],
+        "weaknesses": ["No direct per-particle C# callbacks", "Steeper learning curve", "Not available on Built-in RP"]
+      }
+    },
+
+    "versionDeltas": [
+      {
+        "version": "2020.1",
+        "change": "Visual Effect Graph gained URP support (was HDRP-only at 2018.3 GA).",
+        "breaking": false
+      },
+      {
+        "version": "2021.2",
+        "change": "ParticleSystem ringBufferMode added to MainModule for loop-friendly trails.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "Custom simulation space (main.simulationSpace = Custom + customSimulationSpace transform) stabilized across LTS.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 keeps Shuriken API unchanged; VFX Graph integrates tighter with URP Renderer Features but ParticleSystem surface is identical to 2022.3.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Particle System", "url": "https://docs.unity3d.com/Manual/class-ParticleSystem.html" },
+    { "title": "Unity Manual — Particle System Modules", "url": "https://docs.unity3d.com/Manual/ParticleSystemModules.html" },
+    { "title": "Unity Manual — Visual Effect Graph", "url": "https://docs.unity3d.com/Manual/VisualEffectGraph.html" },
+    { "title": "ScriptReference — ParticleSystem", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.html" },
+    { "title": "ScriptReference — ParticleSystem.MainModule", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.MainModule.html" },
+    { "title": "ScriptReference — ParticleSystem.EmissionModule", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.EmissionModule.html" },
+    { "title": "ScriptReference — ParticleSystem.ShapeModule", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.ShapeModule.html" },
+    { "title": "ScriptReference — ParticleSystem.EmitParams", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.EmitParams.html" },
+    { "title": "ScriptReference — ParticleSystem.Burst", "url": "https://docs.unity3d.com/ScriptReference/ParticleSystem.Burst.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Particle System (2022.3 LTS)", "url": "https://docs.unity3d.com/2022.3/Documentation/Manual/class-ParticleSystem.html" },
+    { "title": "Unity Manual — Particle System (Unity 6)", "url": "https://docs.unity3d.com/6000.0/Documentation/Manual/class-ParticleSystem.html" },
+    { "title": "Unity Manual — Visual Effect Graph package", "url": "https://docs.unity3d.com/Packages/com.unity.visualeffectgraph@17.0/manual/index.html" },
+    { "title": "ScriptReference — ParticleSystem (2022.3 LTS)", "url": "https://docs.unity3d.com/2022.3/Documentation/ScriptReference/ParticleSystem.html" },
+    { "title": "ScriptReference — ParticleSystem (Unity 6)", "url": "https://docs.unity3d.com/6000.0/Documentation/ScriptReference/ParticleSystem.html" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity APIs (Manual + ScriptReference for ParticleSystem and Visual Effect Graph). API names, module field names, and enum values are facts (not copyrightable). All explanatory prose, decision rules, pitfalls, and the ParticleSystem-vs-VFXGraph comparison are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited under externalReferences and sources and are NOT reproduced here. Verified against Unity 2022.3 LTS and Unity 6000.0 / 6000.4 documentation."
+}

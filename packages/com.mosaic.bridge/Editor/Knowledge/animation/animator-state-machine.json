@@ -1,0 +1,247 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "animation/animator-state-machine",
+  "title": "Animator State Machine, Clips, Blend Trees, Transitions",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "animation",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's Mecanim animation system: AnimatorController assets own a state machine of AnimationClip states connected by parameter-driven transitions, optionally blended via BlendTrees and stacked in layers. Use this when any animation/* tool creates or edits a controller, clip, state, transition, blend tree, IK rig, or triggers playback — LLMs routinely pick the legacy Animation component by mistake, forget to attach an Animator to the rig, set parameters without matching transition conditions, or build clips with no keyframes.",
+
+  "mosaicTools": [
+    "animation/controller",
+    "animation/clip",
+    "animation/state",
+    "animation/transition",
+    "animation/blend-tree",
+    "animation/ik-setup",
+    "animation/play"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle",
+    "kb-core-gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_user_asks_for_animation_on_a_gameobject":
+      "Default to Animator (Mecanim). Only pick the legacy Animation component if the user explicitly names it. New projects from 2021.3 onward should never start on the legacy path.",
+    "when_creating_an_animator_controller":
+      "Create the .controller with animation/controller, add at least one state pointing at a clip, then assign the controller to an Animator component on the rigged GameObject. No Animator, no states, or no Avatar (humanoid) = silent no-op playback.",
+    "when_authoring_an_animation_clip_programmatically":
+      "A fresh AnimationClip has zero curves. Set curves with AnimationUtility.SetEditorCurve (editor) or AnimationClip.SetCurve, each an AnimationCurve with at least two keyframes. An empty clip ticks time but animates nothing — the #1 cause of 'clip plays but object doesn't move'.",
+    "when_driving_transitions_from_code":
+      "Prefer parameters (SetFloat/SetInt/SetBool/SetTrigger) over Animator.Play. Parameters let the state machine own timing, blending, and interruption. Play() bypasses the graph — reserve it for debug or hard resets.",
+    "when_setting_parameters_every_frame":
+      "Cache the int id once with Animator.StringToHash, then use SetFloat(id, ...). The string overload re-hashes each call; in hot loops that adds up.",
+    "when_a_trigger_is_set_but_the_state_does_not_change":
+      "Check in order: (1) the transition lists that trigger in Conditions; (2) Has Exit Time is unchecked if you want an immediate response; (3) no higher-priority transition consumed the trigger first. Call Animator.ResetTrigger before SetTrigger if a stale trigger might be queued.",
+    "when_building_a_blend_tree":
+      "Match dimensionality to input axes: 1D for speed-only locomotion, 2D Freeform Cartesian for (forward, strafe), 2D Simple Directional for 8-way with a centered idle, Direct for per-clip weights (facial blendshapes). The parameter range must match the tree thresholds — feeding 0..1 into a -1..1 tree collapses to one corner.",
+    "when_the_model_should_drive_its_own_position":
+      "Enable applyRootMotion and bake motion into the clip. For script-driven movement (nav-mesh, input velocity) keep it off and treat clips as in-place. Mixing both produces slide and stutter.",
+    "when_overriding_clips_per_character":
+      "Share one AnimatorController and wrap it in an AnimatorOverrideController per character to swap clip slots. Never duplicate the controller — graph edits will not propagate.",
+    "when_adding_ik_to_a_humanoid":
+      "Enable the layer's IK Pass, put OnAnimatorIK(layerIndex) on a MonoBehaviour on the Animator's GameObject, and call SetIKPosition/Rotation plus the matching Weight setters each call. Missing either the flag or the callback means zero effect."
+  },
+
+  "full": {
+    "coreConcepts": {
+      "Animator": "Runtime component binding an AnimatorController to a rig (Avatar for humanoid, transform hierarchy for generic). Ticks the state machine, samples clips, applies root motion, exposes parameters.",
+      "AnimatorController": "Editor asset (.controller) storing the state graph: layers, state machines, states, transitions, parameters. Referenced by Animator.runtimeAnimatorController.",
+      "AnimationClip": "Asset of AnimationCurve values keyed to property paths (e.g. localPosition.x on a child transform). Imported from FBX or authored in code.",
+      "AnimatorStateMachine": "Container of states and sub-state-machines inside a layer. One root per layer, with Entry, Exit, and Any State nodes.",
+      "AnimatorState": "A node playing either an AnimationClip or a BlendTree. Has speed, mirror, cycle offset, and foot-IK toggles.",
+      "AnimatorStateTransition": "Directed edge guarded by AnimatorCondition entries plus exit-time rules. Duration and offset govern cross-fade.",
+      "BlendTree": "A node that interpolates between clips according to one or two parameters. Lives inside a state like a single clip.",
+      "AnimatorOverrideController": "Wraps a base controller and swaps its clip slots. Lets many characters share one state graph with different animations."
+    },
+
+    "animatorVsAnimation": {
+      "Animator (Mecanim)": "State-machine driven; supports layers, blend trees, humanoid retargeting, IK, root motion, override controllers. The default from 2021.3+.",
+      "Animation (legacy)": "Single-clip or queue-based playback on a per-GameObject Animation component. No state graph, blending, or humanoid retargeting. Back-compat only.",
+      "howToTell": "Component labelled Animator = Mecanim; Animation = legacy. Asset types differ: .controller vs raw .anim files played directly."
+    },
+
+    "parameters": {
+      "types": [
+        { "type": "Float", "setter": "SetFloat(name|id, value)", "use": "Continuous values — speed, aim angle, blend tree axis." },
+        { "type": "Int",   "setter": "SetInteger(name|id, value)", "use": "Discrete state indices — weapon slot, combo index." },
+        { "type": "Bool",  "setter": "SetBool(name|id, value)", "use": "Latching flags — isGrounded, isCrouching." },
+        { "type": "Trigger", "setter": "SetTrigger(name|id)", "use": "One-shot events. Auto-consumed when a transition using it fires; ResetTrigger clears without firing." }
+      ],
+      "hashingRule": "Animator.StringToHash(name) returns a stable int per session. Call once in Awake/OnEnable, store, use for every per-frame set. Per-frame string hashing is wasteful but not broken."
+    },
+
+    "transitions": {
+      "conditions": "Zero or more entries of form parameter {Greater, Less, Equals, NotEqual, If, IfNot} value. All must pass for the transition to fire.",
+      "exitTime": "Has Exit Time checked = transition waits until the source state has played past Exit Time (normalized). Unchecked = fires the first frame conditions hold.",
+      "duration": "Fixed Duration (seconds) or normalized fraction of the destination clip. Governs cross-fade length; 0 = snap.",
+      "interruptionSource": "Whether this transition can itself be interrupted by another from Source, Destination, Both, or None. None is safest; Current Transition is responsive but can pop.",
+      "anyStateVsNormal": "Any State transitions run from every state — useful for global events (hit-react, death). Costly if overused; evaluated each tick."
+    },
+
+    "blendTrees": {
+      "1D": "Single float drives weights across clips on a number line. Classic use: speed → idle/walk/run.",
+      "2D Simple Directional": "Two parameters form a direction. Clips at compass positions plus optional center. 8-way locomotion with centered idle.",
+      "2D Freeform Directional": "Two parameters, clips anywhere plus a required center. Smooth radial blending; allows same-direction clips at different magnitudes.",
+      "2D Freeform Cartesian": "Two parameters, free 2D placement, no center. Best when axes are independent (forward vs strafe velocity).",
+      "Direct": "Each child has its own float weight, mixed additively. Used for facial blendshapes or per-part additive blends."
+    },
+
+    "layers": {
+      "purpose": "Stack multiple state machines. Layer 0 = base pose; higher layers add overlays (aim, upper-body reload, damage reaction).",
+      "blendingMode": "Override (replace sampled values where mask allows) or Additive (add on top). Additive clips must be authored relative to a reference pose.",
+      "weight": "Runtime 0..1 via Animator.SetLayerWeight for fade-in of overlays.",
+      "mask": "AvatarMask restricts which transforms a layer affects. Typical: upper-body-only mask on layer 1.",
+      "iKPass": "Per-layer toggle; when enabled, OnAnimatorIK fires for that layer index."
+    },
+
+    "rootMotion": {
+      "flag": "Animator.applyRootMotion (Inspector checkbox + runtime property).",
+      "on": "Clip-baked translation and rotation are applied to the transform each tick. Character moves because the animation says to.",
+      "off": "Clip deltas are discarded; the rig animates in place and script/physics owns position. Use for nav-mesh or physics-driven controllers.",
+      "hybrid": "Override OnAnimatorMove to read deltaPosition/deltaRotation and apply selectively (e.g. rotation from animation, position from physics)."
+    },
+
+    "ik": {
+      "callback": "MonoBehaviour.OnAnimatorIK(int layerIndex) on the Animator's GameObject. Fires once per IK-Pass-enabled layer each animation update.",
+      "api": [
+        "Animator.SetIKPosition(goal, worldPos) / SetIKPositionWeight(goal, 0..1)",
+        "Animator.SetIKRotation(goal, worldRot) / SetIKRotationWeight(goal, 0..1)",
+        "Animator.SetLookAtPosition(pos) / SetLookAtWeight(body, head, eyes, clamp)"
+      ],
+      "goals": "LeftFoot, RightFoot, LeftHand, RightHand; LookAt is a separate channel.",
+      "limits": "Mecanim IK is humanoid-only. For generic rigs or more bones, use the Animation Rigging package (FABRIK, TwoBoneIK, MultiPositionConstraint, etc.)."
+    },
+
+    "overrideControllers": {
+      "purpose": "Share one state graph across characters; swap clips per character without duplicating the controller.",
+      "api": "var aoc = new AnimatorOverrideController(baseController); aoc[\"Idle\"] = customIdleClip; animator.runtimeAnimatorController = aoc;",
+      "pitfall": "Overrides are keyed by the original clip asset, not the state name — if two states share one clip, overriding once changes both."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Tool creates a new AnimatorController for a rigged character",
+        "rule": "After animation/controller, ensure the target GameObject has an Animator pointing at that controller AND a valid Avatar (humanoid). Missing either = silent playback.",
+        "evidence": "Unity Manual — Animator component."
+      },
+      {
+        "scenario": "Tool authors an AnimationClip from scratch",
+        "rule": "Add at least one curve with two or more keyframes on the intended property path before animation/play. Empty clips tick time but animate nothing.",
+        "evidence": "ScriptReference — AnimationClip.SetCurve, AnimationUtility.SetEditorCurve."
+      },
+      {
+        "scenario": "Code needs to transition between states",
+        "rule": "Set a parameter a transition listens for. Use Animator.Play only for debug or a hard reset that must skip the graph.",
+        "evidence": "Unity Manual — Animation Parameters."
+      },
+      {
+        "scenario": "Per-frame locomotion update sets Speed every Update",
+        "rule": "Cache int id = Animator.StringToHash(\"Speed\") in OnEnable, call SetFloat(id, speed) each frame. Avoid the string overload in hot paths.",
+        "evidence": "ScriptReference — Animator.StringToHash."
+      },
+      {
+        "scenario": "Character moves under nav-mesh or input control",
+        "rule": "Turn off applyRootMotion. For animation rotation with scripted position, implement OnAnimatorMove and apply deltaRotation only.",
+        "evidence": "Unity Manual — Root Motion."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "animation/play succeeds but the GameObject does not animate visibly.",
+        "cause": "Clip has no curves, GameObject lacks an Animator, or Animator has no controller.",
+        "fix": "Verify clip curves, Animator component, runtimeAnimatorController non-null, and (humanoid) Avatar matching the rig."
+      },
+      {
+        "symptom": "SetTrigger is called but the state machine never leaves the current state.",
+        "cause": "No transition lists that trigger, Has Exit Time delays it, or another transition consumed it first.",
+        "fix": "Confirm Conditions include the trigger and Has Exit Time is unchecked for immediate response. ResetTrigger before SetTrigger if stale state is possible."
+      },
+      {
+        "symptom": "A 2D blend tree always plays the same corner clip.",
+        "cause": "Parameter values outside the authored range — 0..1 input into a -1..1 tree clamps to one extreme.",
+        "fix": "Match parameter range to tree thresholds, or rescale input (value * 2 - 1 for 0..1 → -1..1)."
+      },
+      {
+        "symptom": "Character slides or stutters when moving.",
+        "cause": "applyRootMotion on while script also writes transform.position (or vice versa). The two fight each frame.",
+        "fix": "Pick one source of truth. Script-driven: applyRootMotion = false. Animation-driven: do not write transform.position."
+      },
+      {
+        "symptom": "OnAnimatorIK is never called.",
+        "cause": "Layer's IK Pass toggle is off, or the MonoBehaviour is on a different GameObject than the Animator.",
+        "fix": "Enable IK Pass on the layer; put the script on the Animator's GameObject."
+      },
+      {
+        "symptom": "Editing the state graph on one character has no effect on another using the same controller.",
+        "cause": "Second character uses a duplicated controller, not an AnimatorOverrideController wrapping the original.",
+        "fix": "Replace with AnimatorOverrideController so the graph stays shared and only clip slots differ."
+      },
+      {
+        "symptom": "Animations look correct in play mode but reset to T-pose in edit mode.",
+        "cause": "Mecanim evaluates per-tick in play mode; edit mode shows the bind pose unless the Animation window previews.",
+        "fix": "Expected. Use Animation window preview or enter play mode. Not a bug."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.1",
+        "change": "Write Defaults behavior clarified. Still defaults to true on new states; mixing true/false across states in one layer causes subtle pose leaks.",
+        "breaking": false,
+        "migrationNote": "Pick one Write Defaults policy per layer. Mixing is the #1 source of 'one property sticks across states'."
+      },
+      {
+        "version": "2019.3",
+        "change": "Animation Rigging package (com.unity.animation.rigging) shipped as supported, adding runtime constraints (TwoBoneIK, MultiPositionConstraint, etc.) on top of Mecanim.",
+        "breaking": false,
+        "migrationNote": "For generic-rig IK or constraints beyond humanoid-only Mecanim IK, install Animation Rigging instead of rolling custom."
+      },
+      {
+        "version": "2022.2",
+        "change": "AnimatorStateMachineDebug and related editor introspection APIs expanded. Runtime unchanged.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 ships the same Mecanim runtime as 2022 LTS. No behavior changes to state machine evaluation, parameters, or root motion.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Animator component",               "url": "https://docs.unity3d.com/Manual/class-Animator.html" },
+    { "title": "Unity Manual — Animator Controller",              "url": "https://docs.unity3d.com/Manual/class-AnimatorController.html" },
+    { "title": "Unity Manual — Animation State Machines",         "url": "https://docs.unity3d.com/Manual/AnimationStateMachines.html" },
+    { "title": "Unity Manual — Animation Parameters",             "url": "https://docs.unity3d.com/Manual/AnimationParameters.html" },
+    { "title": "Unity Manual — Animation Transitions",            "url": "https://docs.unity3d.com/Manual/class-Transition.html" },
+    { "title": "Unity Manual — Blend Trees",                      "url": "https://docs.unity3d.com/Manual/class-BlendTree.html" },
+    { "title": "Unity Manual — Animation Layers",                 "url": "https://docs.unity3d.com/Manual/AnimationLayers.html" },
+    { "title": "Unity Manual — Root Motion",                      "url": "https://docs.unity3d.com/Manual/RootMotion.html" },
+    { "title": "Unity Manual — Inverse Kinematics",               "url": "https://docs.unity3d.com/Manual/InverseKinematics.html" },
+    { "title": "Unity Manual — Animator Override Controller",     "url": "https://docs.unity3d.com/Manual/AnimatorOverrideController.html" },
+    { "title": "ScriptReference — Animator",                      "url": "https://docs.unity3d.com/ScriptReference/Animator.html" },
+    { "title": "ScriptReference — Animator.StringToHash",         "url": "https://docs.unity3d.com/ScriptReference/Animator.StringToHash.html" },
+    { "title": "ScriptReference — AnimationClip",                 "url": "https://docs.unity3d.com/ScriptReference/AnimationClip.html" },
+    { "title": "ScriptReference — AnimatorStateMachine",          "url": "https://docs.unity3d.com/ScriptReference/Animations.AnimatorStateMachine.html" },
+    { "title": "ScriptReference — AnimatorCondition",             "url": "https://docs.unity3d.com/ScriptReference/Animations.AnimatorCondition.html" },
+    { "title": "ScriptReference — BlendTree",                     "url": "https://docs.unity3d.com/ScriptReference/Animations.BlendTree.html" },
+    { "title": "ScriptReference — AnimatorOverrideController",    "url": "https://docs.unity3d.com/ScriptReference/AnimatorOverrideController.html" },
+    { "title": "Animation Rigging package",                       "url": "https://docs.unity3d.com/Packages/com.unity.animation.rigging@latest" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, Unity Manual, and ScriptReference pages covering Animator, AnimatorController, AnimationClip, AnimatorStateMachine, AnimatorStateTransition, AnimatorCondition, BlendTree, AnimatorOverrideController, root motion, and IK. API names, parameter types, callback signatures, and numeric enum values are facts and not copyrightable. All explanatory prose, decision rules, llmGuidance scenarios, and commonPitfalls are original Mosaic editorial content; no Unity documentation text is reproduced verbatim. Unity Manual and ScriptReference pages are cited under externalReferences for the LLM to fetch at runtime if deeper context is needed."
+}

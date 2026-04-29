@@ -1,0 +1,224 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "editor/profiler-tests-build",
+  "title": "Profiler, Test Runner, Build Pipeline",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "editor",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Three adjacent editor subsystems wrapped by Mosaic's profiler/*, test/*, and build/* tool families. The Profiler captures per-module CPU / GPU / memory / rendering / physics / audio / UI samples against the editor, a local standalone player, or a remote device, and exposes a scripted read path through ProfilerRecorder plus custom scopes via Profiler.BeginSample. The Test Framework package (com.unity.test-framework) runs NUnit-flavored EditMode and PlayMode tests through the Test Runner window or the -runTests CLI flag. The Build Pipeline compiles player content through BuildPipeline.BuildPlayer, with BuildOptions flags for development/profiler/debug builds and IPreprocessBuildWithReport / IPostprocessBuildWithReport callbacks for per-target fixups. Read this before any tool that records a sample, runs a test, or produces a player.",
+
+  "mosaicTools": [
+    "profiler/start",
+    "profiler/stop",
+    "profiler/record",
+    "profiler/sample",
+    "test/run",
+    "build/player",
+    "build/settings"
+  ],
+
+  "relatedKb": [
+    "core/asset-database",
+    "editor/scripting-overview"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_capture_a_specific_stat_at_runtime":
+      "Use ProfilerRecorder.StartNew(category, statName, capacity). This works in Editor AND built players, unlike the UI Profiler which is editor-only. Hold the Recorder in a field, Dispose in OnDestroy. Blank / zero values usually mean the stat name is wrong or the module isn't enabled on the current platform — double-check ProfilerCategory against the module (Render, Memory, Audio, Physics, Scripts).",
+    "when_wrapping_user_code_for_profiling":
+      "Profiler.BeginSample(\"mosaic.<domain>.<op>\") / Profiler.EndSample(). Always pair in try/finally so an exception doesn't leak an open sample. Use a stable, namespaced name — the Profiler groups by exact string, so ad-hoc names fragment the timeline.",
+    "when_choosing_editmode_vs_playmode":
+      "Pure logic, editor extensions, or asset-import tests → EditMode (fast, runs on domain reload, no scene load). Anything that needs a running MonoBehaviour, physics step, coroutine timing, or Time.deltaTime progression → PlayMode. Long-running soak and determinism tests always go PlayMode — EditMode has no frame loop.",
+    "when_writing_a_test_that_yields":
+      "Use [UnityTest] returning IEnumerator and yield return null / new WaitForSeconds. [Test] methods must be synchronous and void (or return Task in Test Framework 2.x). Mixing them silently disables the test or makes it pass instantly.",
+    "when_running_tests_from_ci":
+      "unity -batchmode -nographics -projectPath <p> -runTests -testPlatform {EditMode|PlayMode} -testResults <out.xml> -logFile -. Never rely on the Test Runner window — CI must drive BuildPipeline / TestRunnerApi headlessly. Exit code 0 = all passed, 2 = failures, 3 = run error.",
+    "when_a_test_passes_locally_but_fails_in_ci":
+      "First suspects: different asset-import state (library cache not shared), different domain-reload timing, or a PlayMode test depending on an editor-only scene not in EditorBuildSettings.scenes. Re-run with -logFile - and inspect the first compilation error — most CI-only failures are actually build or import errors manifesting as test failure.",
+    "when_producing_a_player_build":
+      "Always BuildPipeline.BuildPlayer(new BuildPlayerOptions{...}) from a C# entry point, never the Build menu. Set scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path). Return BuildReport — summary.result != Succeeded must fail the calling tool, not be logged and ignored.",
+    "when_adding_a_build_side_effect":
+      "Implement IPreprocessBuildWithReport for setup (stamp version, bake config) and IPostprocessBuildWithReport for cleanup (strip symbols, sign binary). Order matters — callbackOrder controls execution sequence; duplicate orders run in undefined order. Throwing BuildFailedException aborts the build cleanly.",
+    "when_the_build_fails_on_il2cpp":
+      "The most common cause is System.Reflection.Emit usage (dynamic IL generation) which IL2CPP cannot AOT-compile. Audit plugin DLLs and serializers. Unsupported APIs also include most runtime CodeDom. Fix by replacing with source-generated code or a Mono-only assembly guarded by UNITY_IL2CPP.",
+    "when_addressables_are_in_play":
+      "AddressableAssetSettings.BuildPlayerContent() is a SEPARATE build step and must run BEFORE BuildPipeline.BuildPlayer if you ship with local-hosted bundles, or independently when shipping remote. Build order drift between player and content causes catalog hash mismatch and runtime 'asset not found' errors. Re-run Addressables build any time a group or entry changes."
+  },
+
+  "full": {
+    "profiler": {
+      "moduleMap": {
+        "CPU Usage": "Per-frame main-thread + job-thread sample tree, rooted at PlayerLoop. Click a frame to see the hierarchy.",
+        "GPU Usage": "Per-frame GPU timings. Requires a compatible graphics API (DX11/12, Vulkan, Metal). Unavailable on some WebGL/older mobile configs.",
+        "Rendering": "Draw calls, batches, SetPass calls, triangles, vertices. First stop for 'why is my scene slow to render'.",
+        "Memory": "Total Reserved, Used, GC Allocated In Frame, System Memory. Detailed Mode snapshots need the Memory Profiler package for object-level attribution.",
+        "Physics": "Active rigidbodies, contacts, queries, solver iterations (PhysX 3D). Physics 2D tracked separately.",
+        "Audio": "Active voices, DSP CPU, stream count, memory.",
+        "UI / UI Details": "UGUI rebuild counts, batch counts, layout rebuilds. Cross-reference with Rendering batches.",
+        "Global Illumination / Video / VR": "Present only when the corresponding subsystem is active."
+      },
+      "attachTargets": "Editor (default, in-process) | Local standalone player (auto-discovered if built with Autoconnect Profiler) | Remote device (IP + port, requires Development Build + Autoconnect Profiler). Only one profiler connection at a time.",
+      "profilerRecorderApi": {
+        "idiom": "var r = ProfilerRecorder.StartNew(ProfilerCategory.Render, \"Batches Count\", 15);",
+        "runtimeSafe": true,
+        "notes": "Queries most stats exposed in the Profiler UI by name. Read r.LastValue or iterate r.GetSample(i). Capacity is ring-buffer length. Stat names are case-sensitive and platform-specific; enumerate with ProfilerRecorderHandle.GetAvailable to discover what's live on the current build."
+      },
+      "customSampleIdiom": "Profiler.BeginSample(\"Mosaic.Ingest.ParseScene\"); try { /* work */ } finally { Profiler.EndSample(); }",
+      "frameDebugger": "Separate tool (Window → Analysis → Frame Debugger). Pauses rendering mid-frame and lets you step through every draw call with the full render state. Not part of the Profiler and not scriptable — UI-driven investigation only."
+    },
+
+    "testFramework": {
+      "package": "com.unity.test-framework (built into 2021.3+). Adds Test Runner window under Window → General → Test Runner.",
+      "modes": {
+        "EditMode": "Runs on a domain reload in the editor process. No scene is loaded. No frame loop. Fast. Use for pure logic, asset-import tests, editor tooling tests.",
+        "PlayMode": "Enters Play mode with a minimal scene (or a specified one). Frame loop runs, MonoBehaviour lifecycle fires, coroutines work. Use for anything requiring runtime behavior."
+      },
+      "nunitConventions": {
+        "[TestFixture]": "Optional on the class — inferred when the class contains [Test] methods.",
+        "[SetUp] / [TearDown]": "Run before / after each test method.",
+        "[OneTimeSetUp] / [OneTimeTearDown]": "Run once per fixture.",
+        "[Test]": "Synchronous test. Must return void (or Task in TF 2.x).",
+        "[UnityTest]": "Coroutine-style test. Must return IEnumerator. Yield null to advance a frame; yield a WaitForSeconds to advance time. EditMode UnityTest runs via editor update loop; PlayMode UnityTest runs via MonoBehaviour coroutine.",
+        "[TestCase(...)]": "Parameterized test rows.",
+        "[Category(\"slow\")]": "Filter flag used by -testCategory on the CLI and the filter box in the UI."
+      },
+      "cliInvocation": {
+        "command": "unity -batchmode -projectPath <project> -runTests -testPlatform EditMode -testResults <path.xml> -logFile -",
+        "exitCodes": "0 = all green, 2 = failures, 3 = run error (compile failure, missing dependencies).",
+        "resultsFormat": "NUnit3 XML. CI systems (GitHub Actions, TeamCity, Jenkins) have native renderers."
+      },
+      "assemblyWiring": "Tests live in a separate assembly defined by an .asmdef with \"includePlatforms\": [] and \"defineConstraints\": [\"UNITY_INCLUDE_TESTS\"]. It must reference the assembly under test plus nunit.framework and UnityEngine.TestRunner / UnityEditor.TestRunner. Without the constraint, tests ship with the player."
+    },
+
+    "buildPipeline": {
+      "entryPoint": "BuildPipeline.BuildPlayer(BuildPlayerOptions options) → BuildReport. Inspect report.summary.result (Succeeded / Failed / Cancelled / Unknown) and report.summary.totalErrors.",
+      "buildPlayerOptions": {
+        "scenes": "string[] of project-relative scene paths. Conventionally sourced from EditorBuildSettings.scenes.Where(s => s.enabled).",
+        "locationPathName": "Output path. For iOS/Android this is a directory; for Windows/Mac/Linux a file path with appropriate extension.",
+        "target": "BuildTarget enum (StandaloneWindows64, StandaloneOSX, Android, iOS, WebGL, PS5, XboxSeries, LinuxServer, ...).",
+        "targetGroup": "BuildTargetGroup enum — some APIs (player settings) key off group rather than target.",
+        "options": "BuildOptions flags (see below)."
+      },
+      "buildOptionsFlags": {
+        "None": "Release-ish build. Default.",
+        "Development": "Enables the debug console, development-mode asserts, and the Autoconnect / profiler port.",
+        "ConnectWithProfiler": "Auto-attach the Profiler on player start. Requires Development.",
+        "AllowDebugging": "Enables managed-script debugger attach. Requires Development.",
+        "EnableDeepProfilingSupport": "Instruments every managed method boundary. Heavy overhead — use only for targeted investigation.",
+        "BuildScriptsOnly": "Recompile managed scripts against the last build artifacts; fastest iteration on a code-only change.",
+        "CleanBuildCache": "Invalidate the incremental build cache. Use when hunting a 'works on clean build' bug.",
+        "IncludeTestAssemblies": "Ship test assemblies in the player. Almost always wrong for a release build."
+      },
+      "callbacks": {
+        "IPreprocessBuildWithReport.OnPreprocessBuild(BuildReport)": "Fires before the player build begins. Good for version stamping, config baking, verifying environment.",
+        "IPostprocessBuildWithReport.OnPostprocessBuild(BuildReport)": "Fires after the player is written. Good for signing, symbol stripping, artifact upload.",
+        "IProcessSceneWithReport.OnProcessScene(Scene, BuildReport)": "Fires per scene mid-build. Rare; used for scene-level optimization passes.",
+        "ordering": "All implement callbackOrder. Lower runs first. Duplicate orders are undefined — assign deliberate, spaced values (100, 200, 300)."
+      },
+      "addressablesBuild": {
+        "api": "AddressableAssetSettings.BuildPlayerContent() or ContentUpdateScript.BuildContentUpdate for patch builds.",
+        "sequencing": "Must run BEFORE BuildPipeline.BuildPlayer when shipping bundles inside the player, or independently when shipping remote. A player build that used a newer Addressables catalog than was baked in will runtime-fail with catalog mismatch.",
+        "rebuildTriggers": "Any change to an AddressableAssetGroup, entry address, label set, or schema version invalidates the catalog. Re-run BuildPlayerContent."
+      }
+    },
+
+    "decisionRules": [
+      { "scenario": "Long-running soak / frame-rate regression test",     "rule": "PlayMode + [UnityTest] + ProfilerRecorder on CPU frame time.",            "evidence": "EditMode has no frame loop; a UnityTest in EditMode runs via editor updates and does not exercise MonoBehaviour lifecycle." },
+      { "scenario": "Pure-logic algorithm test",                          "rule": "EditMode + [Test].",                                                        "evidence": "Fastest feedback loop; no scene / domain cost." },
+      { "scenario": "CI build of a player for any target",                "rule": "BuildPipeline.BuildPlayer + IPreprocessBuildWithReport for stamping.",     "evidence": "Menu-driven builds don't have a scripted failure-signal path; CI needs BuildReport.summary.result." },
+      { "scenario": "Need to sample a stat in a shipped player",          "rule": "ProfilerRecorder.StartNew(category, name, capacity).",                      "evidence": "The Profiler UI is editor-only; ProfilerRecorder is the only supported runtime read path." },
+      { "scenario": "Identifying which managed method spiked this frame", "rule": "Development + EnableDeepProfilingSupport build, then Profiler hierarchy view.", "evidence": "Deep profiling is the only way to see methods below the instrumented sample boundaries, at the cost of substantial overhead." }
+    ],
+
+    "commonPitfalls": [
+      { "symptom": "ProfilerRecorder.LastValue returns 0 forever",                                       "cause": "Stat name misspelled, stat not available on current platform, or category mismatch.",                                 "fix": "Enumerate available handles with ProfilerRecorderHandle.GetAvailable and log the exact names the runtime exposes." },
+      { "symptom": "Tests pass in the editor, fail in CI with 'type or namespace not found'",           "cause": "Test asmdef missing UNITY_INCLUDE_TESTS define constraint or not referencing UnityEditor.TestRunner for EditMode tests.", "fix": "Fix the asmdef; run once locally in batchmode to reproduce before pushing." },
+      { "symptom": "IL2CPP build fails with 'Reflection.Emit is not supported'",                        "cause": "A dependency generates IL at runtime (common in older serializers, some expression-tree libraries).",                    "fix": "Replace with a source-generator equivalent, or isolate the dependency behind #if !ENABLE_IL2CPP with a Mono-only fallback path." },
+      { "symptom": "Player launches but Addressables throw 'Exception: RemoteProviderException'",      "cause": "Addressables content was not rebuilt after the player build reordered / renamed a group.",                            "fix": "Always AddressableAssetSettings.BuildPlayerContent() before BuildPipeline.BuildPlayer in the same script; treat them as one logical step." },
+      { "symptom": "Custom Profiler.BeginSample scope never appears in the hierarchy",                  "cause": "EndSample was skipped due to an early return / exception, and Unity swallowed the unmatched open sample.",            "fix": "Always pair in try/finally; alternatively use the using-scope ProfilerMarker.Auto()." },
+      { "symptom": "Build callback runs twice or in the wrong order",                                  "cause": "Two IPreprocessBuildWithReport implementations share the same callbackOrder.",                                          "fix": "Assign unique, deliberately spaced callbackOrder values (100, 200, 300) so insertion order is no longer load-bearing." }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2020.2",
+        "change": "ProfilerRecorder / ProfilerRecorderHandle APIs introduced. First supported way to read profiler counters from player code at runtime.",
+        "breaking": false
+      },
+      {
+        "version": "2021.2",
+        "change": "ProfilerMarker struct stabilized as the preferred low-overhead alternative to Profiler.BeginSample/EndSample for hot paths.",
+        "breaking": false
+      },
+      {
+        "version": "2021.3 LTS",
+        "change": "Test Framework 1.1.x is the baseline. Build Pipeline IPreprocess/IPostprocessBuildWithReport interfaces are stable across the 2021.3 → 6000.4 range.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "IL2CPP gained improved generic sharing and incremental compilation, cutting cold-build times. No API surface change for callers.",
+        "breaking": false
+      },
+      {
+        "version": "2023.1",
+        "change": "Test Framework 2.0 ships. async Task test methods are officially supported; NUnit upgraded to 3.14. Parallel test execution flag added.",
+        "breaking": false,
+        "migrationNote": "Tests written against TF 1.x continue to work. New async APIs unlock cleaner await-based tests but are optional."
+      },
+      {
+        "version": "6000.0",
+        "change": "BuildPipeline and Profiler APIs unchanged from 2022.3 LTS. Unity 6 adds GPU Resident Drawer stats exposed through new ProfilerCategory.Render counters.",
+        "breaking": false
+      },
+      {
+        "version": "6000.4",
+        "change": "Incremental IL2CPP enabled by default; BuildOptions.CleanBuildCache more impactful for troubleshooting. No code changes required.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Profiler overview",                  "url": "https://docs.unity3d.com/Manual/Profiler.html" },
+    { "title": "Unity Manual — Profiler modules",                   "url": "https://docs.unity3d.com/Manual/ProfilerModules.html" },
+    { "title": "Unity Manual — Profiling your application",         "url": "https://docs.unity3d.com/Manual/profiling-application.html" },
+    { "title": "Unity Manual — Frame Debugger",                     "url": "https://docs.unity3d.com/Manual/FrameDebugger.html" },
+    { "title": "Unity Manual — Test Framework",                     "url": "https://docs.unity3d.com/Packages/com.unity.test-framework@1.3/manual/index.html" },
+    { "title": "Unity Manual — Running tests from the command line","url": "https://docs.unity3d.com/Manual/CommandLineArguments.html" },
+    { "title": "Unity Manual — Build Pipeline",                     "url": "https://docs.unity3d.com/Manual/BuildPlayerPipeline.html" },
+    { "title": "Unity Manual — Build settings",                     "url": "https://docs.unity3d.com/Manual/BuildSettings.html" },
+    { "title": "Unity Manual — IL2CPP overview",                    "url": "https://docs.unity3d.com/Manual/IL2CPP.html" },
+    { "title": "Unity Manual — Addressables build scripts",         "url": "https://docs.unity3d.com/Packages/com.unity.addressables@1.22/manual/AddressableAssetsDevelopmentCycle.html" },
+    { "title": "ScriptReference — Profiler",                        "url": "https://docs.unity3d.com/ScriptReference/Profiling.Profiler.html" },
+    { "title": "ScriptReference — ProfilerRecorder",                "url": "https://docs.unity3d.com/ScriptReference/Unity.Profiling.ProfilerRecorder.html" },
+    { "title": "ScriptReference — ProfilerCategory",                "url": "https://docs.unity3d.com/ScriptReference/Unity.Profiling.ProfilerCategory.html" },
+    { "title": "ScriptReference — ProfilerMarker",                  "url": "https://docs.unity3d.com/ScriptReference/Unity.Profiling.ProfilerMarker.html" },
+    { "title": "ScriptReference — BuildPipeline.BuildPlayer",       "url": "https://docs.unity3d.com/ScriptReference/BuildPipeline.BuildPlayer.html" },
+    { "title": "ScriptReference — BuildPlayerOptions",              "url": "https://docs.unity3d.com/ScriptReference/BuildPlayerOptions.html" },
+    { "title": "ScriptReference — BuildOptions",                    "url": "https://docs.unity3d.com/ScriptReference/BuildOptions.html" },
+    { "title": "ScriptReference — BuildReport",                     "url": "https://docs.unity3d.com/ScriptReference/Build.Reporting.BuildReport.html" },
+    { "title": "ScriptReference — IPreprocessBuildWithReport",      "url": "https://docs.unity3d.com/ScriptReference/Build.IPreprocessBuildWithReport.html" },
+    { "title": "ScriptReference — IPostprocessBuildWithReport",     "url": "https://docs.unity3d.com/ScriptReference/Build.IPostprocessBuildWithReport.html" },
+    { "title": "ScriptReference — EditorBuildSettings.scenes",      "url": "https://docs.unity3d.com/ScriptReference/EditorBuildSettings-scenes.html" },
+    { "title": "ScriptReference — UnityTest attribute",             "url": "https://docs.unity3d.com/Packages/com.unity.test-framework@1.3/api/UnityEngine.TestTools.UnityTestAttribute.html" },
+    { "title": "ScriptReference — TestRunnerApi",                   "url": "https://docs.unity3d.com/Packages/com.unity.test-framework@1.3/api/UnityEditor.TestTools.TestRunner.Api.TestRunnerApi.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Profiler",            "url": "https://docs.unity3d.com/Manual/Profiler.html" },
+    { "title": "Unity Manual — Test Framework",      "url": "https://docs.unity3d.com/Packages/com.unity.test-framework@1.3/manual/index.html" },
+    { "title": "Unity Manual — Build Pipeline",      "url": "https://docs.unity3d.com/Manual/BuildPlayerPipeline.html" },
+    { "title": "ScriptReference — ProfilerRecorder", "url": "https://docs.unity3d.com/ScriptReference/Unity.Profiling.ProfilerRecorder.html" },
+    { "title": "ScriptReference — BuildPipeline",    "url": "https://docs.unity3d.com/ScriptReference/BuildPipeline.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs and the Unity Manual / ScriptReference pages covering the Profiler, ProfilerRecorder, ProfilerMarker, the Test Framework package (com.unity.test-framework), NUnit attributes, the command-line test runner, BuildPipeline.BuildPlayer, BuildPlayerOptions / BuildOptions, BuildReport, the IPreprocessBuildWithReport / IPostprocessBuildWithReport interfaces, and Addressables build scripts. API signatures, enum values, stat names, callback interface names, and command-line flags are factual and not copyrightable. Explanatory prose, decision rules, llmGuidance scenarios, commonPitfalls, and versionDeltas are original Mosaic editorial content informed by observed LLM tool-call failure modes (missing ProfilerRecorder stat names, unpaired BeginSample, EditMode/PlayMode misuse, ignored BuildReport.summary.result, stale Addressables catalogs, IL2CPP Reflection.Emit crashes). No Unity documentation text is reproduced verbatim; manual and script-reference pages are cited as externalReferences for the LLM to fetch when it needs source text."
+}

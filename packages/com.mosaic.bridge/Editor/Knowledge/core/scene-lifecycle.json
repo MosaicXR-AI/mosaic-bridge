@@ -1,0 +1,237 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-core-scene-lifecycle",
+  "title": "MonoBehaviour Lifecycle + Edit Mode vs Play Mode",
+  "version": "1.1.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's MonoBehaviour lifecycle callback order (Awake → OnEnable → Start → FixedUpdate/Update/LateUpdate → OnDisable → OnDestroy), the edit-mode vs play-mode distinction, the ExecuteAlways attribute, and when to use which callback. Code-generating mosaic tools (physics/fluid-create, simulation/*) produce MonoBehaviour scripts — authors must pick correct callbacks to avoid 'nothing visible in edit mode', buffer-leak-on-disable, or Start-not-firing-on-reenable bugs.",
+
+  "mosaicTools": [
+    "editor/play-mode",
+    "editor/refresh",
+    "editor/execute-code",
+    "editor/execute-menu-item",
+    "scene/new",
+    "scene/open",
+    "scene/save",
+    "scene/get_info",
+    "scene/get_hierarchy",
+    "scene/get_stats",
+    "sceneview/info",
+    "sceneview/set-camera",
+    "selection/focus-scene-view",
+    "selection/get",
+    "selection/set",
+    "script/create",
+    "script/update",
+    "script/read",
+    "physics/fluid-create",
+    "physics/verlet-create",
+    "physics/spring-mass",
+    "physics/nbody",
+    "simulation/fluid",
+    "simulation/smoke",
+    "simulation/cloth",
+    "simulation/boids",
+    "simulation/agent-based",
+    "simulation/ecosystem",
+    "simulation/orbital",
+    "simulation/spherical-gravity"
+  ],
+
+  "relatedKb": [
+    "kb-core-gameobject-transform-semantics",
+    "kb-core-asset-database"
+  ],
+
+  "llmGuidance": {
+    "when_authoring_a_generated_monobehaviour_that_allocates_resources":
+      "Allocate in OnEnable. Free in OnDisable. NEVER use Start→OnDestroy — Start fires once per instance; on re-enable the object leaks. The pair must be symmetric: OnEnable/OnDisable OR Awake/OnDestroy.",
+    "when_a_tool_generates_a_script_that_should_preview_in_edit_mode":
+      "Add [ExecuteAlways] attribute to the class. Without it, callbacks only fire in play mode. This is the #1 'nothing visible in edit mode' cause for generated simulation scripts.",
+    "when_applying_physics_forces_or_moving_rigidbodies":
+      "Use FixedUpdate. It ticks at the physics rate (default 50 Hz). Update runs at render rate and would desync from physics. Camera follow goes in LateUpdate — after all Update calls, so followed targets have finalized their positions.",
+    "when_writing_or_modifying_assets_from_a_script":
+      "If edit mode, guard with #if UNITY_EDITOR and do it in OnValidate or a menu command, not Update. Writing from Update at edit time can deadlock the editor.",
+    "when_state_is_lost_on_play_mode_entry":
+      "Domain reload resets all non-serialized static fields. Serialized fields persist into play via scene snapshot; changes made in play are discarded on exit. If you need fast iteration without this cost, Project Settings → Enter Play Mode Options can disable domain/scene reload (2019.3+) — but your code must tolerate stale static state.",
+    "when_a_coroutine_stops_unexpectedly":
+      "Coroutines stop when the owning MonoBehaviour is disabled or the GameObject is destroyed. If you need lifetime independence, use a persistent 'runner' MonoBehaviour or async/await."
+  },
+
+  "full": {
+    "callbackOrder": [
+      { "callback": "Awake",        "when": "Once per instance, on load, BEFORE any Start. Fires even if component is disabled. Use for setting up internal references that don't depend on other scripts' Awake running first." },
+      { "callback": "OnEnable",     "when": "Every time component/GameObject becomes enabled, including each re-enable and every domain reload under ExecuteAlways. Use for subscribing to events, allocating buffers, starting coroutines." },
+      { "callback": "Start",        "when": "Once per instance, on the frame BEFORE the first Update, ONLY if the component is enabled. Use for setup that depends on other scripts being initialized." },
+      { "callback": "FixedUpdate",  "when": "Physics tick (default 50 Hz, Time.fixedDeltaTime = 0.02). May run 0..n times per render frame depending on render rate." },
+      { "callback": "Update",       "when": "Once per rendered frame. Use for input polling and non-physics gameplay." },
+      { "callback": "LateUpdate",   "when": "Once per frame, AFTER all Update calls. Use for camera follow, IK overrides." },
+      { "callback": "OnDisable",    "when": "When component/GameObject is disabled or about to be destroyed. Use to release buffers, unsubscribe events, stop coroutines." },
+      { "callback": "OnDestroy",    "when": "Once when object is destroyed or scene unloaded, ONLY if Awake previously ran. Use for final teardown." },
+      { "callback": "Reset",        "when": "Editor-only. When component is first added OR the 'Reset' menu is used. Use to set sensible defaults in the Inspector." },
+      { "callback": "OnValidate",   "when": "Editor-only. When script is loaded OR a Serialized Inspector value changes. Use to clamp/validate params; keep cheap." }
+    ],
+
+    "editModeVsPlayMode": {
+      "enterPlayMode": [
+        "Domain reload triggers: static fields reset, [InitializeOnLoad] reruns.",
+        "Scene reload (by default): fresh scene state, but serialized inspector values persist.",
+        "Changes made in play mode are DISCARDED on exit — explicit by design."
+      ],
+      "enterPlayModeOptions": {
+        "since": "2019.3",
+        "location": "Project Settings → Editor → Enter Play Mode Options",
+        "effect": "Can disable domain reload and/or scene reload for faster iteration.",
+        "risk": "Code that relies on static initialization must be rewritten to tolerate stale state across play-mode transitions."
+      },
+      "executeAlways": {
+        "attribute": "[ExecuteAlways]",
+        "effect": "Runs lifecycle callbacks in edit mode AND prefab mode AND play mode.",
+        "editModeUpdateBehavior": "Update in edit mode fires only when the scene changes, NOT every frame. Don't build logic that assumes continuous ticking.",
+        "runtimeBranching": "Use if (Application.isPlaying) { ... } inside Update to guard play-only logic."
+      },
+      "deprecatedExecuteInEditMode": "[ExecuteInEditMode] is older and runs callbacks only when NOT in play mode. Unity recommends [ExecuteAlways]. ExecuteInEditMode is still functional but not the preferred choice (unverified as formally deprecated in the source attribute)."
+    },
+
+    "playModeStateEvents": {
+      "event": "UnityEditor.EditorApplication.playModeStateChanged",
+      "payload": "PlayModeStateChange enum: EnteredEditMode | ExitingEditMode | EnteredPlayMode | ExitingPlayMode",
+      "useFor": "Snapshotting state before play, restoring on exit. Cleanup before domain reload."
+    },
+
+    "executionOrderControl": {
+      "projectSettings": "Project Settings → Script Execution Order — ordered list of types, numeric order values.",
+      "attribute": "[DefaultExecutionOrder(int)] on the class — default 0, negative runs earlier.",
+      "useFor": "When a MonoBehaviour must initialize before or after another (e.g., a manager vs its children).",
+      "caveat": "Overusing execution order is a smell; prefer explicit setup dependencies in Awake/OnEnable."
+    },
+
+    "editorOnlyIsolation": [
+      { "mechanism": "#if UNITY_EDITOR",                     "use": "Strip editor-only code from player builds." },
+      { "mechanism": "Editor/ folder",                       "use": "Scripts compile to an editor-only assembly; cannot reference runtime scene code unless via reflection." },
+      { "mechanism": "[InitializeOnLoad] (class-level)",     "use": "Static constructor runs on editor launch and after every script reload." },
+      { "mechanism": "[InitializeOnLoadMethod] (method-level)", "use": "Same timing as above, attribute-targeted method." }
+    ],
+
+    "coroutines": {
+      "start": "MonoBehaviour.StartCoroutine(enumerator). Requires enabled MonoBehaviour on an active GameObject.",
+      "commonYields": [
+        "yield return null — resume next frame, after Update",
+        "yield return new WaitForSeconds(t) — after scaled time t",
+        "yield return new WaitForEndOfFrame() — after rendering, before swap",
+        "yield return new WaitForFixedUpdate() — after next FixedUpdate"
+      ],
+      "stopConditions": "Stops on disable, destroy, or explicit StopCoroutine / StopAllCoroutines.",
+      "alternatives": "For lifetime independence, use async/await with CancellationToken or UniTask."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Generated simulation script (e.g., fluid manager) needs ComputeBuffer allocation",
+        "rule": "Allocate buffers in OnEnable. Release in OnDisable with null-check. Prevents leak across domain reload and re-enable cycles.",
+        "evidence": "Fluid session 2026-04-20 hit SetData errors because buffer capacity changed but wasn't reallocated on re-enable."
+      },
+      {
+        "scenario": "Tool generates a MonoBehaviour that should render in scene view without entering play mode",
+        "rule": "Emit [ExecuteAlways] on the class. Inside Update, branch on Application.isPlaying for runtime-only logic (input polling etc.).",
+        "evidence": "Fluid session: 'nothing shows' because script ran only in play mode, user expected edit-time preview."
+      },
+      {
+        "scenario": "Script applies force to a Rigidbody",
+        "rule": "Do it in FixedUpdate, not Update. FixedUpdate ticks at physics rate; Update would cause non-deterministic physics.",
+        "evidence": "Unity Manual Execution Order."
+      },
+      {
+        "scenario": "Camera follows a moving target smoothly",
+        "rule": "Update target position in Update or FixedUpdate. Camera reads target position in LateUpdate. Prevents one-frame lag / jitter.",
+        "evidence": "Unity Manual Execution Order."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Generated MonoBehaviour script works in play mode but 'nothing shows' in edit mode.",
+        "cause": "Missing [ExecuteAlways] attribute.",
+        "fix": "Add [ExecuteAlways]. If edit-mode callbacks should be conditional, guard with Application.isPlaying."
+      },
+      {
+        "symptom": "Resources allocated in Start leak when GameObject is disabled then re-enabled.",
+        "cause": "Start fires once per instance. Re-enable calls OnEnable, not Start.",
+        "fix": "Move allocation to OnEnable and release in OnDisable. Symmetric pairing."
+      },
+      {
+        "symptom": "Coroutine started in Start stops unexpectedly when object is disabled.",
+        "cause": "Coroutines stop on disable.",
+        "fix": "Restart in OnEnable, or use a persistent runner, or async/await."
+      },
+      {
+        "symptom": "Rigidbody physics feel inconsistent across different framerates.",
+        "cause": "Applying force in Update (render rate).",
+        "fix": "Apply in FixedUpdate (physics rate)."
+      },
+      {
+        "symptom": "Camera follows target but jitters by one frame.",
+        "cause": "Camera follow in Update competes with target movement also in Update — order-dependent.",
+        "fix": "Move camera follow to LateUpdate."
+      },
+      {
+        "symptom": "Writing to an asset during Update at edit time causes editor hang / corruption.",
+        "cause": "Asset writes are not safe during editor tick.",
+        "fix": "Use OnValidate for simple writes, or EditorApplication.delayCall to defer. Better: trigger asset writes from a menu command."
+      },
+      {
+        "symptom": "Static field value unexpectedly persists across play-mode entry/exit.",
+        "cause": "Enter Play Mode Options disabled domain reload for iteration speed.",
+        "fix": "Reset static fields manually on play-mode-state-changed event, or accept the optimization with explicit init code."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.2",
+        "change": "[ExecuteAlways] attribute added. Replaces [ExecuteInEditMode] for most use cases.",
+        "breaking": false,
+        "migrationNote": "ExecuteInEditMode still works but ExecuteAlways is recommended — runs in prefab mode and play mode too. No breaking change on existing scripts."
+      },
+      {
+        "version": "2019.3",
+        "change": "Enter Play Mode Options added (Project Settings → Editor). Allows disabling domain reload and/or scene reload for faster iteration.",
+        "breaking": false,
+        "migrationNote": "Code that relies on static initialization must be rewritten to tolerate stale state when this is enabled."
+      },
+      {
+        "version": "2021.3 LTS",
+        "change": "MonoBehaviour lifecycle callbacks (Awake/OnEnable/Start/Update/etc.) are stable from 2018+. No semantic changes through Unity 6.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Execution Order of Event Functions",  "url": "https://docs.unity3d.com/Manual/ExecutionOrder.html" },
+    { "title": "Unity Manual — Domain Reloading",                    "url": "https://docs.unity3d.com/Manual/DomainReloading.html" },
+    { "title": "Unity Manual — Coroutines",                          "url": "https://docs.unity3d.com/Manual/Coroutines.html" },
+    { "title": "Unity Manual — Platform Dependent Compilation",      "url": "https://docs.unity3d.com/Manual/PlatformDependentCompilation.html" },
+    { "title": "ScriptReference — MonoBehaviour.FixedUpdate",        "url": "https://docs.unity3d.com/ScriptReference/MonoBehaviour.FixedUpdate.html" },
+    { "title": "ScriptReference — MonoBehaviour.Reset",              "url": "https://docs.unity3d.com/ScriptReference/MonoBehaviour.Reset.html" },
+    { "title": "ScriptReference — MonoBehaviour.OnValidate",         "url": "https://docs.unity3d.com/ScriptReference/MonoBehaviour.OnValidate.html" },
+    { "title": "ScriptReference — ExecuteAlways",                    "url": "https://docs.unity3d.com/ScriptReference/ExecuteAlways.html" },
+    { "title": "ScriptReference — Application.isPlaying",            "url": "https://docs.unity3d.com/ScriptReference/Application-isPlaying.html" },
+    { "title": "ScriptReference — PlayModeStateChange",              "url": "https://docs.unity3d.com/ScriptReference/PlayModeStateChange.html" },
+    { "title": "ScriptReference — InitializeOnLoadAttribute",        "url": "https://docs.unity3d.com/ScriptReference/InitializeOnLoadAttribute.html" },
+    { "title": "ScriptReference — DefaultExecutionOrder",            "url": "https://docs.unity3d.com/ScriptReference/DefaultExecutionOrder.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs and Manual pages. Callback names, execution order, attribute semantics, and event payloads are factual. Explanatory prose, decision rules, llmGuidance, and commonPitfalls are original Mosaic editorial content, informed by real bugs observed in the Gemini session transcripts (2026-04-20 fluid). Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

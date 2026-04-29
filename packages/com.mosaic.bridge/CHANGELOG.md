@@ -5,6 +5,30 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.4] — 2026-04-29
+
+### Added
+
+- **Full knowledge base** — 35 authored KB entry files synced into `Editor/Knowledge/`
+  across 18 categories: `core`, `physics`, `rendering`, `animation`, `terrain`, `procgen`,
+  `shadergraph`, `navigation`, `ui`, `particle`, `input`, `editor`, `scene`, `spline`,
+  `probuilder`, `addressables`, `dataviz`, `visualscripting`.
+  Every entry includes `summary`, `mosaicTools`, `llmGuidance`, `commonMistakes`, and
+  `examples` fields for rich LLM context injection.
+
+- **Generic KB list/read** — `HandleKbList` now enumerates all entry-schema KB files
+  (not just physics constants and PBR materials). `HandleKbRead` falls back to authored
+  entry files for any `category/key` not found in reference data.
+  Full KB is now visible as MCP resources and accessible via `mosaic://knowledge/{cat}/{key}`.
+
+- **`KnowledgeBase.LoadEntry(category, key)`** — loads any KB entry file by category
+  and filename key.
+
+- **`KnowledgeBase.ListEntries(category?)`** — scans `Editor/Knowledge/` and returns
+  all entry-schema JSON files.
+
+---
+
 ## [1.0.0-beta.3] — 2026-04-29
 
 ### Added

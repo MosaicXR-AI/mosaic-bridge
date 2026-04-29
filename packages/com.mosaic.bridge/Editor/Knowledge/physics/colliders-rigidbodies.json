@@ -1,0 +1,368 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-physics-colliders-rigidbodies",
+  "title": "Colliders, Rigidbodies, Layers, and Physics Queries",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "physics",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity 3D physics fundamentals for code-generating tools: collider selection (Box/Sphere/Capsule/Mesh/Terrain/Wheel), Rigidbody dynamics vs kinematics, FixedUpdate semantics, collision vs trigger callbacks, layer-based collision filtering, raycast/overlap queries, physics materials, continuous collision detection, and joints. The two most common failure modes in generated physics code are applying forces in Update (framerate-coupled, non-deterministic) and moving kinematic Rigidbodies via transform.position (bypasses collision, causes tunneling). Read this before emitting any script that adds colliders, applies forces, or queries the physics scene.",
+
+  "mosaicTools": [
+    "physics/add-collider",
+    "physics/add-rigidbody",
+    "physics/raycast",
+    "physics/overlap",
+    "physics/set-gravity",
+    "physics/set-physics-material",
+    "constraint/add",
+    "constraint/info",
+    "taglayer/layer",
+    "search/by_layer"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle",
+    "kb-core-gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_a_script_applies_forces_or_moves_a_rigidbody":
+      "Put it in FixedUpdate, not Update. Use rb.AddForce / rb.MovePosition / rb.MoveRotation. Never assign transform.position on a Rigidbody — it teleports past colliders and desyncs the physics solver.",
+    "when_generating_a_fast_moving_projectile":
+      "Set rb.collisionDetectionMode = CollisionDetectionMode.Continuous (for dynamic-vs-static) or ContinuousDynamic (for dynamic-vs-dynamic). Default Discrete tunnels through thin colliders at high velocity.",
+    "when_adding_a_mesh_collider_to_a_moving_object":
+      "Set convex = true. A non-convex MeshCollider combined with a non-kinematic Rigidbody throws at runtime. For concave static geometry, keep convex = false but do NOT attach a dynamic Rigidbody.",
+    "when_making_two_object_groups_ignore_each_other":
+      "Do NOT disable colliders. Assign each group to a Layer and uncheck their intersection in Project Settings > Physics > Layer Collision Matrix, or call Physics.IgnoreLayerCollision(a, b, true). Disabling colliders breaks raycasts too.",
+    "when_detecting_overlap_every_frame":
+      "Use Physics.OverlapSphereNonAlloc (or OverlapBoxNonAlloc) with a pre-allocated Collider[] buffer. The allocating overloads create garbage every call and spike GC.",
+    "when_a_kinematic_rigidbody_must_move_through_the_scene":
+      "Use rb.MovePosition(target) and rb.MoveRotation(q) inside FixedUpdate. Setting transform.position on a kinematic Rigidbody bypasses collision interpolation and causes sweep misses.",
+    "when_raycasting_from_camera":
+      "Use Physics.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hit, maxDistance, layerMask). Don't build the ray from transform.forward.",
+    "when_using_trigger_volumes":
+      "The GameObject with the script must have a Rigidbody (or the other side must). OnTriggerEnter fires only when at least one of the colliding pair has a Rigidbody. Static-vs-static triggers are silent.",
+    "when_detecting_overlap_inside_update":
+      "Prefer FixedUpdate for physics queries or cache results from the last FixedUpdate. Calling OverlapSphere in Update before the first physics tick returns 0 because colliders have not yet registered with the broadphase.",
+    "when_assigning_a_physics_material":
+      "Assign to .sharedMaterial, not .material. The .material getter CLONES the material per-collider on first access — this leaks if done in a hot path and breaks shared tuning.",
+    "when_writing_2d_physics":
+      "Use Rigidbody2D + Collider2D (BoxCollider2D, CircleCollider2D, PolygonCollider2D). 3D Rigidbody and 2D Collider2D never interact. Do not mix."
+  },
+
+  "full": {
+    "colliderTypes": [
+      { "type": "BoxCollider",             "useFor": "Crates, walls, buildings.",       "notes": ".size + .center; scale via transform." },
+      { "type": "SphereCollider",          "useFor": "Balls, trigger ranges. Cheapest query.", "notes": "Radius follows largest localScale component." },
+      { "type": "CapsuleCollider",         "useFor": "Characters, limbs, pipes.",       "notes": ".direction 0=X, 1=Y, 2=Z." },
+      { "type": "MeshCollider (convex)",   "useFor": "Dynamic Rigidbodies with complex shape.", "notes": "Max 255 verts after convex reduction. Required for non-kinematic." },
+      { "type": "MeshCollider (non-convex)","useFor": "Static level geometry.",          "notes": "ILLEGAL with non-kinematic Rigidbody — throws on Awake." },
+      { "type": "TerrainCollider",         "useFor": "Terrain heightmap collision.",    "notes": "Auto-added with Terrain." },
+      { "type": "WheelCollider",           "useFor": "Vehicle wheels with suspension.", "notes": "Requires parent Rigidbody and Friction Curves." }
+    ],
+
+    "rigidbody": {
+      "fields": {
+        "mass": "kg. Only RELATIVE mass matters in collisions — 100:1 resolves like 1000:10.",
+        "drag": "Linear damping per second. 0 = vacuum; 0.05-0.2 typical.",
+        "angularDrag": "Angular damping. Default 0.05.",
+        "useGravity": "If false, Physics.gravity is skipped.",
+        "isKinematic": "Not driven by forces. Moves only via script. Still collides with dynamic bodies and fires callbacks.",
+        "interpolation": "None | Interpolate | Extrapolate. Smooths physics-tick to render-frame gap. Enable for visible bodies.",
+        "collisionDetectionMode": "Discrete | Continuous | ContinuousDynamic | ContinuousSpeculative.",
+        "constraints": "Freeze position/rotation per axis. Used for 2.5D or upright characters."
+      },
+      "forceModes": [
+        { "mode": "Force",          "effect": "Continuous force (N). Uses mass and deltaTime. Default for AddForce." },
+        { "mode": "Impulse",        "effect": "Instant change in momentum. Uses mass, not deltaTime. Explosions, jumps." },
+        { "mode": "Acceleration",   "effect": "Continuous, ignores mass. Good for constant gravity-like pushes." },
+        { "mode": "VelocityChange", "effect": "Instant velocity delta, ignores mass and deltaTime." }
+      ],
+      "addForceApis": [
+        "rb.AddForce(Vector3, ForceMode)",
+        "rb.AddTorque(Vector3, ForceMode)",
+        "rb.AddForceAtPosition(force, worldPos, ForceMode) — generates torque from offset",
+        "rb.AddExplosionForce(force, center, radius, upwardsModifier, ForceMode) — radial falloff"
+      ]
+    },
+
+    "fixedUpdateSemantics": {
+      "tickRate": "Default 50 Hz (Time.fixedDeltaTime = 0.02s). Tune in Project Settings > Time.",
+      "catchUp": "FixedUpdate fires 0..n times per rendered frame to catch up to wall time.",
+      "velocityWrites": "Writing rb.velocity in Update is lossy. Always write velocity/forces in FixedUpdate.",
+      "interpolation": "Interpolate smooths between previous and current physics state (one-tick visual lag). Extrapolate predicts ahead (no lag, overshoots at impact). None for static or invisible bodies."
+    },
+
+    "collisionVsTrigger": {
+      "collisionCallbacks": [
+        "OnCollisionEnter(Collision c) — fires once when contact starts",
+        "OnCollisionStay(Collision c) — fires each FixedUpdate while in contact",
+        "OnCollisionExit(Collision c) — fires once when contact ends"
+      ],
+      "triggerCallbacks": [
+        "OnTriggerEnter(Collider other)",
+        "OnTriggerStay(Collider other)",
+        "OnTriggerExit(Collider other)"
+      ],
+      "rules": [
+        "At least one side must have a Rigidbody for any callback to fire.",
+        "Callbacks fire on the GameObject whose MonoBehaviour defines them.",
+        "If either collider has isTrigger=true, OnTrigger* is used; otherwise OnCollision*.",
+        "Two static colliders never fire either set.",
+        "Two kinematic Rigidbodies fire only triggers by default, not collisions."
+      ]
+    },
+
+    "layersAndCollisionMatrix": {
+      "layerModel": "32 layers (0-31). One layer per GameObject. Built-ins 0-5: Default, TransparentFX, IgnoreRaycast, Water, UI.",
+      "matrix": "Project Settings > Physics > Layer Collision Matrix. Unchecked pair skips broadphase.",
+      "runtimeApis": [
+        "Physics.IgnoreCollision(a, b, true) — per-pair, forgotten on scene reload",
+        "Physics.IgnoreLayerCollision(layerA, layerB, true) — global",
+        "LayerMask.NameToLayer(\"Enemy\") — string to int",
+        "LayerMask.GetMask(\"Enemy\",\"Wall\") — names to bitmask"
+      ],
+      "layerMaskConstruction": [
+        "int mask = 1 << LayerMask.NameToLayer(\"Enemy\");   // single",
+        "int mask = LayerMask.GetMask(\"Enemy\",\"Wall\");    // multiple",
+        "int mask = ~(1 << 2);                              // everything EXCEPT 2"
+      ]
+    },
+
+    "raycastAndOverlap": {
+      "raySingle": "Physics.Raycast(origin, direction, out hit, maxDistance, layerMask, queryTriggerInteraction) — first hit.",
+      "rayAll": "Physics.RaycastAll — allocates RaycastHit[] per call.",
+      "rayNonAlloc": "Physics.RaycastNonAlloc — fills caller buffer, returns count.",
+      "shapeCasts": ["SphereCast", "BoxCast", "CapsuleCast (NonAlloc variants exist for each)"],
+      "overlapQueries": [
+        "Physics.OverlapSphere/Box/Capsule — return Collider[]",
+        "NonAlloc variants fill a caller buffer"
+      ],
+      "triggerInteraction": {
+        "enum": "QueryTriggerInteraction.UseGlobal | Ignore | Collide",
+        "globalDefault": "Physics.queriesHitTriggers defaults true. Pass the enum explicitly in generated code to avoid dependency on project settings."
+      },
+      "performance": "Alloc variants allocate per call; NonAlloc reuses caller buffer. Prefer NonAlloc in hot paths."
+    },
+
+    "physicsMaterial": {
+      "fields": {
+        "dynamicFriction": "Sliding friction. 0 = ice, ~1 = rubber.",
+        "staticFriction": "Friction required to start sliding. Usually >= dynamicFriction.",
+        "bounciness": "0 = inelastic, 1 = fully elastic. >1 accumulates energy.",
+        "frictionCombine": "Average | Minimum | Maximum | Multiply.",
+        "bounceCombine": "Same four modes."
+      },
+      "sharedVsInstance": {
+        "sharedMaterial": "Direct reference; edits affect every collider using it.",
+        "material": "First read CLONES sharedMaterial; clones leak if not Destroy()d.",
+        "rule": "Use .sharedMaterial unless you explicitly need per-collider overrides."
+      },
+      "className": "Type is PhysicsMaterial (renamed from PhysicMaterial in Unity 6; 2021.3-2022.3 still use PhysicMaterial). Both names resolve the same asset."
+    },
+
+    "continuousCollisionDetection": {
+      "modes": [
+        { "mode": "Discrete", "behavior": "Default. Tunnels through thin colliders at high velocity." },
+        { "mode": "Continuous", "behavior": "Sweep vs STATIC colliders only." },
+        { "mode": "ContinuousDynamic", "behavior": "Sweep vs static AND ContinuousDynamic bodies. Pair projectile + target for reliable catch." },
+        { "mode": "ContinuousSpeculative", "behavior": "Speculative contacts; cheaper, less accurate. Works vs all body types including kinematic. Good character default." }
+      ],
+      "whenToUse": "Arrows, bullets, fast vehicles, falling characters. Cost: several-fold more than Discrete per Rigidbody."
+    },
+
+    "joints": {
+      "types": [
+        { "type": "FixedJoint",       "useFor": "Rigid attachment until breakForce." },
+        { "type": "HingeJoint",       "useFor": "Doors, pendulums. One rotational DOF." },
+        { "type": "SpringJoint",      "useFor": "Damped elastic tether between two bodies." },
+        { "type": "ConfigurableJoint","useFor": "Every DOF Free/Limited/Locked with drives. Rebuilds any other joint." },
+        { "type": "CharacterJoint",   "useFor": "Ragdoll cone-twist with swing/twist limits." }
+      ],
+      "commonFields": [
+        "connectedBody — null = anchored to world",
+        "anchor / connectedAnchor — local pivots on each body",
+        "autoConfigureConnectedAnchor — recompute on anchor change",
+        "breakForce / breakTorque — destroy at limit",
+        "enableCollision — allow the two bodies to collide (default false)"
+      ],
+      "rule": "Ragdolls → CharacterJoint. Vehicles → ConfigurableJoint with axes locked/sprung. Reach for ConfigurableJoint before stacking Hinge + Spring."
+    },
+
+    "centerOfMassAndInertia": {
+      "autoCompute": "Auto-computed from attached colliders by volume.",
+      "override": "Assign Rigidbody.centerOfMass (local) to shift balance — e.g., lower CoM for vehicle stability.",
+      "reset": "ResetCenterOfMass() / ResetInertiaTensor() restore auto values.",
+      "inertiaTensor": "Vector3 of principal moments + inertiaTensorRotation. Override for unusual shapes."
+    },
+
+    "sleepAndWake": {
+      "purpose": "Engine stops integrating bodies below the sleep threshold — saves CPU.",
+      "apis": ["rb.IsSleeping()", "rb.Sleep()", "rb.WakeUp()"],
+      "threshold": "Physics.sleepThreshold (default 0.005).",
+      "wakeOnStaticChange": "Adding/moving/destroying static colliders at runtime rebuilds the broadphase and wakes nearby bodies. Batch static creation at load, not gameplay.",
+      "kinematicRule": "Kinematic bodies always count as awake."
+    },
+
+    "twoDVsThreeD": {
+      "separateApis": "Rigidbody2D + Collider2D (Box/Circle/Polygon/Edge/Capsule 2D) are a parallel API. 2D and 3D colliders never interact.",
+      "sceneSettings": "Project Settings > Physics 2D has its own matrix and gravity (Vector2, default Y = -9.81).",
+      "commonMistake": "Attaching BoxCollider2D in a 3D project — compiles but never collides.",
+      "rule": "Pick one dimension per scene. 2.5D uses 3D Rigidbody with FreezePositionZ."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Script applies continuous force",
+        "rule": "In FixedUpdate with ForceMode.Force. Update causes framerate-dependent physics.",
+        "evidence": "Unity ScriptReference — Rigidbody.AddForce."
+      },
+      {
+        "scenario": "Move a kinematic Rigidbody without tunneling",
+        "rule": "rb.MovePosition(target) in FixedUpdate. Never assign transform.position on a Rigidbody.",
+        "evidence": "Unity Manual — Rigidbody kinematic interactions."
+      },
+      {
+        "scenario": "Fast projectile missing thin walls",
+        "rule": "collisionDetectionMode = Continuous (or ContinuousDynamic if target also moves). Discrete tunnels when velocity*dt > collider thickness.",
+        "evidence": "Unity Manual — Continuous Collision Detection."
+      },
+      {
+        "scenario": "Per-frame overlap detection",
+        "rule": "Pre-allocate Collider[] and use OverlapSphereNonAlloc. Allocating variants generate per-frame GC.",
+        "evidence": "Unity Manual — Physics profiling."
+      },
+      {
+        "scenario": "Groups must not physically interact but still receive raycasts",
+        "rule": "Assign distinct Layers. Uncheck intersection in Layer Collision Matrix. Never disable colliders for this.",
+        "evidence": "Unity Manual — Layer-based Collision Detection."
+      },
+      {
+        "scenario": "Mesh-shaped object needs dynamic physics",
+        "rule": "MeshCollider convex=true. Non-convex + non-kinematic Rigidbody throws on Awake.",
+        "evidence": "Unity Manual — Mesh Collider."
+      },
+      {
+        "scenario": "Raycasting from camera for picking",
+        "rule": "Physics.Raycast(Camera.main.ScreenPointToRay(mouse), out hit, dist, mask). Never use transform.forward.",
+        "evidence": "ScriptReference — Camera.ScreenPointToRay."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "OverlapSphere at Start returns 0.",
+        "cause": "Broadphase has not stepped; colliders not yet registered.",
+        "fix": "Call Physics.SyncTransforms() first, or defer to the first FixedUpdate."
+      },
+      {
+        "symptom": "Raycast ignores a known target.",
+        "cause": "LayerMask built wrong (layer index instead of 1 << index) or collision matrix unchecked.",
+        "fix": "Use LayerMask.GetMask(\"A\",\"B\"). Check queriesHitTriggers if target is a trigger."
+      },
+      {
+        "symptom": "Rigidbody visibly jitters at steady framerate.",
+        "cause": "Interpolation off, or forces applied in Update.",
+        "fix": "Set interpolation = Interpolate; move all force writes to FixedUpdate."
+      },
+      {
+        "symptom": "Character with kinematic Rigidbody walks through walls.",
+        "cause": "Moving via transform.position skips the physics sweep.",
+        "fix": "Use rb.MovePosition(target) in FixedUpdate."
+      },
+      {
+        "symptom": "Runtime perf tanks after instantiating terrain chunks.",
+        "cause": "Static colliders added at runtime rebuild the PhysX static BVH.",
+        "fix": "Batch static creation at load, or use non-static meshes with kinematic Rigidbodies."
+      },
+      {
+        "symptom": "InvalidOperationException: Non-convex MeshCollider with non-kinematic Rigidbody.",
+        "cause": "Illegal combination.",
+        "fix": "convex=true, OR isKinematic=true, OR swap to a primitive."
+      },
+      {
+        "symptom": "Physics material edits stop affecting other colliders.",
+        "cause": "Touched Collider.material, which cloned on first access.",
+        "fix": "Edit .sharedMaterial; Destroy() any clones on disable."
+      },
+      {
+        "symptom": "Triggers never fire between two static objects.",
+        "cause": "Neither side has a Rigidbody.",
+        "fix": "Add a kinematic Rigidbody to one side."
+      },
+      {
+        "symptom": "2D collider never collides in a 3D project.",
+        "cause": "Mixed 2D collider with 3D Rigidbody.",
+        "fix": "Pick one dimension; use 3D with FreezePositionZ for 2.5D."
+      },
+      {
+        "symptom": "Rigidbody sleeps mid-air and stops falling.",
+        "cause": "Drag damped velocity below sleepThreshold.",
+        "fix": "Lower drag, call rb.WakeUp(), or raise Physics.sleepThreshold."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2020.1",
+        "change": "ArticulationBody component added for chained rigid bodies (robotics, industrial). Solves joint chains with higher stability than Configurable Joint trains.",
+        "breaking": false,
+        "migrationNote": "Optional. Use when building articulated structures; keep Rigidbody for general gameplay."
+      },
+      {
+        "version": "2021.2",
+        "change": "PhysX upgraded to 4.1 in the Unity 2021 cycle. Improved solver stability and CCD; some edge-case behavior differences vs 2020-era PhysX 4.0.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "Unity.Physics (DOTS / Jobs-based deterministic physics, separate package) matures. Classic Rigidbody/PhysX remains the default; Unity.Physics is opt-in via ECS projects.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "PhysicMaterial class renamed to PhysicsMaterial. Old name remains as a compatibility alias. Default queriesHitTriggers behavior unchanged (true).",
+        "breaking": false,
+        "migrationNote": "New code in Unity 6 should use PhysicsMaterial. Pre-6 code referring to PhysicMaterial continues to compile."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Physics",                         "url": "https://docs.unity3d.com/Manual/PhysicsSection.html" },
+    { "title": "Unity Manual — Rigidbody",                       "url": "https://docs.unity3d.com/Manual/class-Rigidbody.html" },
+    { "title": "Unity Manual — Colliders",                       "url": "https://docs.unity3d.com/Manual/CollidersOverview.html" },
+    { "title": "Unity Manual — Mesh Collider",                   "url": "https://docs.unity3d.com/Manual/class-MeshCollider.html" },
+    { "title": "Unity Manual — Physic Material",                 "url": "https://docs.unity3d.com/Manual/class-PhysicMaterial.html" },
+    { "title": "Unity Manual — Layer-based Collision Detection", "url": "https://docs.unity3d.com/Manual/LayerBasedCollision.html" },
+    { "title": "Unity Manual — Continuous Collision Detection",  "url": "https://docs.unity3d.com/Manual/ContinuousCollisionDetection.html" },
+    { "title": "Unity Manual — Joints",                          "url": "https://docs.unity3d.com/Manual/Joints.html" },
+    { "title": "Unity Manual — Configurable Joint",              "url": "https://docs.unity3d.com/Manual/class-ConfigurableJoint.html" },
+    { "title": "ScriptReference — Rigidbody",                    "url": "https://docs.unity3d.com/ScriptReference/Rigidbody.html" },
+    { "title": "ScriptReference — Rigidbody.AddForce",           "url": "https://docs.unity3d.com/ScriptReference/Rigidbody.AddForce.html" },
+    { "title": "ScriptReference — Rigidbody.MovePosition",       "url": "https://docs.unity3d.com/ScriptReference/Rigidbody.MovePosition.html" },
+    { "title": "ScriptReference — Rigidbody.collisionDetectionMode", "url": "https://docs.unity3d.com/ScriptReference/Rigidbody-collisionDetectionMode.html" },
+    { "title": "ScriptReference — Physics",                      "url": "https://docs.unity3d.com/ScriptReference/Physics.html" },
+    { "title": "ScriptReference — Physics.Raycast",              "url": "https://docs.unity3d.com/ScriptReference/Physics.Raycast.html" },
+    { "title": "ScriptReference — Physics.OverlapSphereNonAlloc","url": "https://docs.unity3d.com/ScriptReference/Physics.OverlapSphereNonAlloc.html" },
+    { "title": "ScriptReference — Physics.IgnoreLayerCollision", "url": "https://docs.unity3d.com/ScriptReference/Physics.IgnoreLayerCollision.html" },
+    { "title": "ScriptReference — LayerMask",                    "url": "https://docs.unity3d.com/ScriptReference/LayerMask.html" },
+    { "title": "ScriptReference — Collider.sharedMaterial",      "url": "https://docs.unity3d.com/ScriptReference/Collider-sharedMaterial.html" },
+    { "title": "ScriptReference — CollisionDetectionMode",       "url": "https://docs.unity3d.com/ScriptReference/CollisionDetectionMode.html" },
+    { "title": "ScriptReference — ForceMode",                    "url": "https://docs.unity3d.com/ScriptReference/ForceMode.html" },
+    { "title": "ScriptReference — ArticulationBody",             "url": "https://docs.unity3d.com/ScriptReference/ArticulationBody.html" },
+    { "title": "ScriptReference — QueryTriggerInteraction",      "url": "https://docs.unity3d.com/ScriptReference/QueryTriggerInteraction.html" },
+    { "title": "ScriptReference — Rigidbody2D",                  "url": "https://docs.unity3d.com/ScriptReference/Rigidbody2D.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, Manual pages, and ScriptReference. Component names, enum values, API signatures, and numeric defaults (sleepThreshold, fixedDeltaTime) are factual. Explanatory prose, decision rules, llmGuidance, commonPitfalls, and version delta observations are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here. PhysX is NVIDIA's technology used under Unity's license; only behavioral facts are described, not internal algorithms."
+}

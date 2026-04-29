@@ -1,0 +1,267 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-physics-simulation-coord-spaces",
+  "title": "Coordinate Spaces in Physics & GPU Sim Templates",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "physics",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "A simulation running on the GPU almost always lives in at least four distinct coordinate spaces: world (Unity global, where Physics.gravity and Transform.position live), local (parent-relative), sim (internal to the compute shader, often normalized [0,1] or [-1,1] or grid-index [0,N]), and container (relative to a pool/box GameObject that the sim is anchored to). Mixing them silently produces the worst class of bug: the simulation 'works' numerically but renders in the wrong place — particles escape the pool, clump at origin, or move as if the container did not rotate. Read this when generating fluid, SPH, boids, soft-body, or any compute-driven particle template.",
+
+  "mosaicTools": [
+    "physics/fluid-create",
+    "simulation/fluid",
+    "simulation/smoke",
+    "simulation/boids",
+    "simulation/agent-based",
+    "simulation/soft-body",
+    "physics/buoyancy",
+    "physics/fluid-container-create",
+    "mesh/instanced-draw",
+    "compute/dispatch",
+    "shader/create-compute"
+  ],
+
+  "relatedKb": [
+    "kb-core-gameobject-transform-semantics",
+    "kb-rendering-compute-buffer-lifecycle",
+    "kb-physics-sph-parameter-tuning"
+  ],
+
+  "llmGuidance": {
+    "when_generating_a_sim_that_is_anchored_to_a_moving_gameobject":
+      "Run the sim in container-local space. Every frame, upload container.localToWorldMatrix to the compute shader as a float4x4 (e.g. _ContainerToWorld). The render path multiplies local particle positions by this matrix. Do not bake the matrix into the particle positions themselves — that forces a full buffer rewrite when the container moves.",
+    "when_generating_an_ambient_or_global_sim":
+      "Run in world space. No matrix needed. Skip the container concept entirely. Good fit: untethered smoke, weather particles, screen-space effects.",
+    "when_user_reports_'particles_escape_the_container'_or_'clump_at_origin'":
+      "Classic coordinate-space mismatch. Start debug by logging one particle's position each frame in all four spaces (sim, container-local, container-world, Unity world) and looking for which step is missing. The clump-at-origin symptom specifically means the container-to-world transform is absent on the render path.",
+    "when_the_container_rotates":
+      "Both positions AND velocities must be transformed. Use Transform.TransformDirection on velocity vectors (rotation only) and Transform.TransformPoint on positions (rotation + translation + scale). If you forget to rotate velocities, particles continue moving in the pre-rotation axes even though the container turned.",
+    "when_choosing_a_unity_transform_api_for_a_sim_vector":
+      "Positions → TransformPoint / InverseTransformPoint. Velocities and normals → TransformDirection / InverseTransformDirection (rotation only). Scaled offsets → TransformVector / InverseTransformVector. Wrong API is usually a silent visual bug, not an error.",
+    "when_setting_bounds_for_drawmeshinstancedindirect":
+      "Bounds are in world space. If sim runs in container-local, compute an AABB large enough to contain the container volume after the container's current rotation. Too-tight bounds frustum-cull the whole draw when the camera angle changes.",
+    "when_unity's_physics_gravity_feels_wrong_at_small_scales":
+      "Unity's Physics.gravity = (0, -9.81, 0) assumes 1 Unity unit = 1 meter. If the sim uses a 0.1 m/unit scale, either multiply gravity by 0.1 when feeding it to the shader, or multiply particle mass by 100. Pick one consistently — don't fix it halfway and carry mixed units into the next step.",
+    "when_sending_a_matrix_to_the_gpu_each_frame":
+      "Cheaper than rewriting the particle buffer. Update via computeShader.SetMatrix or material.SetMatrix once per frame in LateUpdate (after container transforms have finalized). Uploading before the container moves = particles lag one frame."
+  },
+
+  "full": {
+    "theFourSpaces": {
+      "world": {
+        "definition": "Unity global coordinates. Origin is the scene origin. Y-up by default (Vector3.up = (0,1,0)).",
+        "apis": "Transform.position, Transform.rotation, Physics.gravity, ray casts, Graphics.DrawMeshInstancedIndirect bounds, most user-visible queries.",
+        "useFor": "Sims that are not anchored to any object — flying smoke, global weather, ambient particles. Renderer reads buffer directly; no matrix step."
+      },
+      "local": {
+        "definition": "Parent-relative. A point is expressed as an offset from its immediate Transform parent.",
+        "apis": "Transform.localPosition, Transform.localRotation, Transform.localScale.",
+        "useFor": "Nested rigs (a turret on a tank) where sim results plug into a larger hierarchy. Rare for standalone sims."
+      },
+      "sim": {
+        "definition": "Internal to the compute shader. Origin and units are whatever the solver was authored to use. Common conventions: [0,1] normalized, [-1,1] centered, [0,N] grid-index where N is resolution.",
+        "apis": "No Unity API — lives entirely in HLSL. C# side never sees sim space unless it debug-reads the buffer.",
+        "useFor": "Anywhere internal solver math is cleaner at a fixed numerical range. SPH often uses sim_scale to map 1 shader unit = simScale world units."
+      },
+      "container": {
+        "definition": "Relative to a designated container GameObject (e.g. a 'Pool' Transform). Sim may run in container-local; rendering requires container.localToWorldMatrix.",
+        "apis": "Container.TransformPoint, Container.InverseTransformPoint, Container.localToWorldMatrix, Container.worldToLocalMatrix.",
+        "useFor": "Sims anchored to a movable/rotatable volume — pools, aquariums, rigid containers with fluid inside. Particles follow the container automatically when the matrix updates."
+      }
+    },
+
+    "transformChain": {
+      "summary": "Every particle travels a chain of spaces between the compute shader and the eye. Missing any step = visual mismatch.",
+      "sequence": [
+        "1. Sim space — shader integrates forces, writes new position into StructuredBuffer.",
+        "2. Container-local — multiply by simScale, add simOrigin. Result is a position inside the container's local coordinate frame.",
+        "3. Container-world — multiply by container.localToWorldMatrix. Result is a world position.",
+        "4. GPU buffer — render shader reads the StructuredBuffer. Depending on design, the buffer holds either container-local or world positions.",
+        "5. Render shader — applies no further transform. It assumes the position it reads is already world space."
+      ],
+      "formula": "worldPos = container.localToWorldMatrix.MultiplyPoint(simPos * simScale + simOrigin)",
+      "nonUniformScaleWarning": "MultiplyPoint is the correct call for positions under arbitrary 4x4 transforms including non-uniform scale and shear. MultiplyPoint3x4 skips the perspective divide and is faster when the matrix has no projection component — safe for localToWorldMatrix. Use MultiplyVector for direction-only vectors (velocities)."
+    },
+
+    "velocityVsPosition": {
+      "rule": "Position transforms include translation; velocity transforms do not.",
+      "positionTransform": "localToWorldMatrix.MultiplyPoint(p) — full affine (rotation, scale, translation).",
+      "velocityTransform": "localToWorldMatrix.MultiplyVector(v) — rotation + scale only, no translation. For pure direction (unit vectors, normals) use TransformDirection — rotation only, drops scale.",
+      "consequence": "If container rotates but velocities are transformed as positions, the rotation appears to 'teleport' the velocity — particles move as if the container didn't rotate, then snap to new direction next frame. If velocities are not transformed at all, the same symptom appears — particles keep moving along world axes while the container turns around them."
+    },
+
+    "gravityAndScale": {
+      "defaultPhysicsGravity": "Physics.gravity = (0, -9.81, 0). Units: m/s². Assumes 1 Unity unit = 1 meter.",
+      "whenSimScaleDiffers": "If the sim uses simScale = 0.1 m per unit (e.g. for a small-scale water demo), gravity as-fed would be 98x too strong (relative to the sim's scale). Two equivalent fixes: (1) scale gravity by simScale when uploading to the shader — _Gravity = Physics.gravity.y * simScale; (2) scale particle mass by 1/simScale² when computing forces. Pick one and document it in the generated script.",
+      "massVsDensity": "SPH solvers integrate force per unit density, not per unit mass. Gravity in SPH: fGravity = gravityVec * density, not gravityVec * mass. Misplacing this multiplier was the #1 fluid bug in the Gemini session — particles floated instead of falling because gravity was scaled by mass (near-zero for lightweight particles)."
+    },
+
+    "guidanceByScenario": {
+      "worldSpaceSim": {
+        "whenToPick": "Sim is untethered. Smoke drifts across the scene. Boids flock in open space. No container GameObject is relevant.",
+        "implementation": "Particles' StructuredBuffer holds world positions. Render shader reads the buffer directly. No matrix uniform needed. Bounds for DrawMeshInstancedIndirect = the simulation domain in world space.",
+        "movingTheSim": "To 'move' a world-space sim you move every particle — expensive. Better: accept that the sim is where it is. If relocation is needed, that's the moment to migrate to container space."
+      },
+      "containerSpaceSim": {
+        "whenToPick": "Sim has a natural container (pool, fish tank, box). Container can be moved/rotated at runtime and particles should follow.",
+        "implementation": "StructuredBuffer holds container-local positions. Each frame, C# uploads container.localToWorldMatrix to the compute shader (computeShader.SetMatrix('_ContainerToWorld', container.localToWorldMatrix)) and to the render material (material.SetMatrix('_ContainerToWorld', container.localToWorldMatrix)). Render shader multiplies the local position by _ContainerToWorld before output. Bounds for DrawMeshInstancedIndirect must encompass the container volume after its current rotation.",
+        "costs": "One matrix upload per frame per shader. Negligible vs. rewriting the whole particle buffer."
+      }
+    },
+
+    "gpuMatrixUpload": {
+      "api": "computeShader.SetMatrix(name, matrix) for compute-side usage. material.SetMatrix(name, matrix) or MaterialPropertyBlock.SetMatrix for render-side usage. Both accept a Matrix4x4.",
+      "timing": "Call in LateUpdate, after any parent Transforms have finalized their positions for the frame. Uploading in Update risks reading a stale matrix if the container moved later in the same frame.",
+      "staleMatrixSymptom": "Particles lag one frame behind the container's visual position. Most visible when container rotates quickly — particles appear to hang in the previous orientation.",
+      "inverseMatrix": "For world→local conversions inside the shader (e.g. querying container-local collision normals from a world-space ray), upload container.worldToLocalMatrix alongside localToWorldMatrix. Shader can also compute inverse on demand but it's cheaper to send both."
+    },
+
+    "boundsForInstancedDraw": {
+      "worldSpaceSim": "Bounds = world-space AABB of the sim domain. Straightforward.",
+      "containerSpaceSim": "Bounds must enclose the container's world-space footprint AFTER current rotation. Recompute when container rotates. Cheap approach: use container.GetComponent<Renderer>().bounds if a Renderer exists; otherwise compute AABB from the 8 rotated corners of the container's local AABB.",
+      "oversizedIsSafe": "Over-large bounds cost GPU culling work but never hide particles. Too-tight bounds silently remove instances from the frustum test — classic 'particles disappear when I rotate the camera' bug."
+    },
+
+    "debuggingProtocol": {
+      "step1": "Pick one particle (index 0 is fine). Each frame, log its position in all four spaces: sim (raw from buffer), container-local (simPos * simScale + simOrigin), container-world (container.TransformPoint(containerLocal)), and the same position as Unity world (container.localToWorldMatrix.MultiplyPoint(containerLocal)). A mismatch between container-world and Unity-world points to matrix upload timing; a mismatch between sim and container-local points to simScale/simOrigin misuse.",
+      "step2": "Draw gizmos for the container's world-space AABB in OnDrawGizmos. If visible particles are outside this AABB but the sim thinks they are inside, the render path is skipping the container transform.",
+      "step3": "Draw gizmos for the sim-space axes (a tripod at simOrigin, sized by simScale). Confirms the author's mental model of where sim-space [0,0,0] maps to in world.",
+      "step4": "Draw gizmos for the Draw...Indirect bounds used. Often reveals a bounds that doesn't match what the script author thinks it does."
+    },
+
+    "commonFailureModes": [
+      {
+        "symptom": "Particles clump at world origin despite a sim that appears to run correctly.",
+        "cause": "Render path skipped the container-to-world transform. Buffer holds container-local positions; shader used them as world positions.",
+        "fix": "Upload container.localToWorldMatrix to the material each frame. In the render shader, multiply the input position by the matrix before outputting clipPos."
+      },
+      {
+        "symptom": "Particles escape the container on one side when the container rotates.",
+        "cause": "Container rotation was not propagated to velocities. Particles continued moving along world axes even though the container walls turned.",
+        "fix": "Apply container.TransformDirection to velocity each frame, or run the sim entirely in container-local space so velocities are naturally container-relative."
+      },
+      {
+        "symptom": "Particles lag one frame behind the container's visible position.",
+        "cause": "Matrix uploaded too early (Update) or with a stale reference.",
+        "fix": "Move the SetMatrix call to LateUpdate. Confirm container is not re-parented or moved by another LateUpdate later in the call order."
+      },
+      {
+        "symptom": "Instances disappear from the frustum when the camera angle changes, even though the sim is producing positions inside the container.",
+        "cause": "Bounds for DrawMeshInstancedIndirect are in world space but were computed from pre-rotation container corners.",
+        "fix": "Recompute bounds from rotated corners each frame, or use the container's Renderer.bounds if present."
+      },
+      {
+        "symptom": "Fluid floats instead of falling — gravity appears inverted or too weak.",
+        "cause": "Gravity was multiplied by mass (near-zero) instead of density, or simScale was not accounted for.",
+        "fix": "SPH: fGravity = gravityVec * density. Non-SPH: scale gravity by simScale OR scale mass by 1/simScale². Not both."
+      },
+      {
+        "symptom": "Particles move too fast or too slow for the visual scale.",
+        "cause": "timeStep in shader uses real seconds but positions are in sim-space units where 1 unit ≠ 1 meter.",
+        "fix": "Convert timeStep by simScale too, or express velocity in world units throughout. Document the unit convention in the generated script header."
+      }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Sim is anchored to a movable container GameObject (pool, aquarium, box)",
+        "rule": "Run the sim in container-local space. Upload container.localToWorldMatrix to both compute and render shaders each LateUpdate. Bounds for DrawMeshInstancedIndirect recomputed per frame from the container's current world AABB.",
+        "evidence": "Gemini fluid session 2026-04-20: initial implementation simulated particles in container-local space but rendered them as world coordinates. Particles appeared at world origin instead of inside the pool. Fixed by adding _LocalToWorld uniform and applying it in the render shader."
+      },
+      {
+        "scenario": "Sim is ambient / global (smoke, flocks, weather)",
+        "rule": "Run in world space. Skip the container concept. Buffer holds world positions. Bounds are the static sim-domain AABB. One fewer place to make mistakes.",
+        "evidence": "Boids and untethered smoke in the Mosaic tool catalog ship with this pattern."
+      },
+      {
+        "scenario": "Sim shows 'particles escape on one side' or 'clump at origin' symptom",
+        "rule": "Begin coord-space debug immediately. Log one particle in all four spaces for 60 frames. Compare to gizmos drawn at container corners. Do not start guessing at force math — the force math is almost never the cause of these specific symptoms.",
+        "evidence": "Gemini session hit this twice; each time the bug was a missing transform on the render path, not a solver issue."
+      },
+      {
+        "scenario": "Container rotates during the sim",
+        "rule": "Positions AND velocities must transform. Use TransformDirection on velocity (rotation only) and TransformPoint on position (full affine). Missing the velocity transform is invisible while the container is still but becomes obvious the moment it rotates.",
+        "evidence": "Unity ScriptReference documents the API split explicitly. Rotation must apply to direction-valued quantities."
+      },
+      {
+        "scenario": "Non-uniform scale is on the container",
+        "rule": "Avoid if possible. If unavoidable, use MultiplyPoint (not MultiplyPoint3x4 — the difference is negligible here but explicit is safer) and treat every vector explicitly as position vs direction vs scaled-direction. lossyScale becomes unreliable under rotated non-uniform scale and should not drive force math.",
+        "evidence": "kb-core-gameobject-transform-semantics covers the lossyScale shear problem in depth."
+      }
+    ],
+
+    "workedExamples": {
+      "example1_boids_world_space": {
+        "setup": "Boids template generates a BoidsManager MonoBehaviour with a StructuredBuffer<Boid> holding world-space positions and velocities. No container.",
+        "shaderIntegration": "Each compute step reads world position, applies separation/alignment/cohesion forces in world-space directions, writes updated world position back to the buffer.",
+        "renderPath": "Instanced mesh draw reads the buffer directly. Vertex shader outputs UnityObjectToClipPos(worldPos_as_object_space). Bounds for DrawMeshInstancedIndirect = a fixed world-space cube covering the roaming area.",
+        "matrixUploads": "None. Nothing moves the simulation.",
+        "complexity": "Low. Good starter template."
+      },
+      "example2_sph_container_space_rotating_pool": {
+        "setup": "SPH template with a Pool GameObject as container. Pool can be rotated by the user via gameobject/set_transform. Particles must follow.",
+        "dataLayout": "StructuredBuffer<Particle> holds container-local positions and container-local velocities. simScale encodes particle-diameter-to-world-meter ratio.",
+        "perFrame": "C#: pool.hasChanged ? material.SetMatrix('_ContainerToWorld', pool.localToWorldMatrix); computeShader.SetMatrix('_ContainerToWorld', pool.localToWorldMatrix); computeShader.SetMatrix('_WorldToContainer', pool.worldToLocalMatrix); argsArray bounds recomputed from pool corners.",
+        "computeShader": "Integrates forces in container-local space. Gravity is rotated into container-local via _WorldToContainer so it always points 'down' in world even when the pool tilts — particles then flow to the low corner of the tilted pool.",
+        "renderShader": "Multiplies local particle position by _ContainerToWorld before UnityObjectToClipPos. Particles visually occupy the pool regardless of pool orientation.",
+        "buoyancy": "A floating cube's position is read in world; converted to container-local via _WorldToContainer; compared to the container-local water-level estimate; force applied in world space via container.TransformDirection(localForce)."
+      }
+    },
+
+    "versionDeltas": [
+      {
+        "version": "2021.3 LTS",
+        "change": "Transform APIs (TransformPoint, TransformDirection, localToWorldMatrix) are stable and predate 2021.3 by many versions. No coord-space-relevant changes.",
+        "breaking": false
+      },
+      {
+        "version": "2022.1",
+        "change": "Graphics.RenderMeshIndirect accepts a RenderParams struct whose worldBounds field takes an AABB in world space — same semantics as DrawMeshInstancedIndirect's bounds. The migration does not change the coord-space math.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "DOTS / Entities Transforms package has its own world/local representation (LocalTransform, LocalToWorld) distinct from GameObject Transform. This entry targets the GameObject path. ECS sims should consult DOTS-specific guidance.",
+        "breaking": false,
+        "migrationNote": "If generating ECS-path code, use LocalTransform + LocalToWorld components. The four-space framework still applies; only the Unity API surface changes."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "ScriptReference — Transform.TransformPoint",         "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformPoint.html" },
+    { "title": "ScriptReference — Transform.InverseTransformPoint",  "url": "https://docs.unity3d.com/ScriptReference/Transform.InverseTransformPoint.html" },
+    { "title": "ScriptReference — Transform.TransformDirection",     "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformDirection.html" },
+    { "title": "ScriptReference — Transform.TransformVector",        "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformVector.html" },
+    { "title": "ScriptReference — Transform.localToWorldMatrix",     "url": "https://docs.unity3d.com/ScriptReference/Transform-localToWorldMatrix.html" },
+    { "title": "ScriptReference — Transform.worldToLocalMatrix",     "url": "https://docs.unity3d.com/ScriptReference/Transform-worldToLocalMatrix.html" },
+    { "title": "ScriptReference — Matrix4x4.MultiplyPoint",          "url": "https://docs.unity3d.com/ScriptReference/Matrix4x4.MultiplyPoint.html" },
+    { "title": "ScriptReference — Matrix4x4.MultiplyPoint3x4",       "url": "https://docs.unity3d.com/ScriptReference/Matrix4x4.MultiplyPoint3x4.html" },
+    { "title": "ScriptReference — Matrix4x4.MultiplyVector",         "url": "https://docs.unity3d.com/ScriptReference/Matrix4x4.MultiplyVector.html" },
+    { "title": "ScriptReference — Physics.gravity",                  "url": "https://docs.unity3d.com/ScriptReference/Physics-gravity.html" },
+    { "title": "ScriptReference — ComputeShader.SetMatrix",          "url": "https://docs.unity3d.com/ScriptReference/ComputeShader.SetMatrix.html" },
+    { "title": "ScriptReference — Material.SetMatrix",               "url": "https://docs.unity3d.com/ScriptReference/Material.SetMatrix.html" },
+    { "title": "Unity Manual — Transform",                           "url": "https://docs.unity3d.com/Manual/class-Transform.html" },
+    { "title": "Unity Manual — Understanding vector arithmetic",     "url": "https://docs.unity3d.com/Manual/UnderstandingVectorArithmetic.html" }
+  ],
+
+  "sources": [
+    { "title": "ScriptReference — Transform.TransformPoint",         "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformPoint.html" },
+    { "title": "ScriptReference — Transform.TransformDirection",     "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformDirection.html" },
+    { "title": "ScriptReference — Transform.localToWorldMatrix",     "url": "https://docs.unity3d.com/ScriptReference/Transform-localToWorldMatrix.html" },
+    { "title": "ScriptReference — Matrix4x4",                        "url": "https://docs.unity3d.com/ScriptReference/Matrix4x4.html" },
+    { "title": "ScriptReference — Physics.gravity",                  "url": "https://docs.unity3d.com/ScriptReference/Physics-gravity.html" },
+    { "title": "Unity Manual — Transform",                           "url": "https://docs.unity3d.com/Manual/class-Transform.html" },
+    { "title": "Mosaic evidence — fluid gap analysis § 4D KB-fluid-03", "url": "file:///Users/mousasoutari/Projects/mosaic-bridge/_bmad-output/planning-artifacts/gap-analysis/fluid.md" },
+    { "title": "Mosaic evidence — Gemini fluid session 2026-04-20",    "url": "session-2026-04-20T06-23-35577805.json" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity ScriptReference and Manual pages (Transform, Matrix4x4, Physics.gravity, ComputeShader.SetMatrix) and from internal session evidence (Gemini fluid session 2026-04-20, summarized in _bmad-output/planning-artifacts/gap-analysis/fluid.md § 4D KB-fluid-03). Method signatures, matrix-multiplication semantics, and the Physics.gravity default value are factual (not copyrightable). The four-space framework, decision rules, llmGuidance, debugging protocol, and worked examples are original Mosaic editorial content derived from the session transcripts and a review of the templates shipped by physics/fluid-create and simulation/fluid. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

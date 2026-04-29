@@ -1,0 +1,322 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-rendering-lighting-and-baking",
+  "title": "Lighting, Baking, Probes, Environment, Post-Processing",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "End-to-end lighting reference for Mosaic: light types and modes (Realtime / Mixed / Baked), the Progressive CPU/GPU Lightmapper, Light Probe Groups and Adaptive Probe Volumes (Unity 6), Reflection Probes, skybox + ambient + fog via RenderSettings, and post-processing across Built-in, URP, and HDRP. Covers which API and component belong to which pipeline so generated code does not mix URP Volume overrides with legacy PostProcessVolume, does not bake with the wrong light mode, and does not set a skybox that stays invisible because Camera clear flags or ambient mode are wrong.",
+
+  "mosaicTools": [
+    "lighting/create",
+    "lighting/configure",
+    "lighting/bake",
+    "lighting/probes",
+    "lighting/reflection-probe",
+    "lighting/environment",
+    "lighting/fog",
+    "render/atmosphere",
+    "settings/set-render",
+    "graphics/set-post-processing"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-pipeline-detection",
+    "kb-rendering-shader-properties",
+    "kb-rendering-urp-material-workflow"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_add_a_light":
+      "Pick type by intent: sun/moon = Directional, bulb = Point, flashlight = Spot, soft panel = Area (baked-only in Built-in/URP; HDRP supports realtime area). Set Light.type, intensity, color, range, and Light.lightmapBakeType (Realtime/Mixed/Baked). For Mixed/Baked also set the target renderers' GameObjectUtility.SetStaticEditorFlags with StaticEditorFlags.ContributeGI.",
+    "when_asked_to_bake_lighting":
+      "Set lights to Mixed or Baked, mark static meshes with ContributeGI + BatchingStatic, ensure a Lightmapping.bakedGI = true via LightmapEditorSettings, then call Lightmapping.BakeAsync. Poll Lightmapping.isRunning. If bake never starts check that at least one Renderer has ContributeGI and at least one Light is not Realtime.",
+    "when_asked_to_add_light_probes":
+      "On Unity 6 URP/HDRP prefer an Adaptive Probe Volume (APV) — one component covers the scene. On 2021.3 / 2022.3 use a LightProbeGroup GameObject and arrange probes at gradient boundaries, then call LightProbes.Tetrahedralize after edits. Dynamic Renderers pick up probes automatically when not marked static.",
+    "when_asked_to_add_a_reflection_probe":
+      "ReflectionProbe component. mode=Baked for static scenes (re-bake on change), mode=Realtime for dynamic. Set boxProjection=true + size/center to anchor reflections to a room. For Realtime call probe.RenderProbe() on scene changes — it does NOT auto-update unless refreshMode=EveryFrame.",
+    "when_asked_to_set_the_skybox":
+      "Assign RenderSettings.skybox = material. Also set RenderSettings.ambientMode = AmbientMode.Skybox and call DynamicGI.UpdateEnvironment() so ambient picks up the new skybox. Cameras must have clearFlags = CameraClearFlags.Skybox to render it.",
+    "when_asked_to_add_fog":
+      "RenderSettings.fog = true, fogColor, fogMode (Linear / Exponential / ExponentialSquared), plus fogStartDistance/fogEndDistance for Linear. In URP fog only applies when the URP asset has 'Fog' enabled on the active Renderer. HDRP ignores RenderSettings.fog — use a Volume with Fog/VolumetricFog overrides.",
+    "when_asked_to_add_post_processing":
+      "Detect pipeline first (kb-rendering-pipeline-detection). URP → GameObject with Volume component + VolumeProfile asset + overrides (Bloom, Tonemapping, ColorAdjustments, etc.); Camera must have postProcessing=true and its Volume Mask must include the Volume's layer. HDRP → Volume component with HDRP-specific overrides; post-processing is on by default. Built-in → deprecated PostProcessing package (PostProcessVolume + PostProcessLayer on camera). Do NOT mix URP Volume with PostProcessVolume.",
+    "when_bloom_looks_wrong":
+      "URP Bloom.intensity is typically 0-1 for subtle, >1 saturates fast; HDRP Bloom.intensity is physically scaled (start at ~0.1); Built-in legacy Bloom uses an 'Intensity' in a different range. Use pipeline-specific defaults, not copy-paste values.",
+    "when_baked_lighting_is_black":
+      "Check three things in order: (a) every contributing Light has lightmapBakeType = Mixed or Baked, (b) every static mesh has StaticEditorFlags.ContributeGI, (c) a bake actually completed (Lightmapping.lightingDataAsset is non-null and LightmapSettings.lightmaps has entries).",
+    "when_targeting_unity_6_urp_or_hdrp":
+      "Prefer Adaptive Probe Volumes over Light Probe Groups for new scenes. APV requires ProbeVolume component and baking via the Lighting window's APV workflow. Light Probe Groups still work but are legacy on Unity 6."
+  },
+
+  "full": {
+    "lightTypes": {
+      "Directional": "Parallel rays, infinite range; one typically acts as the sun. Intensity in lux for HDRP physical mode, arbitrary units elsewhere.",
+      "Point":       "Omnidirectional point source with finite range and inverse-square falloff.",
+      "Spot":        "Cone from a point; spotAngle + innerSpotAngle (URP/HDRP) control cone softness.",
+      "Area":        "Rectangle/Disc/Tube emitter. In Built-in and URP, Area lights are BAKED ONLY. HDRP supports realtime area lights. Intensity scales with surface area."
+    },
+
+    "lightModes": {
+      "Realtime":  "Computed every frame. No bake needed. No indirect bounce unless realtime GI (Enlighten legacy / APV on Unity 6 HDRP) is enabled.",
+      "Mixed":     "Direct lighting realtime; indirect (and optionally shadows) baked. Sub-modes set via Lighting window Mixed Lighting: Baked Indirect, Shadowmask, Distance Shadowmask, Subtractive.",
+      "Baked":     "Both direct and indirect baked into lightmaps. Static geometry only — dynamic objects see only probe-sampled indirect."
+    },
+
+    "mixedSubModes": {
+      "Baked Indirect":       "Direct + shadows realtime everywhere; only indirect bounce baked. No baked shadows at any distance.",
+      "Shadowmask":           "Static-to-static shadows baked into a shadowmask texture; static-to-dynamic shadows realtime. Best quality, more memory.",
+      "Distance Shadowmask":  "Like Shadowmask but dynamic shadow casters also cast realtime within distance; beyond shadow distance, baked shadowmask takes over.",
+      "Subtractive":          "Forward-mobile fallback: direct + indirect baked; one realtime directional provides dynamic shadows on static geometry via a darkening trick. Lowest quality, cheapest."
+    },
+
+    "lightmapperOptions": {
+      "ProgressiveCPU": "CPU path tracer. Slower but works on any machine. Supports denoising (OpenImageDenoise / Optix). Use when GPU path is unstable.",
+      "ProgressiveGPU": "GPU path tracer (RTX/compute). Much faster. Stabilized 2020.1+. Fails on unsupported hardware — falls back silently to CPU in some versions or errors. Verify LightmapEditorSettings.lightmapper == GPU took effect.",
+      "Enlighten":      "Legacy realtime GI system. Deprecated for baking 2020.1+, deprecated entirely for NEW projects 2023.1+; still available for existing projects via a package on Unity 6. Do not use for new work."
+    },
+
+    "bakingApi": {
+      "Lightmapping.Bake":                 "Synchronous; blocks editor. Avoid in tooling.",
+      "Lightmapping.BakeAsync":            "Starts async bake; poll Lightmapping.isRunning.",
+      "Lightmapping.Cancel":               "Stops an in-progress bake.",
+      "Lightmapping.bakeCompleted":        "Event fired when bake finishes.",
+      "Lightmapping.lightingDataAsset":    "Serialized result of the last bake; null = no bake yet.",
+      "LightmapEditorSettings.lightmapper":"Enum: Enlighten | ProgressiveCPU | ProgressiveGPU. Set BEFORE BakeAsync.",
+      "LightmapEditorSettings.maxBounces": "Indirect bounce count. 2 default, raise for interiors.",
+      "LightmapEditorSettings.sampling":   "Auto | Fixed. With Fixed, set directSampleCount / indirectSampleCount / environmentSampleCount.",
+      "LightmapEditorSettings.filteringMode":"None | Auto | Advanced. Advanced exposes direct/indirect/AO denoiser + filter choices.",
+      "LightmapSettings.lightmaps":        "Runtime array of LightmapData (color/dir/shadowmask) used at play time.",
+      "LightmapSettings.lightmapsMode":    "Non-Directional | CombinedDirectional | ShadowMask (API-facing values)."
+    },
+
+    "probes": {
+      "LightProbeGroup":             "Component holding an array of probe positions. Dynamic Renderers sample indirect lighting via tetrahedral interpolation of nearest probes.",
+      "LightProbes.Tetrahedralize":  "Recomputes the probe tetrahedralization after programmatic edits to probe positions.",
+      "LightProbeProxyVolume (LPPV)":"For large dynamic objects that need more than one sampled probe — grid of probe samples across the object's bounds.",
+      "AdaptiveProbeVolume (APV)":   "Unity 6 replacement for LightProbeGroup in URP/HDRP. A single ProbeVolume component covers a region; probes are placed automatically by subdivision. Preferred for new scenes on Unity 6."
+    },
+
+    "reflectionProbes": {
+      "modeBaked":       "Captured in editor during Generate Lighting. Cheap at runtime. Re-bake required when scene changes.",
+      "modeRealtime":    "Captured at runtime. refreshMode: OnAwake | EveryFrame | ViaScripting. EveryFrame is expensive — prefer ViaScripting + probe.RenderProbe() on scene change.",
+      "modeCustom":      "User-supplied cubemap.",
+      "boxProjection":   "true → parallax-corrected reflections within probe bounds (rooms). false → infinite sphere projection (outdoor).",
+      "RenderSettings.defaultReflectionMode": "Skybox or Custom. Skybox uses a cubemap derived from the skybox; Custom takes RenderSettings.customReflectionTexture.",
+      "RenderSettings.defaultReflectionResolution": "128/256/512/1024/2048 — cubemap face size."
+    },
+
+    "environmentAmbient": {
+      "RenderSettings.skybox":           "Material reference. Must use a Skybox/* shader.",
+      "RenderSettings.ambientMode":      "Skybox | Trilight | Flat. Skybox samples the skybox into an SH ambient probe.",
+      "RenderSettings.ambientLight":     "Flat ambient color (Flat mode).",
+      "RenderSettings.ambientSkyColor / ambientEquatorColor / ambientGroundColor": "Trilight mode.",
+      "RenderSettings.ambientIntensity": "Multiplier on ambient contribution.",
+      "DynamicGI.UpdateEnvironment":     "Re-samples skybox into the ambient probe. Call after changing skybox material or ambient mode at runtime.",
+      "skyboxShaders":                   "Skybox/Procedural (sky from sun), Skybox/6 Sided (six textures), Skybox/Cubemap (one cubemap), Skybox/Panoramic (HDRI equirect)."
+    },
+
+    "fog": {
+      "RenderSettings.fog":              "Global on/off. Built-in and URP honor this; HDRP does NOT — use a Volume with Fog override.",
+      "RenderSettings.fogMode":          "Linear | Exponential | ExponentialSquared.",
+      "RenderSettings.fogColor":         "Color.",
+      "RenderSettings.fogDensity":       "Used by Exponential modes.",
+      "RenderSettings.fogStartDistance / fogEndDistance": "Linear mode.",
+      "urpNote":                         "URP asset must have Fog enabled on the active Renderer Feature for RenderSettings.fog to render. Skybox shader ignores fog.",
+      "hdrpNote":                        "HDRP volumetric fog is a Volume override (Fog, VolumetricFog); RenderSettings.fog values are ignored."
+    },
+
+    "postProcessing": {
+      "BuiltIn_Legacy": {
+        "package":     "com.unity.postprocessing (v2) — deprecated; still installable for Built-in projects.",
+        "components":  "PostProcessVolume (scene) + PostProcessLayer (camera) + PostProcessProfile asset.",
+        "note":        "Do NOT use in URP or HDRP projects. URP/HDRP have their own Volume stack."
+      },
+      "URP": {
+        "package":     "Shipped with com.unity.render-pipelines.universal.",
+        "components":  "Volume component + VolumeProfile asset + Overrides (Bloom, Tonemapping, ColorAdjustments, DepthOfField, MotionBlur, Vignette, ChromaticAberration, FilmGrain, LensDistortion, LiftGammaGain, ShadowsMidtonesHighlights, ChannelMixer, ColorCurves, PaniniProjection, SplitToning, WhiteBalance).",
+        "cameraFlag":  "Camera.postProcessing must be true (UniversalAdditionalCameraData.renderPostProcessing = true).",
+        "volumeMask":  "Camera's Volume Mask layer must include the Volume's GameObject layer. Mismatch = overrides never apply.",
+        "globalLocal": "Volume.isGlobal = true ignores bounds; false requires a Collider trigger and uses blendDistance for crossfade."
+      },
+      "HDRP": {
+        "package":     "Shipped with com.unity.render-pipelines.high-definition.",
+        "components":  "Volume + VolumeProfile with HDRP-specific overrides (Exposure, Bloom, Tonemapping, ColorAdjustments, DepthOfField, MotionBlur, Vignette, ChromaticAberration, FilmGrain, LensDistortion, LiftGammaGain, ScreenSpaceReflection, ScreenSpaceGlobalIllumination, AmbientOcclusion, Fog, VolumetricFog, VolumetricClouds, PhysicallyBasedSky, HDRISky, GradientSky).",
+        "cameraFlag":  "Post-processing is on by default; disable via HDAdditionalCameraData.",
+        "note":        "Exposure is mandatory in HDRP — without an Exposure override the scene is usually too bright or too dark."
+      },
+      "sharedGotcha": "URP and HDRP Volumes look identical in the inspector but their Override classes live in different namespaces. Code that tries to add a URP Bloom override to an HDRP profile will compile-fail or silently do nothing."
+    },
+
+    "shadows": {
+      "perLight":        "Light.shadows = None | Hard | Soft. Light.shadowStrength, shadowBias, shadowNormalBias, shadowNearPlane.",
+      "builtInProject":  "QualitySettings.shadowDistance, shadowCascades (0/2/4), shadowResolution, shadowProjection.",
+      "urpProject":      "Set via UniversalRenderPipelineAsset: mainLightShadowmapResolution, shadowDistance, cascade count (1/2/4), cascade split ratios, softShadowsEnabled.",
+      "hdrpProject":     "HDRP asset + Volume HDShadowSettings + per-light AdditionalShadowData (contact shadows, shadow map resolution tier)."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "User wants realtime day/night cycle",
+        "rule": "Use a Realtime Directional light for the sun. For indirect, either (a) Unity 6 URP/HDRP APV with sky-updating ambient, or (b) skybox + DynamicGI.UpdateEnvironment on angle changes. Do NOT bake — bake is scene-time static.",
+        "evidence": "APV + DynamicGI.UpdateEnvironment docs."
+      },
+      {
+        "scenario": "Static architectural scene, best quality",
+        "rule": "All lights Mixed with Shadowmask or Baked; mark geometry ContributeGI + BatchingStatic; bake with Progressive GPU; add LightProbeGroup / APV for dynamic actors.",
+        "evidence": "Mixed Lighting modes docs + Progressive Lightmapper notes."
+      },
+      {
+        "scenario": "User on URP asks to add bloom",
+        "rule": "Create Volume GameObject → assign new VolumeProfile → profile.Add<Bloom>(true) → set intensity/threshold. Ensure camera has renderPostProcessing = true and its volume layer mask covers this Volume. NEVER add PostProcessVolume in URP.",
+        "evidence": "URP Volumes manual; PostProcessing v2 is Built-in-only."
+      },
+      {
+        "scenario": "User says skybox is not showing",
+        "rule": "Verify in order: (a) Camera.clearFlags == Skybox, (b) RenderSettings.skybox material non-null and uses a Skybox/* shader, (c) Skybox is rendered at infinity — fog with ExponentialSquared does not tint it by default.",
+        "evidence": "CameraClearFlags docs; skybox shader family."
+      },
+      {
+        "scenario": "Reflection probes show scene as it was before changes",
+        "rule": "Baked probes are snapshots — call Lightmapping.BakeReflectionProbe or re-bake lighting. Realtime probes with refreshMode != EveryFrame require manual probe.RenderProbe() after scene changes.",
+        "evidence": "ReflectionProbe API docs."
+      },
+      {
+        "scenario": "Targeting Unity 6 URP or HDRP, designing new scene",
+        "rule": "Use Adaptive Probe Volumes (ProbeVolume component) instead of LightProbeGroup. Single component, autoplacement, better leak reduction.",
+        "evidence": "Unity 6 APV docs."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Baked lightmap output is completely black.",
+        "cause":   "Lights are Realtime, or Renderers lack ContributeGI static flag, or no bake ran.",
+        "fix":     "Set at least one light to Mixed/Baked, mark meshes ContributeGI + BatchingStatic, call Lightmapping.BakeAsync and wait for bakeCompleted."
+      },
+      {
+        "symptom": "Skybox material assigned but scene shows solid color.",
+        "cause":   "Camera.clearFlags is SolidColor (or Depth/Don't Care).",
+        "fix":     "Set Camera.clearFlags = CameraClearFlags.Skybox."
+      },
+      {
+        "symptom": "Ambient stays gray after switching skybox at runtime.",
+        "cause":   "Ambient probe is not re-sampled automatically.",
+        "fix":     "After setting RenderSettings.skybox, call DynamicGI.UpdateEnvironment(). Ensure ambientMode = Skybox."
+      },
+      {
+        "symptom": "GPU lightmapper bake hangs or never completes.",
+        "cause":   "Unsupported GPU (insufficient VRAM, driver issue) — some Unity versions do not fall back cleanly.",
+        "fix":     "Switch LightmapEditorSettings.lightmapper to ProgressiveCPU for that machine; file a bug if GPU path is supposed to fall back."
+      },
+      {
+        "symptom": "URP Bloom override has no visible effect.",
+        "cause":   "One of: camera postProcessing disabled, camera Volume Mask does not include Volume's layer, Volume.isGlobal false with no trigger collider, or Bloom override's toggle not enabled (override exists but is off).",
+        "fix":     "Enable camera postProcessing, align layer masks, set Volume global or add trigger, toggle the Bloom override 'active' and each property's per-field override toggle."
+      },
+      {
+        "symptom": "PostProcessVolume added to URP project does nothing.",
+        "cause":   "Legacy PostProcessing v2 package is Built-in-only; URP ignores it.",
+        "fix":     "Replace with Volume + VolumeProfile. Remove PostProcessLayer from camera."
+      },
+      {
+        "symptom": "Reflection probe shows old geometry forever.",
+        "cause":   "Baked probe never re-baked after scene edit, or Realtime probe never re-rendered.",
+        "fix":     "Re-run Generate Lighting, or call probe.RenderProbe() for Realtime with refreshMode=ViaScripting."
+      },
+      {
+        "symptom": "Fog tints UI elements or skybox unexpectedly.",
+        "cause":   "UI rendered in 3D space; skybox fog tint in some pipelines.",
+        "fix":     "Render UI with a Screen Space - Overlay canvas, or use a layered camera that does not apply fog. Skybox shaders generally ignore fog by default — if tinted, check custom shader."
+      },
+      {
+        "symptom": "HDRP scene is too bright or completely white.",
+        "cause":   "No Exposure override in the default Volume. HDRP requires explicit exposure.",
+        "fix":     "Add Exposure override to the scene's default Volume profile, set AutomaticHistogram or Fixed with a sensible value."
+      },
+      {
+        "symptom": "Light Probe Group shows dynamic object going dark in certain spots.",
+        "cause":   "Probes not dense enough at a lighting gradient; or LightProbes.Tetrahedralize not called after programmatic edits.",
+        "fix":     "Add probes at the gradient; call LightProbes.Tetrahedralize() after runtime edits; consider LightProbeProxyVolume for large objects. On Unity 6 consider switching to APV."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "URP Volume system shipped with Universal Render Pipeline, replacing the legacy PostProcessing v2 package for URP projects.",
+        "breaking": true,
+        "migrationNote": "URP projects must use Volume + VolumeProfile. PostProcessVolume is Built-in-only from this point forward."
+      },
+      {
+        "version": "2020.1",
+        "change": "Progressive GPU Lightmapper left Preview and became the recommended bake backend on supported hardware.",
+        "breaking": false,
+        "migrationNote": "Existing CPU bakes keep working; switch LightmapEditorSettings.lightmapper to ProgressiveGPU for speed when hardware supports it."
+      },
+      {
+        "version": "2023.1",
+        "change": "Enlighten Realtime GI deprecated for new projects; remains available for existing projects via a package.",
+        "breaking": true,
+        "migrationNote": "New projects should use baked GI + probes, or APV on Unity 6 URP/HDRP, instead of Enlighten realtime GI."
+      },
+      {
+        "version": "6000.0",
+        "change": "Adaptive Probe Volumes (APV) shipped in URP and HDRP as the preferred replacement for Light Probe Groups.",
+        "breaking": false,
+        "migrationNote": "Existing Light Probe Groups still work; new scenes on Unity 6 URP/HDRP should use ProbeVolume components."
+      },
+      {
+        "version": "6000.0",
+        "change": "HDRP volumetric fog and sky overrides (Fog, VolumetricFog, VolumetricClouds, PhysicallyBasedSky) consolidated under the Volume system with updated property names.",
+        "breaking": false,
+        "migrationNote": "Reading older HDRP Volume profiles works; code that sets override properties by reflection should verify property names against Unity 6 HDRP API."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Lighting window",                                 "url": "https://docs.unity3d.com/Manual/lighting-window.html" },
+    { "title": "Unity Manual — Lightmapping",                                    "url": "https://docs.unity3d.com/Manual/Lightmapping.html" },
+    { "title": "Unity Manual — Progressive Lightmapper",                         "url": "https://docs.unity3d.com/Manual/progressive-lightmapper.html" },
+    { "title": "Unity Manual — Light modes",                                     "url": "https://docs.unity3d.com/Manual/LightMode-Mixed.html" },
+    { "title": "Unity Manual — Light Probes",                                    "url": "https://docs.unity3d.com/Manual/LightProbes.html" },
+    { "title": "Unity Manual — Reflection Probes",                               "url": "https://docs.unity3d.com/Manual/class-ReflectionProbe.html" },
+    { "title": "Unity Manual — Adaptive Probe Volumes",                          "url": "https://docs.unity3d.com/Manual/probevolumes.html" },
+    { "title": "Unity Manual — Environment lighting / skybox",                   "url": "https://docs.unity3d.com/Manual/GlobalIllumination.html" },
+    { "title": "Unity Manual — Post-processing in URP",                          "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/integration-with-post-processing.html" },
+    { "title": "Unity Manual — Volumes in URP",                                  "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/Volumes.html" },
+    { "title": "Unity Manual — Post-processing in HDRP",                         "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Post-Processing-Main.html" },
+    { "title": "ScriptReference — Light",                                        "url": "https://docs.unity3d.com/ScriptReference/Light.html" },
+    { "title": "ScriptReference — Lightmapping",                                 "url": "https://docs.unity3d.com/ScriptReference/Lightmapping.html" },
+    { "title": "ScriptReference — LightmapSettings",                             "url": "https://docs.unity3d.com/ScriptReference/LightmapSettings.html" },
+    { "title": "ScriptReference — LightmapEditorSettings",                       "url": "https://docs.unity3d.com/ScriptReference/LightmapEditorSettings.html" },
+    { "title": "ScriptReference — LightProbes",                                  "url": "https://docs.unity3d.com/ScriptReference/LightProbes.html" },
+    { "title": "ScriptReference — LightProbeGroup",                              "url": "https://docs.unity3d.com/ScriptReference/LightProbeGroup.html" },
+    { "title": "ScriptReference — LightProbeProxyVolume",                        "url": "https://docs.unity3d.com/ScriptReference/LightProbeProxyVolume.html" },
+    { "title": "ScriptReference — ReflectionProbe",                              "url": "https://docs.unity3d.com/ScriptReference/ReflectionProbe.html" },
+    { "title": "ScriptReference — RenderSettings",                               "url": "https://docs.unity3d.com/ScriptReference/RenderSettings.html" },
+    { "title": "ScriptReference — DynamicGI",                                    "url": "https://docs.unity3d.com/ScriptReference/DynamicGI.html" },
+    { "title": "ScriptReference — Volume (URP/HDRP)",                            "url": "https://docs.unity3d.com/ScriptReference/Rendering.Volume.html" },
+    { "title": "ScriptReference — VolumeProfile",                                "url": "https://docs.unity3d.com/ScriptReference/Rendering.VolumeProfile.html" },
+    { "title": "ScriptReference — CameraClearFlags",                             "url": "https://docs.unity3d.com/ScriptReference/CameraClearFlags.html" }
+  ],
+
+  "sources": [
+    { "title": "URP package — Bloom override",                                   "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/post-processing-bloom.html" },
+    { "title": "URP package — Tonemapping override",                             "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/post-processing-tonemapping.html" },
+    { "title": "HDRP package — Exposure override",                               "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Override-Exposure.html" },
+    { "title": "HDRP package — Volumetric Fog",                                  "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/Override-Volumetric-Fog.html" },
+    { "title": "HDRP package — Adaptive Probe Volumes",                          "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.high-definition@17.0/manual/probevolumes.html" },
+    { "title": "Legacy Post Processing v2 package (Built-in only)",              "url": "https://docs.unity3d.com/Packages/com.unity.postprocessing@3.4/manual/index.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, Unity Manual pages, and Unity ScriptReference. Component names, property names, enum values, and API signatures are factual (not copyrightable). All explanatory prose, llmGuidance scenarios, decisionRules, commonPitfalls, domain tables, and versionDeltas are original Mosaic editorial content. Unity Manual, ScriptReference, and package-manual pages are cited as externalReferences/sources and NOT reproduced here. Legacy com.unity.postprocessing package is referenced descriptively; no source code is included."
+}

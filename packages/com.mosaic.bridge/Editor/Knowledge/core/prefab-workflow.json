@@ -1,0 +1,223 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-core-prefab-workflow",
+  "title": "Prefabs: Creation, Variants, Overrides, Apply/Revert",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's Prefab system saves a GameObject hierarchy as a reusable asset with an authoring link on every instance. Covers creation (SaveAsPrefabAsset / AndConnect), editor-vs-runtime instantiation (PrefabUtility.InstantiatePrefab vs Object.Instantiate), Prefab Mode edits, override semantics, variants, nested prefabs, unpacking, and missing-script behavior. LLMs calling Mosaic's prefab/* tools routinely confuse prefab-mode edits with scene-instance overrides, instantiate with the wrong API at edit time, or apply overrides that silently rewrite a variant's base asset.",
+
+  "mosaicTools": [
+    "prefab/create",
+    "prefab/create-variant",
+    "prefab/info",
+    "prefab/get-overrides",
+    "prefab/apply-overrides",
+    "prefab/revert",
+    "asset/create_prefab",
+    "asset/instantiate_prefab"
+  ],
+
+  "relatedKb": [
+    "kb-core-asset-database",
+    "kb-core-gameobject-transform-semantics",
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_instantiating_a_prefab_at_edit_time":
+      "Use asset/instantiate_prefab (wraps PrefabUtility.InstantiatePrefab). Object.Instantiate at edit time produces a disconnected clone — no blue prefab link, apply/revert don't work, the result is an orphan. Object.Instantiate is correct ONLY in Play Mode / runtime code.",
+    "when_creating_a_prefab_from_a_scene_object":
+      "Use asset/create_prefab (SaveAsPrefabAssetAndConnect) so the source object becomes an instance of the new prefab. Plain SaveAsPrefabAsset leaves the scene object unlinked. Path must end in .prefab under Assets/.",
+    "when_asked_to_apply_overrides":
+      "First call prefab/get-overrides on the instance. On a Prefab Variant, apply writes into the variant (one level up) — usually NOT what the user means by 'save to the prefab'. Prefer targeted ApplyPropertyOverride / ApplyObjectOverride over ApplyPrefabInstance-all.",
+    "when_editing_a_prefab_to_change_all_instances":
+      "Open the prefab in Prefab Mode (PrefabStageUtility.OpenPrefab) and edit the asset directly. Scene-instance edits become per-instance overrides and do NOT propagate. 'Change every enemy' routes via Prefab Mode.",
+    "when_a_script_reference_on_a_prefab_is_missing":
+      "Don't blindly add a new component — check whether the script was renamed (GUID mismatch) or deleted. Missing-script slots still hold serialized data; restore the script or remap m_Script before overwriting.",
+    "when_unpacking_a_prefab_instance":
+      "Unpacking severs the prefab link permanently. Use UnpackPrefabInstance with OutermostRoot to keep nested links intact; UnpackCompletely flattens everything and is almost always wrong. Save-after-unpack is how instances become orphans.",
+    "when_choosing_variant_vs_new_prefab":
+      "Variant for a SPECIALIZATION (ArmoredEnemy of Enemy) that should inherit future base changes. New prefab for peers that merely share components — variants inherit base edits whether wanted or not."
+  },
+
+  "full": {
+    "anatomy": {
+      "prefabAsset": ".prefab file under Assets/ holding a serialized GameObject root plus its components and child hierarchy. Identified by a GUID; instances reference it via PrefabInstance + m_CorrespondingSourceObject fileIDs.",
+      "prefabInstance": "A GameObject in a scene (or inside another prefab) whose root is linked to a prefab asset. Blue cube icon in Hierarchy; nested prefab roots render in a lighter tone.",
+      "overrideStorage": "Each instance stores a diff from its source: modified properties, added components, removed components, added GameObjects. Base values live in the asset; the instance holds only the delta.",
+      "rootVsChildren": "Only the OUTERMOST root of a prefab instance can be unpacked, reverted, or made into a variant. Inner (nested) prefab roots are instances of their own source with their own override sets."
+    },
+
+    "creationApis": {
+      "SaveAsPrefabAsset": "PrefabUtility.SaveAsPrefabAsset(root, path) — writes a new prefab asset, does NOT link the source scene object.",
+      "SaveAsPrefabAssetAndConnect": "Writes the asset AND turns the scene object into an instance of it. Default for 'make a prefab from this'. Mosaic's asset/create_prefab uses this.",
+      "SaveAsPrefabVariant": "SaveAsPrefabAsset with the variant overload on a root that is already a prefab instance — produces a new .prefab inheriting from the original. Mosaic's prefab/create-variant wraps this.",
+      "pathRules": [
+        "Path must start with 'Assets/' and end in '.prefab'.",
+        "Directory must exist — use asset/create-folder first.",
+        "On overwrite Mosaic tools error unless an explicit overwrite flag is passed."
+      ]
+    },
+
+    "instantiationApis": {
+      "Object.Instantiate": "Runtime-only correct choice. Produces a CLONE with no prefab link. Required in player builds. At edit time it creates disconnected duplicates that confuse apply/revert.",
+      "PrefabUtility.InstantiatePrefab": "Editor-only. Returns a linked prefab INSTANCE — blue root, override tracking active, participates in apply/revert. Mosaic's asset/instantiate_prefab wraps this. Main thread only.",
+      "LoadPrefabContents": "PrefabUtility.LoadPrefabContents(path) → isolated editable root for scripted mutation without opening Prefab Mode. Pair with SaveAsPrefabAsset and UnloadPrefabContents. Use for bulk edits.",
+      "runtimePrefabSpawning": "A prefab field instantiated at runtime uses Object.Instantiate. The spawned object has no prefab link — the link is an Editor-only concept."
+    },
+
+    "prefabModeVsSceneInstance": {
+      "prefabMode": "Entered via PrefabStageUtility.OpenPrefab(path) or double-clicking the asset. Opens an isolated prefab stage where edits write directly to the asset. All instances pick up the change on save.",
+      "sceneInstanceEdits": "Editing a prefab instance in a scene creates per-instance overrides. These do NOT propagate to siblings. Apply pushes that single change up to the asset (or to a variant's base).",
+      "PrefabStage": "UnityEditor.SceneManagement.PrefabStage.prefabContentsRoot gives the editable root; assetPath identifies the source. Subscribe to prefabStageOpened / prefabStageClosing for tooling."
+    },
+
+    "overrideTypes": [
+      { "kind": "Property override",    "example": "Changing transform.localPosition or a serialized field on a component of a prefab instance.", "api": "PrefabUtility.GetPropertyModifications, ApplyPropertyOverride, RevertPropertyOverride" },
+      { "kind": "Added component",      "example": "Adding a Rigidbody to an instance that the source prefab doesn't have.", "api": "PrefabUtility.GetAddedComponents, ApplyAddedComponent, RevertAddedComponent" },
+      { "kind": "Removed component",    "example": "Removing a component from an instance that the source prefab defines.", "api": "PrefabUtility.GetRemovedComponents, ApplyRemovedComponent, RevertRemovedComponent" },
+      { "kind": "Added GameObject",     "example": "Parenting a new child GameObject under a prefab instance root.", "api": "PrefabUtility.GetAddedGameObjects, ApplyAddedGameObject, RevertAddedGameObject" },
+      { "kind": "Object override",      "example": "Aggregate of property + transform changes on one object inside the instance.", "api": "PrefabUtility.GetObjectOverrides, ApplyObjectOverride, RevertObjectOverride" }
+    ],
+
+    "variantSemantics": {
+      "inheritance": "A Prefab Variant stores overrides on top of a base prefab. Base changes propagate to the variant automatically — except where a variant override masks them.",
+      "applyDirection": "ApplyObjectOverride on a variant instance writes into the VARIANT, not the base. ApplyPrefabInstance + explicit target asset path lets you choose the level; choose carefully.",
+      "variantChains": "A variant can itself be the base for another variant. Apply walks one level per call.",
+      "breakingInheritance": "No 'convert variant to independent prefab' button. To decouple, duplicate the variant asset and resave the copy — it loses the base link."
+    },
+
+    "nestedPrefabs": {
+      "rule": "A prefab instance inside another prefab is allowed since 2018.3; each inner root keeps its own link. No capacity limit beyond serialization size.",
+      "editing": "Edit an inner prefab either in THAT prefab's Prefab Mode (changes all uses) or as a per-instance override on the outer prefab (changes only this usage).",
+      "unpackBoundary": "UnpackPrefabInstance(root, PrefabUnpackMode.OutermostRoot) unpacks only the outer instance. PrefabUnpackMode.Completely flattens the entire tree and is nearly always wrong."
+    },
+
+    "unpackSemantics": {
+      "UnpackPrefabInstance_OutermostRoot": "Outer link dropped; nested prefab instances remain linked. Use to diverge the container but keep internal prefab references live.",
+      "UnpackPrefabInstance_Completely": "Every nested link dropped. Irreversible — there is no 'pack' inverse. Save-after-unpack is how work gets lost.",
+      "orphanRisk": "If you unpack then delete the source .prefab, nothing recreates the link. Confirm intent before unpacking."
+    },
+
+    "missingScriptBehavior": {
+      "whatHappens": "If a MonoScript referenced by a prefab is deleted or its GUID changes (rename without .meta move), Unity preserves the slot as 'Missing (Mono Script)'. Serialized values persist on disk but are inaccessible until the script is restored or remapped.",
+      "detection": "GameObject.GetComponents<Component>() returns null entries. Use GameObjectUtility.GetMonoBehavioursWithMissingScriptCount / RemoveMonoBehavioursWithMissingScript to inspect or strip.",
+      "renamePath": "Rename through Unity's asset browser so the .meta GUID stays stable. For external renames, use the Script-Remap window or a custom AssetDatabase pass to rewire m_Script."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Spawn 50 copies of a prefab at edit time.",
+        "rule": "Loop asset/instantiate_prefab. Each returns a linked instance. NEVER use Object.Instantiate or scene duplication — the link is lost.",
+        "evidence": "PrefabUtility.InstantiatePrefab is the only editor path that returns a linked PrefabInstance."
+      },
+      {
+        "scenario": "User edits one instance and asks to 'apply this to the prefab'.",
+        "rule": "Call prefab/get-overrides, confirm the reported source asset path, then prefab/apply-overrides on the minimal subset. Never blanket-apply on a variant.",
+        "evidence": "ApplyPrefabInstance writes to the DIRECT source — the variant for variant instances, the base for base-prefab instances."
+      },
+      {
+        "scenario": "User wants an armored variant of Enemy that follows future Enemy changes.",
+        "rule": "prefab/create-variant. New prefab only when the objects should evolve independently.",
+        "evidence": "Prefab Variant contract: inherits base, stores own overrides."
+      },
+      {
+        "scenario": "Script modifies 200 prefab assets on disk.",
+        "rule": "LoadPrefabContents → mutate → SaveAsPrefabAsset(contentsRoot, path) → UnloadPrefabContents. Batch under AssetDatabase.StartAssetEditing / StopAssetEditing.",
+        "evidence": "LoadPrefabContents is the documented bulk-edit path; avoids per-asset scene loads and domain reloads."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Instantiated copy has no blue icon and Apply/Revert menu is missing.",
+        "cause": "Object.Instantiate called at edit time instead of PrefabUtility.InstantiatePrefab.",
+        "fix": "Replace with asset/instantiate_prefab. Delete the disconnected copy and re-instantiate."
+      },
+      {
+        "symptom": "Applying overrides on a variant unexpectedly changes other variants or the base.",
+        "cause": "User assumed 'apply = save to base'. ApplyPrefabInstance walks only one level — the direct source.",
+        "fix": "prefab/get-overrides to confirm the source asset, then apply at the correct level."
+      },
+      {
+        "symptom": "Unpacked an instance, saved scene, prefab asset no longer syncs with this object.",
+        "cause": "UnpackPrefabInstance on the wrong object or with Completely mode produced an orphan.",
+        "fix": "From another scene with a valid instance, re-drag the asset or create-variant. There is no automatic repack."
+      },
+      {
+        "symptom": "Hierarchy edits don't show on other instances of the same prefab.",
+        "cause": "Scene-instance edits are per-instance overrides, not prefab-mode edits.",
+        "fix": "Apply each override, or reopen the prefab in Prefab Mode and edit the asset directly."
+      },
+      {
+        "symptom": "Prefab shows 'Missing (Mono Script)' after a refactor.",
+        "cause": "Script renamed without its .meta, or replaced by a new file with a new GUID.",
+        "fix": "Restore the original .meta from VCS, or remap m_Script via AssetDatabase + SerializedObject. Don't just add the new component — serialized fields won't transfer."
+      },
+      {
+        "symptom": "LoadPrefabContents leaves hidden GameObjects around after the script runs.",
+        "cause": "Missing UnloadPrefabContents call.",
+        "fix": "Wrap mutate-save in try/finally and always call UnloadPrefabContents."
+      },
+      {
+        "symptom": "Instance icon is pink/magenta instead of blue.",
+        "cause": "Source prefab has missing scripts or variant base is missing — Unity marks it disconnected.",
+        "fix": "Fix the asset. Link re-resolves on next AssetDatabase.Refresh."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2020.1",
+        "change": "PrefabStage namespace moved from UnityEditor.Experimental.SceneManagement to UnityEditor.SceneManagement. Old namespace kept with [Obsolete] for a few releases.",
+        "breaking": false,
+        "migrationNote": "Update using directives; API signatures unchanged."
+      },
+      {
+        "version": "2022.1",
+        "change": "Overrides comparison view refined; PrefabUtility.GetAddedGameObjects promoted as a first-class API alongside property / component override queries.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "No breaking API changes to SaveAsPrefabAsset, InstantiatePrefab, ApplyPrefabInstance, or variant creation. System stable from 2021.3.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Prefabs",                            "url": "https://docs.unity3d.com/Manual/Prefabs.html" },
+    { "title": "Unity Manual — Editing a Prefab in Prefab Mode",    "url": "https://docs.unity3d.com/Manual/EditingInPrefabMode.html" },
+    { "title": "Unity Manual — Prefab Variants",                    "url": "https://docs.unity3d.com/Manual/PrefabVariants.html" },
+    { "title": "Unity Manual — Nested Prefabs",                     "url": "https://docs.unity3d.com/Manual/NestedPrefabs.html" },
+    { "title": "Unity Manual — Prefab Overrides",                   "url": "https://docs.unity3d.com/Manual/PrefabInstanceOverrides.html" },
+    { "title": "Unity Manual — Unpacking Prefab Instances",         "url": "https://docs.unity3d.com/Manual/UnpackingPrefabInstances.html" },
+    { "title": "ScriptReference — PrefabUtility",                   "url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.html" },
+    { "title": "ScriptReference — PrefabUtility.InstantiatePrefab", "url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.InstantiatePrefab.html" },
+    { "title": "ScriptReference — PrefabUtility.SaveAsPrefabAsset", "url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.SaveAsPrefabAsset.html" },
+    { "title": "ScriptReference — PrefabUtility.LoadPrefabContents","url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.LoadPrefabContents.html" },
+    { "title": "ScriptReference — PrefabUtility.UnpackPrefabInstance","url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.UnpackPrefabInstance.html" },
+    { "title": "ScriptReference — PrefabStage",                     "url": "https://docs.unity3d.com/ScriptReference/SceneManagement.PrefabStage.html" },
+    { "title": "ScriptReference — PrefabStageUtility",              "url": "https://docs.unity3d.com/ScriptReference/SceneManagement.PrefabStageUtility.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Prefabs",                            "url": "https://docs.unity3d.com/Manual/Prefabs.html" },
+    { "title": "Unity Manual — Prefab Variants",                    "url": "https://docs.unity3d.com/Manual/PrefabVariants.html" },
+    { "title": "Unity Manual — Nested Prefabs",                     "url": "https://docs.unity3d.com/Manual/NestedPrefabs.html" },
+    { "title": "Unity Manual — Editing a Prefab in Prefab Mode",    "url": "https://docs.unity3d.com/Manual/EditingInPrefabMode.html" },
+    { "title": "ScriptReference — PrefabUtility",                   "url": "https://docs.unity3d.com/ScriptReference/PrefabUtility.html" },
+    { "title": "ScriptReference — PrefabStage",                     "url": "https://docs.unity3d.com/ScriptReference/SceneManagement.PrefabStage.html" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, the Unity Manual (Prefabs, Prefab Variants, Nested Prefabs, Editing in Prefab Mode, Prefab Overrides, Unpacking Prefab Instances), and UnityEditor ScriptReference pages for PrefabUtility and PrefabStage. API names, method signatures, and enum values are non-copyrightable facts. Explanatory prose, decision rules, llmGuidance, and commonPitfalls are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited in externalReferences / sources and NOT reproduced verbatim."
+}

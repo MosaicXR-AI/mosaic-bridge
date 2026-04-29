@@ -1,0 +1,238 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "procgen/wfc-tileset-authoring",
+  "title": "WFC Tileset Authoring: Adjacency, Rotation, Weights, Backtracking",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "procgen",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Authoring guide for Wave Function Collapse (WFC) tilesets consumed by procgen/wfc. Covers the two WFC modes (overlapping image model vs explicit tile model), how to declare adjacency — pair-by-pair or via connectors — how rotation and reflection groups multiply a base tile into oriented variants, how tile weights shape output distribution, and how contradictions are detected, avoided, and resolved through restart or backtracking. WFC is algorithm-ubiquitous (same behavior in every Unity version) but the tileset authoring ergonomics are where LLMs fail. Use this entry before calling procgen/wfc with a non-trivial tileset.",
+
+  "mosaicTools": [
+    "procgen/wfc"
+  ],
+
+  "relatedKb": [
+    "procgen/tool-selection",
+    "procgen/noise-tuning"
+  ],
+
+  "llmGuidance": {
+    "when_user_wants_organic_texture_or_cave_look":
+      "Prefer the overlapping model: provide a small input image and an NxN pattern window (typically N=3). The solver learns adjacency from the image — no authored rules. Good for abstract textures, caves, Zelda-style maps. Do NOT hand-author tiles for this case.",
+    "when_user_wants_structured_level_dungeon_or_city":
+      "Use the explicit tile model with a connector-based adjacency scheme. Declare tiles with IDs, assets, weights, rotation groups, and edge connector codes. Two tiles are compatible on a shared edge iff their connector codes match. Avoid pair-by-pair adjacency for anything over ~12 tiles.",
+    "when_tileset_exceeds_20_tiles":
+      "Pair-by-pair adjacency has O(T^2 * D) entries (T tiles, D directions) and becomes unmaintainable. Switch to connectors: label each tile edge with a short code (e.g. 'grass', 'water', 'cliff-top') and let the solver match codes. Much fewer rules, easier to debug.",
+    "when_contradictions_exceed_10_percent_of_runs":
+      "Add 1-2 high-weight 'filler' backbone tiles that accept many connector codes (e.g. an all-grass tile). These fill awkward cells the solver would otherwise dead-end on. Also verify every tile has at least one compatible neighbor in each direction (closure check).",
+    "when_output_is_all_one_tile":
+      "One tile's weight dominates. Reduce max-to-min weight ratio to ~5:1 or less. Zero weight means 'never picked unless forced by constraints' — useful for rare decoration tiles, not for frequent filler.",
+    "when_output_is_too_repetitive":
+      "Weights are too flat OR input image (overlapping model) has too little variation. Compress the ratio (avoid 50:1 or 100:1) and add more distinct tiles or a larger source image.",
+    "when_rotated_tiles_come_out_wrong":
+      "Rotation group expansion did not rotate connectors along with the asset. When expanding a tile into 4 rotated copies, each copy's N/E/S/W connector codes must also rotate. 'Grass on north' on rotation-0 becomes 'grass on east' on rotation-90.",
+    "when_map_edges_look_wrong":
+      "Declare the edge-handling mode explicitly. Periodic wraps the grid; hard-boundary forces a border tile (e.g. 'wall' or 'water'); open-boundary accepts any tile at edge and usually produces ugly seams. Structured maps almost always want hard-boundary.",
+    "when_generation_takes_forever":
+      "Contradiction loop: solver restarts repeatedly because rules admit no solution. Options: loosen constraints (add backbone tiles, widen connector compatibility), enable sophisticated backtracking instead of full restart, or shrink map size to isolate the problematic region.",
+    "when_debugging_a_rare_contradiction":
+      "Check symmetry: if tile A allows tile B on its east edge, tile B must allow tile A on its west edge. One-way adjacency is the #1 source of rare contradictions. Connector-based schemes make this symmetric by construction."
+  },
+
+  "full": {
+    "algorithmOverview": {
+      "description": "WFC is a tile-based constraint solver. Every cell in the output grid starts in superposition: all tiles are possible. The solver repeats three steps until the grid is fully collapsed or a contradiction is detected: (1) Observe — pick the most-constrained cell (lowest entropy) and collapse it to one tile chosen from its remaining options, weighted by tile weights. (2) Propagate — walk adjacency rules outward from the observed cell, removing tile options from neighbors that are no longer compatible. Propagation continues transitively until no more options can be eliminated. (3) Check — if any cell's option set is now empty, that's a contradiction; the solver must backtrack or restart. Otherwise loop.",
+      "entropy": "Cell entropy is the Shannon entropy of its remaining tile-weight distribution. Min-entropy heuristic (observe the most-constrained cell first) dramatically reduces contradiction rate vs picking cells randomly.",
+      "originalSource": "Maxim Gumin's 2016 reference implementation (mxgmn/WaveFunctionCollapse, MIT-licensed) is the canonical source. Karth & Smith formalized it as constraint solving in their 2017 FDG paper."
+    },
+
+    "twoModes": {
+      "overlapping": {
+        "description": "Input is a single source image. Solver extracts every NxN patch from the image (default N=3), treats each distinct patch as a tile, and learns adjacency from which patches can overlap in the source. No rules are authored. Weights come from patch frequency in the source.",
+        "useWhen": "Organic textures, caves, abstract patterns, Zelda/Link's-Awakening style maps.",
+        "pitfalls": "Output quality is bounded by input variety. N too small → chaotic, N too large → output is a near-copy of the input. N=3 is the usual default."
+      },
+      "simpleTiled": {
+        "description": "Input is a list of explicit tiles plus adjacency rules. Each tile has an ID, an asset reference (prefab/sprite/mesh), a weight, rotation/reflection groups, and per-direction adjacency either pair-by-pair or by edge connectors.",
+        "useWhen": "Structured content where every tile must be intentional: dungeons, city blocks, pipe puzzles, road networks, ship layouts.",
+        "pitfalls": "Authoring effort scales with tile count. Without connectors, 30 tiles × 4 directions = ~3,600 possible adjacency assertions, most of which are redundant or missing. Connector schemes cut this by one to two orders of magnitude."
+      }
+    },
+
+    "tilesetFields": {
+      "id":            "Stable string ID, kebab-case. Example: 'grass', 'grass-water-edge-n', 'road-cross'.",
+      "asset":         "Unity asset reference: prefab, sprite, or mesh. Instantiated on collapse.",
+      "weight":        "Relative probability of being chosen when observing a cell that has this tile in its domain. Weights are relative, not normalized. Weight 0 = never chosen unless forced.",
+      "rotationGroup": "'none' (tile is rotationally symmetric, do not expand), '4-way' (expand to 0/90/180/270 rotations with connectors rotated accordingly), 'h-flip' / 'v-flip' / 'both-flip' for reflections. Default for asymmetric tiles: '4-way'.",
+      "reflectionGroup": "Separate from rotation. Declare if a tile has a valid mirror variant (e.g. an asymmetric corner). Be careful of assets with text or directional features — those usually have reflectionGroup 'none'.",
+      "connectors":    "Object keyed by direction (N/E/S/W for 2D; add Up/Down for 3D) whose values are short codes. Two tiles are compatible across a shared edge iff their codes on that shared edge match. See full.connectorPattern."
+    },
+
+    "connectorPattern": {
+      "principle": "Instead of enumerating pairs, label each tile edge with a code. The solver accepts an adjacency iff the two facing edges carry the same code. Symmetry is automatic — if A's east code matches B's west code, the reverse also holds.",
+      "example": {
+        "grass-center":     { "N": "grass", "E": "grass", "S": "grass", "W": "grass" },
+        "grass-water-edge": { "N": "grass", "E": "grass-water", "S": "water", "W": "grass-water" },
+        "water-center":     { "N": "water", "E": "water", "S": "water", "W": "water" }
+      },
+      "codingConventions": [
+        "Symmetric connectors (code reads same both sides) need a single label: 'grass', 'water'.",
+        "Asymmetric connectors (e.g., a cliff-edge with up-side on one half, down-side on the other) need a directional label like 'cliff-top-L' that matches only 'cliff-top-R' — flip the suffix when rotating or reflecting.",
+        "Keep the codebook small (< 20 codes per tileset). More codes than tiles usually means the scheme is overfitted."
+      ],
+      "rotationExpansion": "When expanding an asymmetric tile to a 4-way rotation group, each rotated copy has connectors cycled: rotation-90 shifts {N,E,S,W} → {W,N,E,S}. The solver sees four tiles (original + three rotated) with independent adjacency."
+    },
+
+    "adjacencyAuthoring": {
+      "pairByPair": {
+        "shape": "List of { tileA, tileB, direction } triples, each asserting 'A may appear with B in this direction'.",
+        "whenReasonable": "Up to ~12 tiles or when connector semantics do not fit (e.g. a tileset where compatibility is by arbitrary aesthetic judgment).",
+        "requiredSymmetry": "For every {A, B, E} you must also assert {B, A, W}. Most WFC bugs are missing reverse entries. Use a lint step that adds reverses automatically."
+      },
+      "connectorBased": {
+        "shape": "Each tile declares per-direction connector codes. Compatibility is derived.",
+        "whenPreferred": "Any tileset beyond ~12 tiles. Also strongly preferred for any tileset that will be edited iteratively — adding a new tile only requires naming its edge codes, not re-authoring N pair rules."
+      }
+    },
+
+    "weights": {
+      "meaning": "Weight is the unnormalized prior probability of a tile being chosen when it remains in a collapsing cell's domain. The solver normalizes over the current domain.",
+      "rulesOfThumb": [
+        "Ratio of max to min weight should stay within ~5:1 for varied output. 50:1 produces monotone output; 1:1 produces noise.",
+        "Zero weight = hard fallback. Tile is only chosen if every other option has been eliminated. Useful for 'filler' or 'border' tiles the designer wants only when forced.",
+        "High-weight backbone tiles (simple, widely-compatible filler) dramatically reduce contradiction rate because they accept many neighbors."
+      ]
+    },
+
+    "contradictionsAndRecovery": {
+      "definition": "A contradiction is a cell whose option set becomes empty during propagation. The grid cannot be completed with current rules.",
+      "avoidance": [
+        "Symmetric constraints: enforce A→B ⇒ B→A on every direction. Connector schemes satisfy this automatically.",
+        "Closure check: before running, verify every tile has at least one compatible neighbor in each direction. Dead-end tiles (no valid neighbor on some direction) guarantee contradictions on maps larger than one cell in that direction.",
+        "Backbone tiles: at least one high-weight tile whose connectors accept most codes. This is what 'grass' or 'empty floor' serves in most tilesets."
+      ],
+      "recoveryStrategies": {
+        "restart": {
+          "description": "Throw away the partial solution and run again with a new seed. Simple, deterministic per seed, used by Maxim Gumin's reference implementation.",
+          "tradeoff": "Wasted work scales with how far into the run the contradiction hit. Acceptable for small maps or fast solvers; painful for 200×200 grids."
+        },
+        "backtracking": {
+          "description": "Undo the last N observations (pop the decision stack), exclude the most recent tile choice, and resume. Related to DPLL-style SAT solving.",
+          "tradeoff": "Much faster convergence on over-constrained tilesets but adds implementation complexity and memory overhead for the decision stack.",
+          "note": "Tessera Pro (commercial) ships sophisticated backtracking as its main differentiator. Mosaic's procgen/wfc currently uses restart; backtracking is a planned extension."
+        }
+      }
+    },
+
+    "rotationAndReflection": {
+      "rotationGroups": {
+        "none": "Tile is rotationally symmetric (e.g., a circular flower). Do NOT expand — expansion would triple-count weight.",
+        "4-way": "Asymmetric tile. Expand to four oriented copies. Each copy is an independent tile with rotated asset and cycled connectors.",
+        "2-way": "Tile has 180° symmetry (e.g., straight road segment). Expand to two copies only."
+      },
+      "reflection": "Independent of rotation. Set only if the mirror image is a valid tile — false for assets with text, arrows, or asymmetric visual features that would read wrong.",
+      "connectorCycling": "When expanding a tile to rotation-90, its connectors cycle: {N,E,S,W} → {W,N,E,S}. Rotation-180: {N,E,S,W} → {S,W,N,E}. Rotation-270: {N,E,S,W} → {E,S,W,N}. Missing this cycle is the #1 source of 'rotated tile placed wrong' bugs."
+    },
+
+    "edgeHandling": {
+      "periodic":     "Grid wraps. Right edge adjacent to left edge, top to bottom. Good for tiling textures.",
+      "hardBoundary": "A specific tile or connector code is required on the outer boundary. Good for maps where edges should read as 'wall' or 'water'. Enforced by seeding boundary cells with only the border tile as their domain before the solver runs.",
+      "openBoundary": "No constraints on the outer edge. Fastest but usually produces visually-broken seams."
+    },
+
+    "performanceNotes": [
+      "Minimum-entropy heuristic for observation order is a must. Random observation order multiplies contradiction rate by an order of magnitude on non-trivial tilesets.",
+      "Propagate via a worklist queue, not recursion. Recursive propagation stack-overflows on large grids.",
+      "Represent tile domains as bit-sets (uint64 bitmask for tilesets up to 64 tiles; bit array for larger). Hash sets are 10-50× slower in hot propagation loops."
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "User asks for organic/abstract texture (caves, terrain variety, stylized map)",
+        "rule": "Use overlapping model with a hand-drawn source image. Do not author rules. N=3 unless user specifically wants larger repeating structures.",
+        "evidence": "Maxim Gumin's repo samples (Flowers, City, Rooms) all use overlapping model with small source images."
+      },
+      {
+        "scenario": "User asks for structured procedural levels (dungeon, town, spaceship)",
+        "rule": "Use tile model with connector-based adjacency. Declare backbone filler tile at high weight. Hard-boundary edge mode almost always.",
+        "evidence": "Karth & Smith FDG 2017 characterize simple-tiled as the right mode for level layout. Tessera Pro's commercial tooling is built around this pattern."
+      },
+      {
+        "scenario": "Tileset has more than ~20 tiles",
+        "rule": "Switch from pair-by-pair adjacency to connectors. The authoring ROI flips here — connectors save hours on any subsequent tile add.",
+        "evidence": "Marian Kleineberg's 'Infinite procedurally generated city' talk (2019) attributes tractability of 100+ tile sets to connector schemes."
+      },
+      {
+        "scenario": "Contradictions over 10% of runs on a medium map",
+        "rule": "Add or raise weight of a backbone filler tile. If still contradicting, run a closure-check: every tile must have ≥1 compatible neighbor per direction.",
+        "evidence": "Closure holes are the most common contradiction cause. Backbone tiles are the cheapest fix."
+      },
+      {
+        "scenario": "Output is visually repetitive",
+        "rule": "Compress weight ratio toward 3:1 or 5:1. Add more distinct tiles or a richer source image (overlapping model).",
+        "evidence": "Empirically, ratios above ~10:1 drive one tile to dominate > 60% of output."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "procgen/wfc reports 'contradiction' repeatedly and either restarts forever or fails.",
+        "cause": "Over-constrained tileset. Common causes: missing reverse adjacency pair, dead-end tile with no compatible neighbor in some direction, no backbone filler.",
+        "fix": "Run a closure-check lint. Enforce symmetric adjacency. Add a high-weight backbone tile."
+      },
+      {
+        "symptom": "Output is dominated by one tile; other tiles rarely appear.",
+        "cause": "Weight ratio too extreme, or that tile's connectors match everything.",
+        "fix": "Lower its weight. If its connectors are too permissive, split into multiple narrower-connector variants."
+      },
+      {
+        "symptom": "Rotated tiles appear in wrong orientation at joins.",
+        "cause": "Rotation group was expanded but connector codes were not cycled along with the asset rotation.",
+        "fix": "For rotation-90, cycle {N,E,S,W} → {W,N,E,S}. Apply equivalent cycles for 180 and 270."
+      },
+      {
+        "symptom": "Output shows all one rotation of a tile (e.g., all roads point east).",
+        "cause": "Rotation group not declared. Solver treats the single asymmetric tile as the only option.",
+        "fix": "Set rotationGroup to '4-way' and let the expander produce the oriented copies."
+      },
+      {
+        "symptom": "Map edges look wrong (visible seams, tiles sticking out).",
+        "cause": "Open-boundary edge mode used on a structured tileset.",
+        "fix": "Switch to hard-boundary with a border tile (e.g. 'wall' or 'water') seeded on boundary cells."
+      },
+      {
+        "symptom": "Contradictions only on large maps, not small ones.",
+        "cause": "Either a rare constraint hole triggered only when enough cells collapse in a certain pattern, or a propagation bug. More commonly the former.",
+        "fix": "Add backbone tile or widen connectors. If symptom persists with a known-good tileset, suspect a propagation bug and test with Gumin's reference implementation as oracle."
+      },
+      {
+        "symptom": "Generation succeeds but takes minutes on a grid that should be fast.",
+        "cause": "Restart loop — many silent contradictions before one run succeeds.",
+        "fix": "Enable sophisticated backtracking, loosen constraints, or instrument contradiction rate to confirm."
+      }
+    ],
+
+    "versionDeltas": []
+  },
+
+  "externalReferences": [
+    { "title": "Tessera Pro (Unity Asset Store) — reference competitor for WFC UX", "url": "https://assetstore.unity.com/packages/tools/utilities/tessera-pro-procedural-tile-based-generator-on-wfc-155425" },
+    { "title": "Red Blob Games — WFC explainer",                                 "url": "https://www.boristhebrave.com/2020/04/13/wave-function-collapse-explained/" }
+  ],
+
+  "sources": [
+    { "title": "Maxim Gumin — WaveFunctionCollapse reference implementation (MIT)", "url": "https://github.com/mxgmn/WaveFunctionCollapse" },
+    { "title": "Karth & Smith — WaveFunctionCollapse is Constraint Solving in the Wild (FDG 2017)", "url": "https://isaackarth.com/papers/wfc_is_constraint_solving_in_the_wild/" },
+    { "title": "Marian Kleineberg — Infinite procedurally generated city with WFC",  "url": "https://marian42.de/article/wfc/" },
+    { "title": "Boris the Brave — WFC tips (connector patterns, backtracking)",      "url": "https://www.boristhebrave.com/2020/04/13/wave-function-collapse-explained/" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team. WFC algorithm behavior is drawn from Maxim Gumin's MIT-licensed reference implementation and the Karth & Smith FDG 2017 paper; both are publicly published research. Algorithmic facts (entropy heuristic, propagation mechanics, contradiction semantics) are not copyrightable. Decision rules, llmGuidance, commonPitfalls, and all explanatory prose are original Mosaic editorial content. Tessera Pro is referenced only as a commercial point of comparison — no content, code, or assets from the product are used."
+}

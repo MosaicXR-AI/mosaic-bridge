@@ -1,0 +1,243 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-rendering-shader-properties",
+  "title": "Unity Shader Material Properties — Built-in / URP / HDRP",
+  "version": "1.2.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Canonical property name mapping for Unity's main Lit and Unlit shaders across Built-in / URP / HDRP render pipelines. Use when setting material properties programmatically via Material.SetColor / SetFloat / SetTexture, or mosaic tools material/set-property and material/create. Property internal names differ between pipelines; using the wrong name either silently writes to a hidden backward-compat alias (URP Lit) or throws 'Material doesn't have a property'. This entry provides the exact property name per pipeline plus decision rules for cross-pipeline code.",
+
+  "mosaicTools": [
+    "material/create",
+    "material/set-property",
+    "material/assign",
+    "graphics/set-shader",
+    "shader/create-compute",
+    "shader/parallax-create",
+    "shader/sss-create",
+    "shadergraph/create",
+    "shadergraph/set-property-default",
+    "probuilder/set_material",
+    "terrain/paint"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-pipeline-detection",
+    "kb-rendering-urp-material-workflow"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_change_material_color":
+      "Detect active pipeline via GraphicsSettings.currentRenderPipeline. URP → _BaseColor. Built-in → _Color. HDRP → _BaseColor. If pipeline unknown, prefer _BaseColor and fall back to _Color with HasProperty guard.",
+    "when_creating_new_colored_material":
+      "Use material/create with shaderName from full.shaders. For URP: 'Universal Render Pipeline/Lit'. For Built-in: 'Standard'. For HDRP: 'HDRP/Lit'. Then set the base-color property. Default _BaseMap is white, so no texture is required for a flat color.",
+    "when_setting_emission":
+      "Built-in and URP use _EmissionColor + _EmissionMap. HDRP uses _EmissiveColor + _EmissiveColorMap. Branch by pipeline. Enable keyword _EMISSION on Built-in and URP materials.",
+    "when_setting_normal_map":
+      "Built-in and URP Lit use _BumpMap. HDRP uses _NormalMap. Normal scale is _BumpScale (Built-in/URP) or _NormalScale (HDRP).",
+    "when_debugging_'material_looks_unchanged'":
+      "First check property name vs pipeline. URP Lit ships hidden _Color and _MainTex aliases for backward compat — SetColor('_Color', ...) on URP returns no error but writes to the unused alias slot. Use _BaseColor and guard with Material.HasProperty in cross-pipeline code.",
+    "when_unsure_which_pipeline_the_project_uses":
+      "Read GraphicsSettings.currentRenderPipeline. Null = Built-in. Non-null asset typename contains 'UniversalRenderPipelineAsset' (URP) or 'HDRenderPipelineAsset' (HDRP). See kb-rendering-pipeline-detection for API details."
+  },
+
+  "full": {
+    "shaders": {
+      "built-in-standard": {
+        "shaderName": "Standard",
+        "pipeline": "built-in",
+        "use": "Legacy Built-in Render Pipeline PBR workflow.",
+        "properties": {
+          "baseColor":     { "name": "_Color",            "type": "Color" },
+          "albedoMap":     { "name": "_MainTex",          "type": "Texture2D" },
+          "normalMap":     { "name": "_BumpMap",          "type": "Texture2D" },
+          "normalScale":   { "name": "_BumpScale",        "type": "Float" },
+          "smoothness":    { "name": "_Glossiness",       "type": "Float", "range": [0, 1] },
+          "metallic":      { "name": "_Metallic",         "type": "Float", "range": [0, 1] },
+          "metallicMap":   { "name": "_MetallicGlossMap", "type": "Texture2D" },
+          "emissionColor": { "name": "_EmissionColor",    "type": "Color", "hdr": true },
+          "emissionMap":   { "name": "_EmissionMap",      "type": "Texture2D" },
+          "specularColor": { "name": "_SpecColor",        "type": "Color" },
+          "occlusionMap":  { "name": "_OcclusionMap",     "type": "Texture2D" },
+          "parallaxMap":   { "name": "_ParallaxMap",      "type": "Texture2D" }
+        }
+      },
+      "urp-lit": {
+        "shaderName": "Universal Render Pipeline/Lit",
+        "pipeline": "urp",
+        "use": "URP main physically-based shader. Default for most URP projects.",
+        "properties": {
+          "baseColor":     { "name": "_BaseColor",        "type": "Color", "attribute": "[MainColor]" },
+          "albedoMap":     { "name": "_BaseMap",          "type": "Texture2D", "attribute": "[MainTexture]" },
+          "normalMap":     { "name": "_BumpMap",          "type": "Texture2D" },
+          "normalScale":   { "name": "_BumpScale",        "type": "Float" },
+          "smoothness":    { "name": "_Smoothness",       "type": "Float", "range": [0, 1] },
+          "metallic":      { "name": "_Metallic",         "type": "Float", "range": [0, 1] },
+          "metallicMap":   { "name": "_MetallicGlossMap", "type": "Texture2D" },
+          "emissionColor": { "name": "_EmissionColor",    "type": "Color", "hdr": true },
+          "emissionMap":   { "name": "_EmissionMap",      "type": "Texture2D" },
+          "specularColor": { "name": "_SpecColor",        "type": "Color" },
+          "workflowMode":  { "name": "_WorkflowMode",     "type": "Float", "enum": ["Specular=0", "Metallic=1"] }
+        },
+        "backwardCompatAliases": {
+          "_Color":   { "aliasOf": "_BaseColor", "status": "hidden-obsolete", "writeEffect": "writes to alias slot only; not rendered" },
+          "_MainTex": { "aliasOf": "_BaseMap",   "status": "hidden-obsolete", "writeEffect": "writes to alias slot only; not rendered" }
+        }
+      },
+      "urp-simple-lit": {
+        "shaderName": "Universal Render Pipeline/Simple Lit",
+        "pipeline": "urp",
+        "use": "Blinn-Phong lighting. Cheaper than Lit. Mobile / stylized.",
+        "properties": {
+          "baseColor":     { "name": "_BaseColor",     "type": "Color" },
+          "albedoMap":     { "name": "_BaseMap",       "type": "Texture2D" },
+          "specularColor": { "name": "_SpecColor",     "type": "Color" },
+          "specMap":       { "name": "_SpecGlossMap",  "type": "Texture2D" },
+          "smoothness":    { "name": "_Smoothness",    "type": "Float", "range": [0, 1] },
+          "normalMap":     { "name": "_BumpMap",       "type": "Texture2D" },
+          "emissionColor": { "name": "_EmissionColor", "type": "Color", "hdr": true },
+          "emissionMap":   { "name": "_EmissionMap",   "type": "Texture2D" }
+        }
+      },
+      "urp-unlit": {
+        "shaderName": "Universal Render Pipeline/Unlit",
+        "pipeline": "urp",
+        "use": "URP unlit. Effects, UI, custom rendering.",
+        "properties": {
+          "baseColor": { "name": "_BaseColor", "type": "Color" },
+          "albedoMap": { "name": "_BaseMap",   "type": "Texture2D" },
+          "cutoff":    { "name": "_Cutoff",    "type": "Float", "range": [0, 1] },
+          "surface":   { "name": "_Surface",   "type": "Float", "enum": ["Opaque=0", "Transparent=1"] },
+          "blend":     { "name": "_Blend",     "type": "Float" },
+          "alphaClip": { "name": "_AlphaClip", "type": "Float" }
+        }
+      },
+      "hdrp-lit": {
+        "shaderName": "HDRP/Lit",
+        "pipeline": "hdrp",
+        "use": "HDRP main PBR shader with subsurface / clearcoat / anisotropy.",
+        "properties": {
+          "baseColor":     { "name": "_BaseColor",        "type": "Color" },
+          "albedoMap":     { "name": "_BaseColorMap",     "type": "Texture2D" },
+          "normalMap":     { "name": "_NormalMap",        "type": "Texture2D", "textureType": "bump" },
+          "normalScale":   { "name": "_NormalScale",      "type": "Float", "range": [0, 8] },
+          "metallic":      { "name": "_Metallic",         "type": "Float", "range": [0, 1] },
+          "smoothness":    { "name": "_Smoothness",       "type": "Float", "range": [0, 1] },
+          "emissionColor": { "name": "_EmissiveColor",    "type": "Color", "hdr": true },
+          "emissionMap":   { "name": "_EmissiveColorMap", "type": "Texture2D" }
+        },
+        "notes": [
+          "HDRP Lit uses _BaseColorMap (not _BaseMap) and _EmissiveColor (not _EmissionColor). Distinct from URP.",
+          "Additional properties for clearcoat / anisotropy / subsurface exist — consult shader source when those features are needed."
+        ]
+      }
+    },
+
+    "pipelineComparisonQuickTable": [
+      { "concept": "Base color",     "built-in": "_Color",         "urp": "_BaseColor",     "hdrp": "_BaseColor" },
+      { "concept": "Albedo texture", "built-in": "_MainTex",       "urp": "_BaseMap",       "hdrp": "_BaseColorMap" },
+      { "concept": "Normal map",     "built-in": "_BumpMap",       "urp": "_BumpMap",       "hdrp": "_NormalMap" },
+      { "concept": "Smoothness",     "built-in": "_Glossiness",    "urp": "_Smoothness",    "hdrp": "_Smoothness" },
+      { "concept": "Metallic",       "built-in": "_Metallic",      "urp": "_Metallic",      "hdrp": "_Metallic" },
+      { "concept": "Emission color", "built-in": "_EmissionColor", "urp": "_EmissionColor", "hdrp": "_EmissiveColor" },
+      { "concept": "Emission map",   "built-in": "_EmissionMap",   "urp": "_EmissionMap",   "hdrp": "_EmissiveColorMap" }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Creating a visible colored material via mosaic/material/create + set-property",
+        "rule": "1) Detect pipeline (see kb-rendering-pipeline-detection). 2) Pick shader name from full.shaders.<pipeline>.shaderName. 3) Set base-color property per full.pipelineComparisonQuickTable. Default _BaseMap is white, so a single color call is enough.",
+        "evidence": "Gemini session 2026-04-20 spent 3-4 iterations confusing _Color vs _BaseColor when creating red cube and white plane under URP."
+      },
+      {
+        "scenario": "Setting a property on a material whose shader you don't fully know",
+        "rule": "Guard Set* calls with Material.HasProperty(name). Do not rely on silent success — URP Lit accepts _Color without error but writes to a hidden alias, producing a silent visual bug.",
+        "evidence": "Unity Discussions thread on missing _Color property. URP Lit shader source declares [HideInInspector] _Color and _MainTex as obsolete aliases."
+      },
+      {
+        "scenario": "Legacy code calls SetColor('_Color', ...) on a URP material and the color doesn't change",
+        "rule": "This is the backward-compat alias trap. Replace with SetColor('_BaseColor', ...). Treat all _Color / _MainTex uses in URP contexts as suspect and fix them in bulk.",
+        "evidence": "URP Lit.shader declares _Color and _MainTex as [HideInInspector] backward-compat aliases — they accept writes but are unused in rendering."
+      },
+      {
+        "scenario": "Cross-pipeline code needs to set emission",
+        "rule": "Branch on pipeline: Built-in/URP → _EmissionColor + _EmissionMap + EnableKeyword('_EMISSION'). HDRP → _EmissiveColor + _EmissiveColorMap (HDRP keyword handling differs — check full.shaders.hdrp-lit.notes).",
+        "evidence": "Direct shader source inspection."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Material.SetColor('_Color', ...) on URP material succeeds silently but visual doesn't change.",
+        "cause": "Writing to URP Lit's hidden _Color backward-compat alias, not _BaseColor.",
+        "fix": "Use _BaseColor. Verify with HasProperty before write in cross-pipeline code."
+      },
+      {
+        "symptom": "Log: \"Material doesn't have a color property '_Color'\".",
+        "cause": "Target shader (custom URP, HDRP, or stripped variant) doesn't declare _Color.",
+        "fix": "Detect pipeline, use correct property name, guard with HasProperty."
+      },
+      {
+        "symptom": "Emission works on Built-in/URP but HDRP material stays dark.",
+        "cause": "HDRP uses _EmissiveColor, not _EmissionColor.",
+        "fix": "Branch property name by pipeline. See full.pipelineComparisonQuickTable."
+      },
+      {
+        "symptom": "Normal map appears on Built-in/URP but not HDRP after scripted setup.",
+        "cause": "HDRP uses _NormalMap; Built-in / URP Lit use _BumpMap.",
+        "fix": "Map property name by pipeline."
+      }
+    ],
+
+    "pipelineDetection": {
+      "summary": "This entry's sibling KB (kb-rendering-pipeline-detection) covers detection in depth. Quick answer: GraphicsSettings.currentRenderPipeline returns null on Built-in, a RenderPipelineAsset on URP/HDRP. Inspect the asset typename to distinguish URP from HDRP.",
+      "quickApi": "UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline"
+    },
+
+    "versionDeltas": [
+      {
+        "version": "2019.3",
+        "change": "LightweightRenderPipeline (LWRP) renamed to UniversalRenderPipeline (URP). Shader names changed from 'Lightweight Render Pipeline/Lit' to 'Universal Render Pipeline/Lit'. LWRP shader type names deprecated.",
+        "breaking": true,
+        "migrationNote": "Old LWRP shader references must be updated to 'Universal Render Pipeline/Lit'. Affects projects migrating from pre-2019.3."
+      },
+      {
+        "version": "2019.x",
+        "change": "URP Lit shader added hidden [HideInInspector] _Color and _MainTex backward-compat aliases for code written against Standard shader.",
+        "breaking": false,
+        "migrationNote": "SetColor('_Color', ...) succeeds silently on URP but writes to unused slot. Use _BaseColor. This is the source of the 'material looks unchanged' bug in the Gemini fluid session."
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 ships URP 17.x. No property name changes for Lit shader. Additional shader features added but don't affect core property mapping.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Standard Shader parameters",            "url": "https://docs.unity3d.com/Manual/StandardShaderMaterialParameters.html" },
+    { "title": "Unity Manual — URP Lit shader",                        "url": "https://docs.unity3d.com/6000.0/Documentation/Manual/urp/lit-shader.html" },
+    { "title": "Unity Manual — Change or detect the active pipeline",  "url": "https://docs.unity3d.com/Manual/srp-setting-render-pipeline-asset.html" },
+    { "title": "ScriptReference — GraphicsSettings.currentRenderPipeline", "url": "https://docs.unity3d.com/ScriptReference/Rendering.GraphicsSettings-currentRenderPipeline.html" },
+    { "title": "ScriptReference — Material.SetColor",                  "url": "https://docs.unity3d.com/ScriptReference/Material.SetColor.html" },
+    { "title": "ScriptReference — Material.HasProperty",               "url": "https://docs.unity3d.com/ScriptReference/Material.HasProperty.html" }
+  ],
+
+  "sources": [
+    { "title": "URP Lit.shader source",                   "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader" },
+    { "title": "URP SimpleLit.shader source",             "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/SimpleLit.shader" },
+    { "title": "URP Unlit.shader source",                 "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Unlit.shader" },
+    { "title": "HDRP Lit.shader source",                  "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Runtime/Material/Lit/Lit.shader" },
+    { "title": "Unity Discussions — missing _Color property on URP",  "url": "https://discussions.unity.com/t/solved-material-doesnt-have-a-color-property-_color/398944" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs and open-source shader source (BSD-family licensed Unity-Technologies/Graphics). Property names and API signatures are factual data (not copyrightable). Explanatory prose, decision rules, llmGuidance, and commonPitfalls are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

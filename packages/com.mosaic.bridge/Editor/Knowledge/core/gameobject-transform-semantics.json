@@ -1,0 +1,224 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-core-gameobject-transform-semantics",
+  "title": "GameObject + Transform — World/Local Space, Parenting, Hierarchy",
+  "version": "1.1.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Core semantics of Unity's Transform component: world vs local space, position/rotation/scale relationships across parent-child hierarchies, the TransformPoint/InverseTransformPoint API family, SetParent's worldPositionStays boolean, and common traps when constructing scenes programmatically. The most common bug class in code-generated scenes — especially for procedural simulations — is mixing world and local coordinates or setting position after reparenting without updating to localPosition. Read this before programmatically placing, parenting, or transforming GameObjects.",
+
+  "mosaicTools": [
+    "gameobject/create",
+    "gameobject/delete",
+    "gameobject/duplicate",
+    "gameobject/find_by_name",
+    "gameobject/get_info",
+    "gameobject/reparent",
+    "gameobject/set_active",
+    "gameobject/set_transform",
+    "component/add",
+    "component/get_properties",
+    "component/list",
+    "component/remove",
+    "component/set_property",
+    "component/set_reference",
+    "search/by_component",
+    "search/by_layer",
+    "search/by_name",
+    "search/by_tag",
+    "search/missing_references",
+    "selection/focus-scene-view",
+    "selection/get",
+    "selection/set",
+    "taglayer/tag",
+    "view/explode",
+    "lod/create",
+    "lod/info"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle",
+    "kb-core-prefab-workflow"
+  ],
+
+  "llmGuidance": {
+    "when_placing_a_newly_created_object_at_a_world_position":
+      "Set transform.position AFTER SetParent, OR use transform.localPosition if you mean 'relative to parent'. Setting position BEFORE parenting with worldPositionStays=true is fine; Unity back-computes localPosition. The #1 bug: calling SetParent then position = zero and expecting parent origin — that moves to WORLD origin.",
+    "when_converting_between_world_and_local_space":
+      "Use transform.TransformPoint(localPoint) to go local→world (applies translation, rotation, scale). Use transform.InverseTransformPoint(worldPoint) for world→local. For vectors without translation use TransformVector/InverseTransformVector. For unit directions (forward, normals) use TransformDirection/InverseTransformDirection — ignores scale.",
+    "when_setting_scale_on_a_parent_that_has_rotation":
+      "transform.lossyScale is an APPROXIMATION. When a rotated parent is combined with non-uniform scale the true accumulated transform is a sheared 3x3 matrix, not a diagonal scale — lossyScale becomes inaccurate. Avoid non-uniform scale on rotated parents if colliders or lossyScale reads matter.",
+    "when_rotating_programmatically":
+      "Store and manipulate rotations as Quaternions, not Euler angles. Build Quaternions via Quaternion.Euler(x,y,z), Quaternion.AngleAxis(angle,axis), or Quaternion.LookRotation(forward,up). Slerp for camera/character rotation, Lerp only for small deltas. Raw eulerAngles mutation causes drift because Quaternion→Euler is not unique.",
+    "when_reparenting_without_changing_appearance":
+      "SetParent(newParent, worldPositionStays: true) — Unity recomputes local values so world pose is preserved. Default overload (single arg) is equivalent. If you pass false, localPosition/rotation/scale are kept and world pose changes.",
+    "when_finding_components_in_a_hierarchy":
+      "GetComponentInChildren<T>() and GetComponentInParent<T>() include self. Use the includeInactive overload (default false) to also search disabled GameObjects. For direct children only, iterate transform.GetChild(i)."
+  },
+
+  "full": {
+    "worldVsLocalSpace": {
+      "position": {
+        "worldApi": "transform.position",
+        "localApi": "transform.localPosition",
+        "relationship": "position = parent.TransformPoint(localPosition); equal when no parent.",
+        "commonUse": "position for spawn points and physics. localPosition for offsets within rigs / prefabs."
+      },
+      "rotation": {
+        "worldApi": "transform.rotation (Quaternion)",
+        "localApi": "transform.localRotation (Quaternion)",
+        "relationship": "rotation == parent.rotation * localRotation when parent exists",
+        "commonUse": "Always store as Quaternion. Convert to/from Euler only for UI."
+      },
+      "scale": {
+        "worldApi": "transform.lossyScale (Vector3, read-only, lossy under rotated parents)",
+        "localApi": "transform.localScale (Vector3, writable)",
+        "relationship": "lossyScale ≈ parent.lossyScale × localScale, but inaccurate when ancestor rotation combines with non-uniform scale — produces shear not representable as a diagonal Vector3.",
+        "commonUse": "Set localScale. Read lossyScale cautiously; check parents are uniformly scaled first."
+      },
+      "euler": {
+        "worldApi": "transform.eulerAngles",
+        "localApi": "transform.localEulerAngles",
+        "pitfall": "Reading after setting may return a different-but-equivalent triple. Gimbal lock near ±90° pitch. Store rotations as Quaternions; convert to Euler only for UI display."
+      }
+    },
+
+    "transformationApis": [
+      { "method": "TransformPoint(localPoint)",              "effect": "Translation + rotation + scale — full affine", "useFor": "Positions." },
+      { "method": "InverseTransformPoint(worldPoint)",       "effect": "Inverse of TransformPoint",                  "useFor": "World→local positions." },
+      { "method": "TransformVector(localVector)",            "effect": "Rotation + scale, no translation",           "useFor": "Velocities, offsets that should scale." },
+      { "method": "InverseTransformVector(worldVector)",     "effect": "Inverse of TransformVector",                 "useFor": "World→local vectors." },
+      { "method": "TransformDirection(localDir)",            "effect": "Rotation only",                              "useFor": "Unit directions (forward, normal)." },
+      { "method": "InverseTransformDirection(worldDir)",     "effect": "Inverse of TransformDirection",              "useFor": "World→local directions." },
+      { "method": "localToWorldMatrix / worldToLocalMatrix", "effect": "Matrix4x4 forms",                            "useFor": "Batched transforms, Graphics.DrawMesh." }
+    ],
+
+    "parentingBehavior": {
+      "api": "SetParent(newParent, worldPositionStays)",
+      "defaultArg": "worldPositionStays = true",
+      "trueBehavior": "World pose preserved. localPosition/Rotation/Scale are recomputed.",
+      "falseBehavior": "Local values preserved. World pose changes.",
+      "noteRectTransform": "RectTransform (UI) inherits Transform but adds anchoredPosition, anchorMin/Max, pivot, sizeDelta. UI layout math overrides naive localPosition reasoning."
+    },
+
+    "hierarchyApis": [
+      { "api": "Transform.Find(name)",                "behavior": "Searches immediate children by name; supports slash-paths 'A/B/C' for descendants." },
+      { "api": "Transform.GetChild(index)",           "behavior": "Direct child by index. Pair with childCount." },
+      { "api": "Transform.childCount",                "behavior": "Number of direct children." },
+      { "api": "GetComponentInChildren<T>(bool includeInactive = false)", "behavior": "Depth-first, includes self. Inactive GOs skipped by default." },
+      { "api": "GetComponentInParent<T>(bool includeInactive = false)",   "behavior": "Walks up the hierarchy including self. Inactive GOs skipped by default." },
+      { "api": "Transform.SetSiblingIndex(i) / GetSiblingIndex()",        "behavior": "Reorder among siblings. Affects UI draw order." }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Programmatically creating a GameObject and placing it relative to an existing object",
+        "rule": "1) Create or find parent. 2) Create child, then SetParent(parent, true). 3) Set child.localPosition = offsetFromParent. DO NOT set position=zero and expect parent origin — that goes to world origin.",
+        "evidence": "Fluid session 2026-04-20: fluid manager repeatedly had particles simulated in local space but emitted in world space due to mixing transform.position with local spawn intent."
+      },
+      {
+        "scenario": "Converting a mouse/screen world point to a coordinate inside a rotated prefab",
+        "rule": "parent.InverseTransformPoint(worldPoint). Don't subtract parent.position — that ignores rotation/scale.",
+        "evidence": "Standard Unity pattern."
+      },
+      {
+        "scenario": "Need to scale a group uniformly",
+        "rule": "Set localScale on the parent. Avoid non-uniform scale on rotated parents — causes shear, breaks lossyScale, and warns at colliders.",
+        "evidence": "Unity physics manual on non-uniform scale."
+      },
+      {
+        "scenario": "Saving/restoring a world pose across reparent operations",
+        "rule": "SetParent(newParent, worldPositionStays: true) — preserves world pose. Default behavior; the single-arg overload is equivalent.",
+        "evidence": "ScriptReference for SetParent."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "After SetParent, setting transform.position = Vector3.zero moves object to world origin instead of parent origin.",
+        "cause": "position is world-space. Using it post-reparent assumes world coords.",
+        "fix": "Use transform.localPosition = Vector3.zero if you mean parent origin."
+      },
+      {
+        "symptom": "Instantiated prefab appears at unexpected location when passed a parent.",
+        "cause": "Instantiate(prefab, parent) preserves the prefab's world pose; to drop it at parent origin you need Instantiate(prefab, parent, worldPositionStays: false) or explicit localPosition reset after.",
+        "fix": "Use the 3-arg Instantiate overload or set localPosition after."
+      },
+      {
+        "symptom": "lossyScale reads wrong on a child of a rotated parent with non-uniform scale.",
+        "cause": "Combined rotation + non-uniform scale produces shear; lossyScale flattens to Vector3 and loses information.",
+        "fix": "Only read lossyScale when ancestors are uniformly scaled, or use localToWorldMatrix decomposition for accurate results."
+      },
+      {
+        "symptom": "Accumulating small eulerAngles writes cause rotation drift.",
+        "cause": "Quaternion→Euler is not unique; reconversion yields different triples.",
+        "fix": "Store rotation as Quaternion; apply deltas with Quaternion.Euler(delta) * currentRotation."
+      },
+      {
+        "symptom": "GetComponentInChildren returns null even though component exists.",
+        "cause": "Component is on a disabled GameObject; default includeInactive=false skips it.",
+        "fix": "Pass includeInactive: true."
+      },
+      {
+        "symptom": "Colliders misbehave under sheared / non-uniform parent scale.",
+        "cause": "Unity colliders assume rigid transforms; shear breaks collision math.",
+        "fix": "Flatten scale into the mesh/collider at authoring time; or use uniform scale on colliders' GameObjects."
+      }
+    ],
+
+    "quaternionBestPractices": {
+      "build": [
+        "Quaternion.Euler(x, y, z) — from designer-friendly angles",
+        "Quaternion.AngleAxis(angle, axis) — rotation around a known axis",
+        "Quaternion.LookRotation(forward, up) — orient toward a target"
+      ],
+      "interpolate": [
+        "Quaternion.Slerp — constant angular velocity; use for cameras and characters",
+        "Quaternion.Lerp — cheaper, non-uniform; only for very small deltas"
+      ],
+      "avoid": [
+        "Mutating eulerAngles components — struct, doesn't compile",
+        "Reading/writing eulerAngles in a loop — drift and gimbal artifacts"
+      ]
+    },
+
+    "versionDeltas": [
+      {
+        "version": "2021.3 LTS",
+        "change": "Transform APIs are extremely stable. All methods covered here (TransformPoint, SetParent, localPosition, etc.) predate 2021.3 by many versions.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "ScriptReference — Transform.position",               "url": "https://docs.unity3d.com/ScriptReference/Transform-position.html" },
+    { "title": "ScriptReference — Transform.localPosition",          "url": "https://docs.unity3d.com/ScriptReference/Transform-localPosition.html" },
+    { "title": "ScriptReference — Transform.rotation",               "url": "https://docs.unity3d.com/ScriptReference/Transform-rotation.html" },
+    { "title": "ScriptReference — Transform.localRotation",          "url": "https://docs.unity3d.com/ScriptReference/Transform-localRotation.html" },
+    { "title": "ScriptReference — Transform.lossyScale",             "url": "https://docs.unity3d.com/ScriptReference/Transform-lossyScale.html" },
+    { "title": "ScriptReference — Transform.localScale",             "url": "https://docs.unity3d.com/ScriptReference/Transform-localScale.html" },
+    { "title": "ScriptReference — Transform.eulerAngles",            "url": "https://docs.unity3d.com/ScriptReference/Transform-eulerAngles.html" },
+    { "title": "ScriptReference — Transform.TransformPoint",         "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformPoint.html" },
+    { "title": "ScriptReference — Transform.InverseTransformPoint",  "url": "https://docs.unity3d.com/ScriptReference/Transform.InverseTransformPoint.html" },
+    { "title": "ScriptReference — Transform.TransformVector",        "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformVector.html" },
+    { "title": "ScriptReference — Transform.TransformDirection",     "url": "https://docs.unity3d.com/ScriptReference/Transform.TransformDirection.html" },
+    { "title": "ScriptReference — Transform.SetParent",              "url": "https://docs.unity3d.com/ScriptReference/Transform.SetParent.html" },
+    { "title": "ScriptReference — Transform.GetChild",               "url": "https://docs.unity3d.com/ScriptReference/Transform.GetChild.html" },
+    { "title": "ScriptReference — Component.GetComponentInChildren", "url": "https://docs.unity3d.com/ScriptReference/Component.GetComponentInChildren.html" },
+    { "title": "ScriptReference — Quaternion.LookRotation",          "url": "https://docs.unity3d.com/ScriptReference/Quaternion.LookRotation.html" },
+    { "title": "ScriptReference — Quaternion.Slerp",                 "url": "https://docs.unity3d.com/ScriptReference/Quaternion.Slerp.html" },
+    { "title": "Unity Manual — Transform (non-uniform scale warning)", "url": "https://docs.unity3d.com/Manual/class-Transform.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs and Manual pages. API signatures, method behaviors, and mathematical relationships (position = parent.TransformPoint(localPosition)) are factual. Explanatory prose, decision rules, llmGuidance, and commonPitfalls are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

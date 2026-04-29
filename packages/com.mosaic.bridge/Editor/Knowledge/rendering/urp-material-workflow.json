@@ -1,0 +1,320 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-rendering-urp-material-workflow",
+  "title": "URP Material & Shader Workflow",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "rendering",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "End-to-end workflow for creating and configuring materials on the Universal Render Pipeline: which URP shader to pick (Lit, Simple Lit, Unlit, Particles Lit, Complex Lit), how to drive surface mode / blending / alpha clipping through float properties (_Surface, _Blend, _AlphaClip, _Cutoff), and why feature toggles like emission, normal maps, and metallic maps require BOTH a property write AND a matching shader keyword (_EMISSION, _NORMALMAP, _METALLICSPECGLOSSMAP). Use before any mosaic material/create or set-property call targeting URP — it prevents the four most common failure modes: pink materials, invisible transparency, dark emission, flat normals.",
+
+  "mosaicTools": [
+    "material/create",
+    "material/set-property",
+    "material/assign",
+    "material/set-color",
+    "graphics/set-shader",
+    "shader/create-compute",
+    "urp/volume",
+    "urp/decal",
+    "urp/renderer_feature",
+    "shadergraph/create",
+    "shadergraph/set-property-default",
+    "probuilder/set_material",
+    "mesh/material-assign",
+    "render/portal",
+    "procgen/spawn"
+  ],
+
+  "relatedKb": [
+    "kb-rendering-shader-properties",
+    "kb-rendering-pipeline-detection",
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_creating_any_urp_material":
+      "Default to shaderName 'Universal Render Pipeline/Lit' unless a specific reason exists (Unlit for FX/UI, Simple Lit for mobile, Particles Lit for VFX). Never use 'Standard' on URP — it renders pink.",
+    "when_making_a_material_transparent":
+      "You MUST do all four: set _Surface=1 (Transparent), set _Blend=0 (Alpha, or 1/2/3 for other modes), set material.renderQueue to 3000 (Transparent), and EnableKeyword('_SURFACE_TYPE_TRANSPARENT'). Setting only one of the four produces a silent visual bug.",
+    "when_enabling_emission":
+      "Three steps. 1) material.SetColor('_EmissionColor', hdrColor) — values >1 for bloom. 2) material.EnableKeyword('_EMISSION'). 3) optionally GlobalIllumination.EmissiveIsBlack=false via material.globalIlluminationFlags. Skipping step 2 leaves the material dark even though the property reads back correctly.",
+    "when_assigning_a_normal_map":
+      "material.SetTexture('_BumpMap', tex) + material.EnableKeyword('_NORMALMAP'). The texture's import settings must be Texture Type=Normal map. Without the keyword the sampler runs but the shader branch is dead-code, so the map has no visible effect.",
+    "when_choosing_alphaClip_vs_transparent":
+      "Alpha clip (_AlphaClip=1 + keyword _ALPHATEST_ON) for foliage, chain-link fences, cutouts — casts shadows, batches with opaque, sorts per-pixel. Transparent for glass, smoke, glow — breaks opaque sorting, is more expensive, order-dependent. Prefer alpha clip when the silhouette is what matters.",
+    "when_Shader_Find_returns_null_for_a_URP_shader":
+      "Pipeline shaders are stripped from builds unless referenced. Add the shader to Project Settings > Graphics > Always Included Shaders, or keep a material asset in the scene that uses it. Shader.Find only works in the editor reliably.",
+    "when_creating_material_at_runtime":
+      "Prefer holding a serialized Material reference on a MonoBehaviour and calling new Material(reference). This avoids Shader.Find entirely and survives build stripping. Shader.Find should be considered a last resort.",
+    "when_setting_color_property":
+      "URP Lit uses _BaseColor, not _Color. _Color still exists as a hidden backward-compat alias and accepts writes silently without any visible effect. See kb-rendering-shader-properties for the full cross-pipeline name table."
+  },
+
+  "full": {
+    "shaderSelection": {
+      "summary": "URP ships five first-party shaders covering the common lighting models. Pick by use-case; do not default to Lit for everything — unlit FX and particles have better-suited shaders that also cost less.",
+      "shaders": [
+        { "shaderName": "Universal Render Pipeline/Lit",          "lighting": "PBR (metallic/specular)", "use": "General purpose opaque/transparent surfaces. Default choice." },
+        { "shaderName": "Universal Render Pipeline/Simple Lit",   "lighting": "Blinn-Phong",             "use": "Mobile, stylized art, lower-end hardware. Cheaper than Lit." },
+        { "shaderName": "Universal Render Pipeline/Unlit",        "lighting": "None",                    "use": "UI overlays, holograms, procedural effects, skyboxes authored as materials." },
+        { "shaderName": "Universal Render Pipeline/Particles/Lit","lighting": "PBR with particle streams","use": "Particle System renderers that need lighting (smoke, dust, embers with PBR)." },
+        { "shaderName": "Universal Render Pipeline/Complex Lit",  "lighting": "PBR + clear coat + extras","use": "Car paint, lacquered surfaces, layered materials. URP 12+ only. More expensive." }
+      ],
+      "antiPattern": "Assigning the Built-in 'Standard' shader to a URP material yields the pink error shader because Standard is not valid under URP. Always prefix URP shader paths with 'Universal Render Pipeline/'."
+    },
+
+    "propertyReference": {
+      "summary": "Full per-shader property tables live in kb-rendering-shader-properties — do not duplicate. URP Lit's most-used properties, at a glance:",
+      "keyProperties": [
+        { "property": "_BaseColor",        "type": "Color",     "notes": "Replaces Standard's _Color. Tagged [MainColor]." },
+        { "property": "_BaseMap",          "type": "Texture2D", "notes": "Replaces Standard's _MainTex. Tagged [MainTexture]." },
+        { "property": "_Metallic",         "type": "Float 0-1", "notes": "PBR workflow only. Ignored in Specular workflow." },
+        { "property": "_Smoothness",       "type": "Float 0-1", "notes": "Inverse of roughness. Default 0.5." },
+        { "property": "_BumpMap",          "type": "Texture2D", "notes": "Tangent-space normal map. Requires _NORMALMAP keyword." },
+        { "property": "_BumpScale",        "type": "Float",     "notes": "Normal intensity multiplier." },
+        { "property": "_OcclusionMap",     "type": "Texture2D", "notes": "Ambient occlusion. Requires _OCCLUSIONMAP keyword." },
+        { "property": "_EmissionColor",    "type": "Color HDR", "notes": "Intensity > 1 drives bloom. Requires _EMISSION keyword." },
+        { "property": "_EmissionMap",      "type": "Texture2D", "notes": "Multiplies with _EmissionColor. Requires _EMISSION keyword." }
+      ],
+      "hdrpDifference": "HDRP Lit uses _BaseColorMap (not _BaseMap), _NormalMap (not _BumpMap), and _EmissiveColor (not _EmissionColor). If Mosaic generates cross-pipeline code, branch by pipeline — see kb-rendering-pipeline-detection."
+    },
+
+    "surfaceModes": {
+      "summary": "URP Lit/Unlit expose a dual-float surface model. _Surface chooses opaque vs transparent; _Blend chooses the blend math when transparent. Changing these at runtime requires also rewriting the render queue and the matching keyword — Unity's Editor inspector does all of this in one click, scripting does not.",
+      "properties": [
+        { "property": "_Surface",  "values": "0=Opaque, 1=Transparent" },
+        { "property": "_Blend",    "values": "0=Alpha, 1=Premultiply, 2=Additive, 3=Multiply", "only": "_Surface=1" },
+        { "property": "_ZWrite",   "values": "0=off, 1=on", "note": "Transparent usually _ZWrite=0; opaque _ZWrite=1." },
+        { "property": "_Cull",     "values": "0=Off (double-sided), 1=Front, 2=Back (default)" }
+      ],
+      "renderQueues": [
+        { "mode": "Opaque",       "queue": 2000 },
+        { "mode": "AlphaTest",    "queue": 2450 },
+        { "mode": "Transparent",  "queue": 3000 }
+      ],
+      "runtimeRecipe": "To flip an opaque material to transparent at runtime: mat.SetFloat('_Surface', 1); mat.SetFloat('_Blend', 0); mat.SetFloat('_ZWrite', 0); mat.renderQueue = 3000; mat.EnableKeyword('_SURFACE_TYPE_TRANSPARENT'); mat.DisableKeyword('_ALPHATEST_ON'); mat.SetOverrideTag('RenderType','Transparent'); mat.SetInt('_SrcBlend',(int)BlendMode.SrcAlpha); mat.SetInt('_DstBlend',(int)BlendMode.OneMinusSrcAlpha);"
+    },
+
+    "alphaAndCutout": {
+      "summary": "Alpha clipping and transparency solve different problems and have very different performance envelopes. Pick one; do not enable both.",
+      "alphaClip": {
+        "recipe": "mat.SetFloat('_AlphaClip', 1); mat.SetFloat('_Cutoff', 0.5); mat.EnableKeyword('_ALPHATEST_ON'); mat.renderQueue = 2450;",
+        "use": "Foliage, fences, hair cards, decals with hard edges.",
+        "pros": "Casts shadows. Batches with opaque. No sort order issues. Cheap.",
+        "cons": "Hard edges only (no partial transparency). GPU early-Z suffers slightly."
+      },
+      "transparent": {
+        "recipe": "See full.surfaceModes.runtimeRecipe.",
+        "use": "Glass, water, smoke, glow, UI with fading alpha.",
+        "pros": "Smooth alpha gradient. Custom blend modes.",
+        "cons": "Per-object sort order. Overdraw cost. Shadow casting is limited/approximate. Defeats SRP Batcher grouping with opaque."
+      }
+    },
+
+    "emission": {
+      "summary": "Emission is the textbook example of URP's keyword-gated feature pattern. Setting the color alone does nothing. The shader has a compile-time branch guarded by _EMISSION; if the keyword is off, the emission code is dead.",
+      "steps": [
+        "mat.SetColor('_EmissionColor', color); — color can exceed 1 in each channel for HDR intensity that bloom will pick up.",
+        "mat.EnableKeyword('_EMISSION'); — without this, the color is written but never sampled.",
+        "mat.SetTexture('_EmissionMap', tex); — optional, multiplies with the color.",
+        "mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.BakedEmissive; — optional, makes emission contribute to baked lightmaps."
+      ],
+      "bloom": "HDR emission values only produce a glow when a Volume with a Bloom override is present in the scene AND the URP asset's post-processing is enabled. Without bloom, intensity 5 looks identical to intensity 1 on screen."
+    },
+
+    "normalMaps": {
+      "summary": "Two independent failure points: (1) the texture must be imported as Normal map, (2) the shader keyword must be enabled. Either omission produces a flat-looking surface with no error.",
+      "steps": [
+        "In the importer: Texture Type=Normal map. Unity swaps the channel layout; without this, samples read from the wrong channels.",
+        "mat.SetTexture('_BumpMap', tex);",
+        "mat.SetFloat('_BumpScale', 1.0f); — runtime intensity.",
+        "mat.EnableKeyword('_NORMALMAP'); — gates the tangent-space fetch in URP Lit's fragment shader."
+      ],
+      "commonFailure": "Script sets _BumpMap but forgets _NORMALMAP — the texture is bound to a sampler that is never read. Material inspector shows the map but the surface stays smooth."
+    },
+
+    "keywordSystem": {
+      "summary": "URP shaders use compile-time multi_compile / shader_feature keywords to keep variants cheap. Setting a property sets data; enabling a keyword selects which code path runs. Most URP features require both.",
+      "keywordMap": [
+        { "keyword": "_EMISSION",                   "gates": "emission color + map sampling" },
+        { "keyword": "_NORMALMAP",                  "gates": "tangent-space normal sampling" },
+        { "keyword": "_METALLICSPECGLOSSMAP",       "gates": "metallic/specular-gloss texture path" },
+        { "keyword": "_OCCLUSIONMAP",               "gates": "AO texture sampling" },
+        { "keyword": "_ALPHATEST_ON",               "gates": "alpha clip (discard) path" },
+        { "keyword": "_SURFACE_TYPE_TRANSPARENT",   "gates": "transparent blending path" },
+        { "keyword": "_RECEIVE_SHADOWS_OFF",        "gates": "skip shadow receive sampling" },
+        { "keyword": "_SPECULAR_SETUP",             "gates": "specular workflow (vs metallic)" }
+      ],
+      "stripping": "Unity strips unused keyword variants from builds. If a runtime EnableKeyword call references a variant that was never seen during asset authoring, the keyword is stripped and the call is a no-op in the built player. Add materials that exercise each needed variant to the build, or register the shader in Graphics Settings > Shader Stripping."
+    },
+
+    "materialInstancing": {
+      "summary": "Two overlapping concepts that are easy to conflate. GPU instancing batches many draws of one material into one draw call. MaterialPropertyBlock lets you vary a property per renderer without cloning the material.",
+      "gpuInstancing": {
+        "setup": "mat.enableInstancing = true; — this is the primary toggle. Some custom shaders additionally require EnableKeyword('INSTANCING_ON'), but URP's built-in shaders handle this internally.",
+        "use": "Many instances of the same mesh+material (rocks, grass, foliage cards)."
+      },
+      "materialPropertyBlock": {
+        "setup": "var block = new MaterialPropertyBlock(); block.SetColor('_BaseColor', c); renderer.SetPropertyBlock(block);",
+        "use": "Per-renderer color/float/texture variations without breaking instancing or creating N material instances.",
+        "caveat": "MaterialPropertyBlock cannot toggle keywords. For per-instance emission ON/OFF you still need separate materials or a shader that branches on a vector property."
+      },
+      "instancePerRenderer": "Accessing Renderer.material (not sharedMaterial) clones the material, giving each renderer its own copy. Cheap for a handful of objects, disastrous at scale — breaks instancing and bloats memory."
+    },
+
+    "runtimeMaterialCreation": {
+      "summary": "Four ways to get a Material at runtime, in descending order of preference.",
+      "options": [
+        { "method": "Serialized Material reference on a MonoBehaviour",   "pros": "Works in builds, no strings, survives stripping.",              "cons": "Requires Inspector setup." },
+        { "method": "Addressables / Resources.Load<Material>",            "pros": "Dynamic loading, still asset-referenced.",                      "cons": "Needs folder conventions; Resources inflates build size." },
+        { "method": "new Material(existingMaterialReference)",            "pros": "Clone a configured template without touching shaders.",        "cons": "Each clone is a separate asset at runtime." },
+        { "method": "new Material(Shader.Find(name))",                    "pros": "No asset dependency.",                                         "cons": "Shader.Find returns null in builds if shader is stripped. Treat as last resort." }
+      ],
+      "rule": "In Mosaic-generated editor scripts, Shader.Find is acceptable because the editor holds every shader. In Mosaic-generated runtime/player code, prefer a serialized reference or Resources.Load."
+    },
+
+    "urpVersionMatrix": {
+      "summary": "Property names and keyword conventions have been stable across URP majors 10-17. Breaking changes are rare; most deltas are additive shader features.",
+      "versions": [
+        { "urp": "10.x",  "unity": "2020.3 LTS", "note": "Older LTS. Same property names as current. Complex Lit not present." },
+        { "urp": "12.x",  "unity": "2021.3 LTS", "note": "Complex Lit introduced. Render Graph not yet default." },
+        { "urp": "14.x",  "unity": "2022.3 LTS", "note": "Forward+ renderer path added. No Lit property renames." },
+        { "urp": "17.x",  "unity": "6000.0+",    "note": "Render Graph default. Same Lit property names. Stable." }
+      ]
+    },
+
+    "commonFailureModes": [
+      { "symptom": "Object renders bright pink",                 "cause": "Shader not found or wrong pipeline (Standard on URP).",                   "fix": "Set shader to 'Universal Render Pipeline/Lit'. Verify pipeline via kb-rendering-pipeline-detection." },
+      { "symptom": "Transparent object is invisible",            "cause": "_Surface set to 1 but render queue still 2000, or keyword missing.",       "fix": "Use full.surfaceModes.runtimeRecipe — all six settings." },
+      { "symptom": "Emission color set but material stays dark", "cause": "_EMISSION keyword not enabled.",                                          "fix": "mat.EnableKeyword('_EMISSION') after SetColor." },
+      { "symptom": "Normal map assigned but surface stays flat", "cause": "_NORMALMAP keyword missing, or texture not imported as Normal map.",       "fix": "Enable _NORMALMAP keyword and set TextureImporter.textureType = Normal." },
+      { "symptom": "Color change has no effect on URP material", "cause": "Used _Color (Built-in name) on URP Lit. Writes to hidden alias slot.",    "fix": "Use _BaseColor. See kb-rendering-shader-properties." },
+      { "symptom": "Shader.Find returns null in build only",     "cause": "Shader stripped from build because unreferenced.",                        "fix": "Add to Graphics > Always Included Shaders, or reference a material asset in a scene." }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Mosaic tool needs to create an opaque colored URP material",
+        "rule": "1) Assert pipeline is URP. 2) new Material with Shader.Find('Universal Render Pipeline/Lit') or a referenced shader. 3) SetColor('_BaseColor', color). Done — default _BaseMap is white, no keyword needed.",
+        "evidence": "URP Lit.shader source declares _BaseColor with [MainColor] and _BaseMap default white."
+      },
+      {
+        "scenario": "Mosaic tool needs to create a transparent URP material (glass, water surface)",
+        "rule": "Apply full.surfaceModes.runtimeRecipe exactly. All six settings (_Surface, _Blend, _ZWrite, renderQueue, keyword, blend modes) are mandatory — no partial states render correctly.",
+        "evidence": "URP Lit.shader surface.hlsl branches on _SURFACE_TYPE_TRANSPARENT keyword; blend state is read from _SrcBlend/_DstBlend material ints."
+      },
+      {
+        "scenario": "Mosaic tool needs a glowing material",
+        "rule": "SetColor('_EmissionColor', hdrColor) then EnableKeyword('_EMISSION'). For glow-on-screen also require a URP Volume with Bloom in the scene. Intensity > 1 requires HDR color.",
+        "evidence": "URP Lit fragment shader #ifdef _EMISSION guards EmissionColor sampling."
+      },
+      {
+        "scenario": "Mosaic tool needs per-instance color on many renderers",
+        "rule": "Use MaterialPropertyBlock + renderer.SetPropertyBlock. Do NOT assign renderer.material per instance — it clones and breaks batching.",
+        "evidence": "Unity SRP Batcher docs: MaterialPropertyBlock variants are batcher-compatible; per-instance Material clones are not."
+      },
+      {
+        "scenario": "Mosaic tool needs alpha-clipped foliage",
+        "rule": "Shader Lit or Simple Lit, _AlphaClip=1, _Cutoff=0.5, EnableKeyword('_ALPHATEST_ON'), renderQueue=2450. Do NOT also set _Surface=1 — that's transparency, not cutout.",
+        "evidence": "URP Lit.shader AlphaClip.hlsl gated by _ALPHATEST_ON keyword; alpha-test queue is 2450 per Unity standard."
+      }
+    ],
+
+    "antiPatterns": [
+      {
+        "mistake": "Using Shader.Find('Standard') on a URP project",
+        "why": "Standard is the Built-in PBR shader. URP does not render it, so the material falls back to pink error shader.",
+        "instead": "Use 'Universal Render Pipeline/Lit'. Detect pipeline first — see kb-rendering-pipeline-detection."
+      },
+      {
+        "mistake": "Setting _Color on a URP Lit material",
+        "why": "URP Lit exposes _Color as a hidden backward-compat alias. The write succeeds silently but the value is never sampled.",
+        "instead": "Use _BaseColor. Guard cross-pipeline code with Material.HasProperty."
+      },
+      {
+        "mistake": "Setting _EmissionColor without enabling _EMISSION keyword",
+        "why": "URP Lit's emission branch is #ifdef _EMISSION. Without the keyword the color is inert.",
+        "instead": "Always pair SetColor('_EmissionColor', c) with EnableKeyword('_EMISSION')."
+      },
+      {
+        "mistake": "Flipping _Surface to 1 and assuming transparency works",
+        "why": "_Surface by itself only changes a uniform. Render queue stays at Opaque (2000), blend state is wrong, and the transparent keyword is off, so the object renders opaque or not at all.",
+        "instead": "Apply the full six-step recipe in full.surfaceModes.runtimeRecipe."
+      },
+      {
+        "mistake": "Using renderer.material in a loop to tint many objects",
+        "why": "Each access clones the material, breaks SRP Batcher, and allocates per-object memory.",
+        "instead": "MaterialPropertyBlock. One shared material, per-renderer property overrides."
+      },
+      {
+        "mistake": "Relying on Shader.Find in built player code",
+        "why": "Unused shaders are stripped from builds. Shader.Find returns null and the code path silently creates a null-shader material.",
+        "instead": "Hold a serialized Material or Shader reference, or add to Always Included Shaders."
+      },
+      {
+        "mistake": "Assigning a normal map without changing the texture's import type",
+        "why": "Color-type textures have swizzled channels relative to normal maps. The sampler runs, but the decoded normal is garbage.",
+        "instead": "TextureImporter.textureType = TextureImporterType.NormalMap. Reimport. Then set _BumpMap and enable _NORMALMAP."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.3 (URP 7.x)",
+        "change": "LWRP renamed to URP. Shader path prefix changed from 'Lightweight Render Pipeline/' to 'Universal Render Pipeline/'. Old names retained as aliases for one release cycle then removed.",
+        "breaking": true,
+        "migrationNote": "All Shader.Find strings must be updated. Mosaic targets 2021.3+ so this delta is informational for legacy-project detection only."
+      },
+      {
+        "version": "2021.3 (URP 12.x)",
+        "change": "Complex Lit shader added for layered surfaces (clear coat). Existing Lit/Simple Lit/Unlit property names unchanged.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2 (URP 14.x)",
+        "change": "Forward+ renderer path added. ShaderLab SHADERPASS_FORWARD variants expanded. No user-facing property renames on first-party shaders.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0 (URP 17.x)",
+        "change": "Render Graph becomes default render path. First-party Lit/Unlit/Simple Lit property names and keyword conventions preserved for compatibility.",
+        "breaking": false,
+        "migrationNote": "Custom renderer features written against the legacy ScriptableRenderPass API may need porting, but material-level code is unaffected."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "URP Manual — Lit shader",                                "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/lit-shader.html" },
+    { "title": "URP Manual — Simple Lit shader",                         "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/simple-lit-shader.html" },
+    { "title": "URP Manual — Unlit shader",                              "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/unlit-shader.html" },
+    { "title": "URP Manual — Particles Lit shader",                      "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/particles-lit-shader.html" },
+    { "title": "URP Manual — Complex Lit shader",                        "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/complex-lit-shader.html" },
+    { "title": "URP Manual — Surface options",                           "url": "https://docs.unity3d.com/Packages/com.unity.render-pipelines.universal@17.0/manual/shaders/urp-shaders/urp-shaderlab-pass-tags.html" },
+    { "title": "Unity Manual — Material.EnableKeyword",                  "url": "https://docs.unity3d.com/ScriptReference/Material.EnableKeyword.html" },
+    { "title": "Unity Manual — Material.renderQueue",                    "url": "https://docs.unity3d.com/ScriptReference/Material-renderQueue.html" },
+    { "title": "Unity Manual — MaterialPropertyBlock",                   "url": "https://docs.unity3d.com/ScriptReference/MaterialPropertyBlock.html" },
+    { "title": "Unity Manual — GPU instancing",                          "url": "https://docs.unity3d.com/Manual/GPUInstancing.html" },
+    { "title": "Unity Manual — Shader variants and keywords",            "url": "https://docs.unity3d.com/Manual/shader-variants-and-keywords.html" },
+    { "title": "Unity Manual — Shader stripping",                        "url": "https://docs.unity3d.com/Manual/shader-how-to-reduce-variants.html" },
+    { "title": "Unity Manual — Texture type: Normal map",                "url": "https://docs.unity3d.com/Manual/class-TextureImporter.html" }
+  ],
+
+  "sources": [
+    { "title": "URP Lit.shader source",                                  "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader", "citedFor": "Property declarations, keyword guards, surface mode float encoding." },
+    { "title": "URP SimpleLit.shader source",                            "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/SimpleLit.shader", "citedFor": "Simple Lit property subset and Blinn-Phong parameterization." },
+    { "title": "URP Unlit.shader source",                                "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Unlit.shader", "citedFor": "Unlit surface mode and alpha clip keyword handling." },
+    { "title": "URP ComplexLit.shader source",                           "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/ComplexLit.shader", "citedFor": "Clear-coat layer properties and availability version." },
+    { "title": "URP ParticlesLit.shader source",                         "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Particles/ParticlesLit.shader", "citedFor": "Particle-specific PBR properties." },
+    { "title": "URP LitInput.hlsl",                                      "url": "https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl", "citedFor": "Shared URP input macros and property buffer layout." }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, URP Manual pages, and open-source URP shader source (Unity-Technologies/Graphics, Unity Companion License). Property names, keyword identifiers, render queue constants, and API signatures are factual (not copyrightable). All explanatory prose, decision rules, runtime recipes, anti-patterns, failure-mode tables, and llmGuidance are original Mosaic editorial content. Unity Manual and URP package docs are cited in externalReferences and NOT reproduced here."
+}

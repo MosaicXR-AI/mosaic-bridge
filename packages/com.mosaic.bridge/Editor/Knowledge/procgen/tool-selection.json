@@ -1,0 +1,280 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "procgen/tool-selection",
+  "title": "Procgen Tool Selection Decision Tree",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "procgen",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Decision tree for picking the right tool from Mosaic's 17 procgen/* tools given a user intent. Wrong-tool-for-the-job is the single largest procgen failure mode: LLMs default to procgen/noise-generate for point scatter (clusters — wrong; use procgen/poisson-disk), reach for procgen/wfc for caves (needs an authored tileset; procgen/cellular-automata is the native answer), or call procgen/marching-cubes without a density field. This entry provides intent-to-tool mapping, brief algorithm primers, canonical pipelines, failure modes, and a short decision tree. Read before choosing any procgen tool when the user's intent is not already bound to a specific algorithm name.",
+
+  "mosaicTools": [
+    "procgen/blue-noise",
+    "procgen/cave",
+    "procgen/cellular-automata",
+    "procgen/delaunay",
+    "procgen/hydraulic-erode",
+    "procgen/lsystem",
+    "procgen/marching-cubes",
+    "procgen/noise-3d-texture",
+    "procgen/noise-generate",
+    "procgen/planet",
+    "procgen/poisson-disk",
+    "procgen/poisson-sample",
+    "procgen/reaction-diffusion",
+    "procgen/sdf-generate",
+    "procgen/terrain",
+    "procgen/voronoi",
+    "procgen/wfc"
+  ],
+
+  "relatedKb": [
+    "procgen/noise-tuning",
+    "procgen/wfc-tileset-authoring",
+    "kb-terrain-system-primer",
+    "terrain/height-tool-decision-tree"
+  ],
+
+  "llmGuidance": {
+    "when_user_asks_for_a_natural_looking_heightmap_or_terrain_surface":
+      "Use procgen/noise-generate (fBm Perlin/Simplex/Ridged). Feed into procgen/terrain or terrain/height. Do NOT use poisson-disk, voronoi, or cellular-automata for continuous heights — their outputs are discrete.",
+    "when_user_asks_to_scatter_trees_rocks_or_prefabs_evenly":
+      "Use procgen/poisson-disk (guarantees minimum spacing) or procgen/poisson-sample. Never use procgen/noise-generate for this — noise clusters and leaves gaps, the opposite of even scatter.",
+    "when_user_asks_for_clustered_distribution_like_villages_or_resources":
+      "Threshold procgen/noise-generate above a cutoff and sample, or use procgen/blue-noise with negative bias. Blue noise without bias gives even spread, not clusters.",
+    "when_user_asks_for_organic_caves_or_cellular_topology":
+      "Use procgen/cellular-automata with Game-of-Life-like rules (B678/S345678 is the classic cave rule). Do NOT use procgen/wfc — it needs an authored tileset and will produce contradictions without one.",
+    "when_user_asks_for_a_tile_based_layout_with_adjacency_rules":
+      "Use procgen/wfc. Confirm the user has (or can supply) a tileset with adjacency constraints; see kb://procgen/wfc-tileset-authoring. Without a tileset, recommend cellular-automata (organic) or noise (continuous) instead.",
+    "when_user_asks_for_a_plant_tree_or_branching_structure":
+      "Use procgen/lsystem with a grammar (axiom + rewrite rules + turtle interpretation). For game-quality vegetation with wind/LOD, recommend Unity's SpeedTree instead — L-systems produce generic branching geometry, not shaded foliage.",
+    "when_user_asks_for_biome_regions_crystal_shards_or_cracked_surfaces":
+      "Use procgen/voronoi (partitions space by nearest seed). For road networks or connected paths use the DUAL graph from procgen/delaunay — voronoi gives regions, delaunay gives connectivity.",
+    "when_user_asks_for_a_mesh_from_a_volumetric_shape_or_metaballs":
+      "Pipeline: procgen/sdf-generate builds the signed distance field, procgen/marching-cubes extracts the isosurface mesh. Never call marching-cubes without a density field input — it needs a 3D scalar grid.",
+    "when_user_asks_to_make_existing_terrain_look_more_realistic":
+      "Use procgen/hydraulic-erode on the existing heightmap. Input is a heightmap; output is an eroded heightmap. Do NOT regenerate with noise — erosion carves channels and ridges that noise cannot express.",
+    "when_user_asks_for_a_whole_planet_or_spherical_world":
+      "Use procgen/planet. Do NOT try to wrap procgen/noise-generate around a sphere manually — planet handles cubesphere projection, seam stitching, and pole singularities.",
+    "when_user_asks_for_spots_stripes_or_animal_pattern_textures":
+      "Use procgen/reaction-diffusion (Gray-Scott). Parameter regimes give spots, stripes, mazes, or mitosis-like patterns. Noise cannot produce the characteristic connectivity of Turing patterns.",
+    "when_user_asks_for_a_volumetric_fog_cloud_or_3d_density":
+      "Use procgen/noise-3d-texture. The 2D procgen/noise-generate is not a drop-in for volumetrics — a 3D field requires 3D noise sampling to avoid stacking-artifact layers.",
+    "when_intent_is_ambiguous":
+      "Ask: (a) is the output points, grid, or mesh? (b) do you need gaps between outputs or are clusters OK? (c) do you have authored rules/tiles or should the system invent them? Answers collapse the decision tree to one tool in almost every case."
+  },
+
+  "full": {
+    "intentToToolMap": {
+      "naturalHeightField":          { "tool": "procgen/noise-generate",     "notes": "Perlin/Simplex/Ridged; stack octaves for detail." },
+      "volumetricDensityCloud":      { "tool": "procgen/noise-3d-texture",   "notes": "3D noise volume for fog, clouds, ore density." },
+      "evenPointDistribution":       { "tool": "procgen/poisson-disk",       "notes": "Bridson algorithm; guarantees minimum radius r between samples." },
+      "sparsePointSampling":         { "tool": "procgen/poisson-sample",     "notes": "Sampling variant — draws N points with Poisson-disk property." },
+      "blueNoiseTexture":            { "tool": "procgen/blue-noise",         "notes": "Void-and-cluster; high-frequency energy, no low-frequency clumps." },
+      "organicCaveTopology":         { "tool": "procgen/cellular-automata",  "notes": "Game-of-Life-style iteration; classic B678/S345678 cave rule." },
+      "parametricCaveWorkflow":      { "tool": "procgen/cave",               "notes": "Opinionated cave generator; wraps CA with post-processing." },
+      "tileBasedConstrainedLayout":  { "tool": "procgen/wfc",                "notes": "Wave Function Collapse; requires authored tileset + adjacency rules." },
+      "plantOrBranchingGrammar":     { "tool": "procgen/lsystem",            "notes": "Rewrite rules → turtle interpretation → line/mesh geometry." },
+      "regionPartitioning":          { "tool": "procgen/voronoi",            "notes": "Biome maps, crystal cells, cracked surfaces. Partitions by nearest seed." },
+      "sparseTriangulation":         { "tool": "procgen/delaunay",           "notes": "Dual graph of Voronoi. Use for connectivity between seeds (roads, wire networks)." },
+      "implicitSurface":             { "tool": "procgen/sdf-generate",       "notes": "Build a signed distance field from primitives + Boolean ops." },
+      "volumetricMeshExtraction":    { "tool": "procgen/marching-cubes",     "notes": "Extracts isosurface mesh from a 3D scalar field at a threshold." },
+      "terrainErosion":              { "tool": "procgen/hydraulic-erode",    "notes": "Particle-based water simulation on an existing heightmap." },
+      "sphericalWorld":              { "tool": "procgen/planet",             "notes": "Full planet generator; cubesphere + noise + biomes." },
+      "turingPattern":               { "tool": "procgen/reaction-diffusion", "notes": "Gray-Scott 2-chemical simulation; produces spots, stripes, mazes." },
+      "heightmapToTerrain":          { "tool": "procgen/terrain",            "notes": "Convenience wrapper: noise → Unity Terrain heightmap." }
+    },
+
+    "algorithmPrimers": {
+      "perlinSimplexNoise":   "Gradient noise: smooth interpolation between random gradient vectors at lattice points. Produces continuous, differentiable, naturally-correlated values. Stacking octaves (fractal Brownian motion) adds detail; ridged variants absolute-value the signal for mountain-like ridges.",
+      "poissonDiskSampling":  "Distributes points so every pair is at least radius r apart. Bridson's algorithm uses an active-sample queue and a spatial grid for O(n) performance. The guarantee of minimum spacing is what distinguishes it from random or noise sampling.",
+      "blueNoise":            "A spectral characterization: energy concentrated at high frequencies, no low-frequency clumps. Perceptually even without the regularity of a grid. Void-and-cluster is the canonical offline construction.",
+      "cellularAutomata":     "A grid of cells with a transition rule applied each step. For cave generation a neighborhood count rule (e.g., become wall if >=5 neighbors are walls) run for ~5 iterations on random noise produces connected organic caverns.",
+      "waveFunctionCollapse": "Tile placement under adjacency constraints. Each cell holds a superposition of possible tiles; collapse the lowest-entropy cell, propagate constraints, repeat. Without an authored tileset there is nothing to collapse.",
+      "lSystem":              "A formal grammar: an axiom string and rewrite rules expanded N times, then interpreted by a turtle (F=forward, +/- turn, [/] push/pop) to draw geometry.",
+      "voronoi":              "Given seed points, every spatial cell is assigned to its nearest seed. Produces a polygonal partition of space. Natural for biomes, territories, crystal structures.",
+      "delaunayTriangulation":"The unique triangulation where no point lies inside any triangle's circumscribed circle. It is the dual graph of the Voronoi diagram: connecting seeds across shared Voronoi edges.",
+      "signedDistanceField":  "A scalar field where each value is the signed distance to the nearest surface — negative inside, zero on surface, positive outside. Supports clean Boolean operations (min/max/subtract) and smooth blends.",
+      "marchingCubes":        "Extracts a polygonal mesh from a 3D scalar field at a chosen isovalue. For each voxel, looks up one of 256 triangulation cases based on which corners are above/below the threshold.",
+      "reactionDiffusion":    "Two chemicals diffuse and react via Gray-Scott kinetics. Parameter pairs (feed rate F, kill rate k) select regimes: spots, stripes, holes, mitosis. The classic source of Turing patterns.",
+      "hydraulicErosion":     "Spawns water droplets, accumulates sediment capacity proportional to slope and velocity, deposits/erodes as the droplet descends. Iterated thousands of times, it carves rivers, valleys, and ridges."
+    },
+
+    "canonicalPipelines": [
+      {
+        "name": "Procedural Terrain",
+        "steps": ["procgen/noise-generate (heightmap)", "procgen/hydraulic-erode (realism)", "procgen/terrain or terrain/height (apply)"],
+        "notes": "Noise alone reads as 'video-game'; add erosion to get valleys and ridges. See kb-terrain-system-primer."
+      },
+      {
+        "name": "Prefab Scatter",
+        "steps": ["procgen/poisson-disk (points)", "mask/filter by terrain slope/altitude", "gameobject/create loop (instantiate prefabs)"],
+        "notes": "Never use noise for positions — clusters + gaps look wrong. Use noise only as a density MASK over the Poisson points."
+      },
+      {
+        "name": "Organic Mesh from Implicit",
+        "steps": ["procgen/sdf-generate (primitives + booleans)", "procgen/marching-cubes (extract)", "mesh/generate (commit)"],
+        "notes": "SDF is the input; marching-cubes is the extractor. Cannot swap order."
+      },
+      {
+        "name": "Structured Cave",
+        "steps": ["procgen/cellular-automata (organic topology)", "procgen/wfc seeded by the CA output (tile detail)", "mesh/from-grid or terrain/holes"],
+        "notes": "CA gives cavern shape; WFC fills detail with authored tiles. Requires a tileset."
+      },
+      {
+        "name": "Biome Map",
+        "steps": ["procgen/voronoi (biome regions)", "procgen/noise-generate (per-biome moisture/temperature)", "terrain/paint-texture (apply splats)"],
+        "notes": "Voronoi for discrete biomes, noise for continuous within-biome variation."
+      },
+      {
+        "name": "Road Network",
+        "steps": ["procgen/poisson-disk or hand-placed points (city nodes)", "procgen/delaunay (connectivity graph)", "graph pruning to MST + cycles"],
+        "notes": "Voronoi gives regions, NOT connectivity. Delaunay is the right dual for roads/paths."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Trees or rocks end up in dense patches with large empty gaps.",
+        "cause": "Used procgen/noise-generate as a scatter source. Noise is continuous and clusters — it cannot guarantee spacing.",
+        "fix": "Switch to procgen/poisson-disk (min-radius guarantee) or threshold-sample procgen/blue-noise (even high-frequency distribution)."
+      },
+      {
+        "symptom": "procgen/wfc returns contradictions or runs without producing output.",
+        "cause": "Called without a tileset or with incomplete adjacency rules; the solver finds no consistent assignment.",
+        "fix": "Author a tileset first (see kb://procgen/wfc-tileset-authoring). If the goal was organic caves, use procgen/cellular-automata instead — no tileset required."
+      },
+      {
+        "symptom": "procgen/marching-cubes returns empty or errors on missing input.",
+        "cause": "Called without a 3D scalar density field. Marching cubes is an extractor, not a generator.",
+        "fix": "Build the field first with procgen/sdf-generate or procgen/noise-3d-texture, then pass it to marching-cubes."
+      },
+      {
+        "symptom": "Generated a Voronoi diagram expecting a road network; got disconnected polygons.",
+        "cause": "Voronoi outputs regions, not paths. The edges between cells are boundaries, not routes.",
+        "fix": "Use procgen/delaunay (the dual graph) — its edges connect seed points and form a natural path/road skeleton."
+      },
+      {
+        "symptom": "Tried to generate a spherical world by projecting 2D noise onto a sphere; got pinching at poles and seams at the equator.",
+        "cause": "UV wrapping of 2D noise does not respect spherical topology.",
+        "fix": "Use procgen/planet which handles cubesphere projection and domain stitching, OR sample 3D noise on the sphere surface."
+      },
+      {
+        "symptom": "L-system tree looks geometric and lifeless; wind / LOD / material are missing.",
+        "cause": "L-systems produce generic branching geometry only. They are not a vegetation pipeline.",
+        "fix": "For game-quality trees, recommend Unity SpeedTree Modeler + SpeedTree runtime. Use procgen/lsystem for organic-growth patterns (coral, roots, lightning) where SpeedTree doesn't apply."
+      },
+      {
+        "symptom": "Cellular-automata cave has floating islands or unreachable chambers.",
+        "cause": "CA iteration produced disconnected components.",
+        "fix": "Post-process: flood-fill label components, keep the largest, optionally cut corridors to merge others. Not a tool-selection error — a post-processing step."
+      }
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "Intent is 'natural-looking continuous height'",
+        "rule": "procgen/noise-generate with fBm octaves; downstream procgen/terrain.",
+        "evidence": "Perlin 1985; standard procgen literature."
+      },
+      {
+        "scenario": "Intent is 'distribute N objects with guaranteed spacing'",
+        "rule": "procgen/poisson-disk. Never procgen/noise-generate (clusters).",
+        "evidence": "Bridson 2007 SIGGRAPH sketch on Poisson-disk sampling."
+      },
+      {
+        "scenario": "Intent is 'organic cave topology'",
+        "rule": "procgen/cellular-automata with cave rule (B678/S345678). Not procgen/wfc (needs tileset).",
+        "evidence": "Roguelike Dev community canonical approach."
+      },
+      {
+        "scenario": "Intent is 'tile-based layout with authored constraints'",
+        "rule": "procgen/wfc. Verify tileset exists first — see kb://procgen/wfc-tileset-authoring.",
+        "evidence": "Gumin 2016 WaveFunctionCollapse reference implementation."
+      },
+      {
+        "scenario": "Output is a mesh from a volume or implicit",
+        "rule": "procgen/sdf-generate → procgen/marching-cubes → mesh/generate.",
+        "evidence": "Lorensen & Cline 1987 marching cubes."
+      },
+      {
+        "scenario": "Input is an existing heightmap; user wants more realism",
+        "rule": "procgen/hydraulic-erode. Do not regenerate.",
+        "evidence": "Mei/Decaudin/Hu 2007 droplet-erosion formulation."
+      },
+      {
+        "scenario": "Intent is ambiguous",
+        "rule": "Classify output type first (points / grid / mesh), then whether the user has authored rules/tiles or expects the system to invent. That collapses the tree to one tool.",
+        "evidence": "Empirical: 90% of wrong-tool picks are resolved by answering these two questions."
+      }
+    ],
+
+    "decisionTreeProse": {
+      "q1": "What is the output type?",
+      "branches": {
+        "points": {
+          "q2": "Need guaranteed spacing between points?",
+          "yes": "procgen/poisson-disk",
+          "no_want_clusters": "threshold-sample procgen/noise-generate",
+          "no_want_even_highfreq": "procgen/blue-noise"
+        },
+        "grid": {
+          "q3": "Rule-based organic?",
+          "yes_organic": "procgen/cellular-automata",
+          "tile_constrained": "procgen/wfc (requires tileset)",
+          "continuous_natural": "procgen/noise-generate",
+          "reaction_diffusion_pattern": "procgen/reaction-diffusion"
+        },
+        "mesh": {
+          "q4": "From what source?",
+          "from_density_or_sdf": "procgen/sdf-generate + procgen/marching-cubes",
+          "from_grammar": "procgen/lsystem",
+          "from_sphere": "procgen/planet",
+          "from_heightmap": "procgen/terrain (or mesh/from-heightmap)"
+        },
+        "regions": {
+          "q5": "Regions or connectivity?",
+          "regions": "procgen/voronoi",
+          "connectivity": "procgen/delaunay"
+        },
+        "transformExisting": {
+          "q6": "Transform existing heightmap?",
+          "add_erosion_realism": "procgen/hydraulic-erode"
+        }
+      }
+    },
+
+    "versionDeltas": [],
+    "coversToolCategories": ["procgen"]
+  },
+
+  "externalReferences": [
+    { "title": "Red Blob Games — Making maps with noise functions",    "url": "https://www.redblobgames.com/maps/terrain-from-noise/" },
+    { "title": "Red Blob Games — Poisson Disc Sampling",               "url": "https://www.redblobgames.com/x/1830-jittered-grid/" },
+    { "title": "Red Blob Games — Wave Function Collapse explained",    "url": "https://www.redblobgames.com/x/2003-wfc/" },
+    { "title": "PCG Book (Shaker, Togelius, Nelson) — open chapters",  "url": "https://www.pcgbook.com/" },
+    { "title": "Bridson — Fast Poisson Disk Sampling (SIGGRAPH 2007)", "url": "https://www.cs.ubc.ca/~rbridson/docs/bridson-siggraph07-poissondisk.pdf" },
+    { "title": "Gumin — WaveFunctionCollapse reference repo",          "url": "https://github.com/mxgmn/WaveFunctionCollapse" },
+    { "title": "Lorensen & Cline — Marching Cubes (1987)",             "url": "https://dl.acm.org/doi/10.1145/37401.37422" },
+    { "title": "Roguelike Dev — Cellular Automata caves",              "url": "http://www.roguebasin.com/index.php/Cellular_Automata_Method_for_Generating_Random_Cave-Like_Levels" }
+  ],
+
+  "sources": [
+    { "title": "Perlin — An Image Synthesizer (SIGGRAPH 1985)",         "url": "https://dl.acm.org/doi/10.1145/325165.325247" },
+    { "title": "Bridson — Fast Poisson Disk Sampling (SIGGRAPH 2007)", "url": "https://www.cs.ubc.ca/~rbridson/docs/bridson-siggraph07-poissondisk.pdf" },
+    { "title": "Gumin — WaveFunctionCollapse (2016)",                   "url": "https://github.com/mxgmn/WaveFunctionCollapse" },
+    { "title": "Lorensen & Cline — Marching Cubes (SIGGRAPH 1987)",     "url": "https://dl.acm.org/doi/10.1145/37401.37422" },
+    { "title": "Turing — The Chemical Basis of Morphogenesis (1952)",  "url": "https://royalsocietypublishing.org/doi/10.1098/rstb.1952.0012" },
+    { "title": "Mei/Decaudin/Hu — Fast Hydraulic Erosion on GPU (2007)","url": "https://hal.inria.fr/inria-00402079" },
+    { "title": "Prusinkiewicz & Lindenmayer — The Algorithmic Beauty of Plants (open online)", "url": "http://algorithmicbotany.org/papers/abop/abop.pdf" },
+    { "title": "Mosaic procgen gap-analysis (authorship evidence)",     "url": "internal://mosaic/_bmad-output/planning-artifacts/gap-analysis/procgen.md" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team as original editorial prose. Algorithm names (Perlin, Simplex, Poisson-disk, Voronoi, Delaunay, Wave Function Collapse, Marching Cubes, Gray-Scott, Bridson, L-system) and their mathematical definitions are facts from publicly-published procgen literature and are not copyrightable. All decision rules, intent-to-tool mappings, canonical pipelines, pitfalls, and the decision-tree prose are original Mosaic editorial content. Cited papers (Perlin 1985, Bridson 2007, Lorensen & Cline 1987, Turing 1952, Prusinkiewicz & Lindenmayer — The Algorithmic Beauty of Plants is freely available online, Gumin 2016 is MIT-licensed) are referenced for authorship provenance; no prose is reproduced from them."
+}

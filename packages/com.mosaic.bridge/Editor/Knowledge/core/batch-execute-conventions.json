@@ -1,0 +1,241 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "core/batch-execute-conventions",
+  "title": "meta/batch_execute: Tool Chaining, Naming, and Failure Handling",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Canonical contract for meta/batch_execute — the Mosaic tool that chains N sub-calls into one MCP round-trip. Covers the input shape (Calls[] of {ToolName, Arguments}), the lowercase/slash naming rule (terrain/height, not terrain_height or Terrain.Height), sequential non-atomic execution, per-call result inspection, StopOnError, Undo collapsing, and the failure modes LLM clients hit when guessing the format. Read before chaining more than three mutation calls.",
+
+  "mosaicTools": [
+    "meta/batch_execute"
+  ],
+
+  "relatedKb": [
+    "terrain/height-tool-decision-tree",
+    "kb-core-asset-database",
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_making_more_than_three_tool_calls_in_a_row":
+      "Wrap them in meta/batch_execute. Each sub-call is {ToolName: 'category/action', Arguments: {...}}. One Undo group, one response.",
+    "when_writing_a_sub_call_tool_name":
+      "Use the exact MosaicTool attribute string: lowercase, slash-separated, kebab-case after the slash. Never underscore, dot, PascalCase, or client prefixes (mcp_mosaic_bridge_*).",
+    "when_a_sub_call_needs_output_from_an_earlier_sub_call":
+      "Batch is feed-forward — no placeholder substitution. Split into two batches so the first result is readable before composing the second, or reference by name/path instead of GUID.",
+    "when_chaining_across_async_unity_work":
+      "Do NOT batch across a compile, asset-import, or bake. Those are deferred; the next sub-call sees stale state. Split at the async edge and run editor/refresh between batches.",
+    "when_the_batch_response_contains_any_success_false":
+      "Default is keep-running: sub-calls after the failure still ran. Inspect every Results[].Success and remediate per-entry. Set StopOnError=true only when later sub-calls would corrupt state.",
+    "when_a_planned_batch_exceeds_roughly_fifty_sub_calls":
+      "Split it. Oversize MCP responses truncate at the transport. Fifty is conservative — 100 tiny calls are fine, 50 heavy scene-returns are not.",
+    "when_the_tool_name_itself_is_uncertain":
+      "Never invent. Call meta/list_tools and copy the registered name verbatim. Registry lookup is exact-match; any drift returns 'Tool not found'."
+  },
+
+  "full": {
+    "contract": {
+      "toolName": "meta/batch_execute",
+      "isReadOnly": false,
+      "inputShape": {
+        "Calls": "Required. Non-empty array of BatchCall: {ToolName, Arguments}.",
+        "StopOnError": "Optional bool, default false. When true, first failure skips all remaining entries."
+      },
+      "batchCallShape": {
+        "ToolName": "Required. Exact MosaicTool attribute name — lowercase category/action.",
+        "Arguments": "Optional JSON object matching the target's param schema. Omit for parameterless tools."
+      },
+      "outputShape": {
+        "TotalCalls": "Length of submitted Calls array.",
+        "SuccessCount": "Sub-calls that returned Ok.",
+        "FailCount": "Sub-calls that errored or threw.",
+        "SkippedCount": "Sub-calls not executed due to StopOnError.",
+        "TotalDurationMs": "Wall-clock time including dispatch.",
+        "Results": "Array of BatchCallResult in input order: {ToolName, Success, Data, Error, DurationMs, Skipped}."
+      }
+    },
+
+    "namingContract": {
+      "rule": "ToolName must equal the string passed to [MosaicTool(\"...\")] on the handler method.",
+      "format": "<category>/<action-in-kebab-case>",
+      "correctExamples": [
+        "terrain/height",
+        "terrain/create",
+        "gameobject/create",
+        "component/add",
+        "material/set-property",
+        "scene/save",
+        "meta/batch_execute"
+      ],
+      "incorrectExamples": [
+        { "wrong": "terrain_height",                     "reason": "Underscore normalization — most LLM tool layers do this automatically; undo it before emitting." },
+        { "wrong": "Terrain.Height",                     "reason": "Dot + PascalCase — looks like a .NET API, not a MosaicTool name." },
+        { "wrong": "terrain/SetHeight",                  "reason": "PascalCase action. Actions are kebab-case: terrain/height with Action='set' in Arguments." },
+        { "wrong": "mcp_mosaic_bridge_terrain_height",   "reason": "Client-side MCP prefix. The registry sees only the bare MosaicTool name; prefixes are your client's concern, not the server's." },
+        { "wrong": "/terrain/height",                    "reason": "Leading slash — the registry key has no leading slash." },
+        { "wrong": "batch_execute",                      "reason": "The batch tool itself is meta/batch_execute. Dropping the meta/ prefix inside a sub-call fails lookup." }
+      ]
+    },
+
+    "executionSemantics": {
+      "ordering": "Strictly sequential, top-to-bottom.",
+      "atomicity": "NOT atomic. A mid-batch failure does not roll back earlier mutations. StopOnError halts forward progress, but prior changes still persist.",
+      "undoGrouping": "All sub-calls collapse into ONE Editor Undo entry labeled 'Mosaic: Batch Execute'. One Ctrl+Z reverts the whole batch.",
+      "statefulness": "Sub-call N sees the scene produced by sub-calls 1..N-1. No runtime templating of earlier outputs into later inputs — the LLM must supply any cross-call identifiers literally at batch-compose time.",
+      "argumentBinding": "Each Arguments object is bound via ParameterValidator.Bind against the target tool's param type. Same rules as a direct call: required fields present, types match, case-sensitive keys.",
+      "errorIsolation": "Sub-call exceptions are caught — the batch itself never throws. Each failure becomes Success:false with a trimmed Error message."
+    },
+
+    "whenBatchWins": [
+      "Bulk writes to the same asset (many terrain or mesh edits). One Undo entry, N-1 saved round-trips.",
+      "Scene bootstrap: create → add component → set property, repeated across a small graph.",
+      "Independent spawns: 10 prefab variants with different transforms.",
+      "Prewritten recipes that need no intermediate inspection."
+    ],
+
+    "whenBatchLoses": [
+      "Conditional logic — LLM must see sub-call N's result before composing N+1.",
+      "Crossing async boundaries: AssetDatabase.Refresh, shader compile, light bake, script reload.",
+      "Oversize responses (hundreds of scene snapshots). Split at ~50 sub-calls."
+    ],
+
+    "decisionRules": [
+      {
+        "scenario": "About to issue N > 3 tool calls with no branching between them",
+        "rule": "Collapse into one meta/batch_execute. Wrapper cost is trivial; protocol savings scale linearly.",
+        "evidence": "Gemini terrain session 2026-04-21 § G7 — 40+ serial terrain/height calls hit the API rate limit mid-scene."
+      },
+      {
+        "scenario": "Unsure of a sub-call's tool name format",
+        "rule": "Query meta/list_tools once per session and copy names verbatim. No case, separator, or prefix transforms.",
+        "evidence": "Gemini terrain session § G5 — 36/36 sub-calls failed on client-side prefixing."
+      },
+      {
+        "scenario": "Sub-call 2 needs an ID produced by sub-call 1",
+        "rule": "Split into two batches, or reference by name/path instead of GUID.",
+        "evidence": "BatchExecuteTool.cs has no output-ref substitution."
+      },
+      {
+        "scenario": "Batch crosses a compile, asset import, or bake",
+        "rule": "Split at the async boundary. Run editor/refresh between batches.",
+        "evidence": "Unity async ops complete after the current tool returns — subsequent sub-calls see stale state."
+      },
+      {
+        "scenario": "Batch exceeds ~50 sub-calls or returns large payloads",
+        "rule": "Split. Adjust downward for tools that return scene snapshots or hierarchies.",
+        "evidence": "MCP transport frame size is finite."
+      },
+      {
+        "scenario": "A mid-batch failure would leave the scene unrepairable",
+        "rule": "Set StopOnError=true. Prior mutations still persist — plan a compensating batch if rollback is required.",
+        "evidence": "BatchExecuteParams.StopOnError aborts forward progress only; no automatic rollback."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "All sub-calls return 'Tool not found' though the tool works when called directly.",
+        "cause": "Client-side tool-name transform (underscore, prefix, case) leaking into Calls[].ToolName. Registry lookup is exact-match.",
+        "fix": "Emit the MosaicTool attribute name verbatim."
+      },
+      {
+        "symptom": "Argument binding fails with 'Required field missing'.",
+        "cause": "Case-mismatch on a parameter key. Binding is case-sensitive.",
+        "fix": "Match the exact C# property name from the tool's Params class."
+      },
+      {
+        "symptom": "Arguments rejected as invalid JSON.",
+        "cause": "Arguments was a scalar or array, not a JSON object.",
+        "fix": "Always wrap: {\"key\": value}. Even single-arg tools expect an object."
+      },
+      {
+        "symptom": "Later sub-calls silently did nothing.",
+        "cause": "StopOnError=true aborted the batch after an earlier failure; all subsequent entries were Skipped:true.",
+        "fix": "Fix the earlier call, or set StopOnError=false to observe which calls would have succeeded."
+      },
+      {
+        "symptom": "Scene shows partial changes after a failed batch.",
+        "cause": "Caller assumed batch was atomic. It isn't — prior mutations persist.",
+        "fix": "Inspect every Results[].Success. For all-or-nothing work, write a custom macro tool."
+      },
+      {
+        "symptom": "Large batch returns truncated response.",
+        "cause": "MCP transport frame exceeded.",
+        "fix": "Split at ~50 sub-calls; lower for chatty tools."
+      },
+      {
+        "symptom": "'Tool not found: batch_execute'.",
+        "cause": "Dropped the meta/ prefix.",
+        "fix": "Always meta/batch_execute."
+      }
+    ],
+
+    "workedExamples": [
+      {
+        "title": "Spawn a 10-cube grid",
+        "request": {
+          "tool": "meta/batch_execute",
+          "arguments": {
+            "Calls": [
+              { "ToolName": "gameobject/create-primitive", "Arguments": { "PrimitiveType": "Cube", "Name": "Cube_0", "Position": { "x": 0, "y": 0, "z": 0 } } },
+              { "ToolName": "gameobject/create-primitive", "Arguments": { "PrimitiveType": "Cube", "Name": "Cube_1", "Position": { "x": 2, "y": 0, "z": 0 } } }
+            ]
+          }
+        },
+        "note": "Truncated to 2 for brevity. Ten fits comfortably under the 50-call ceiling; one Undo entry covers the whole grid."
+      },
+      {
+        "title": "ANTI-PATTERN — 500 per-point terrain/height stamps",
+        "antiPattern": "One terrain/height sub-call per heightmap sample, 500 entries in one batch.",
+        "whyWrong": "Every stamp re-reads and re-writes overlapping neighborhoods. The right shape is a single multi-point call (terrain/stroke or terrain/stamp — see kb terrain/height-tool-decision-tree).",
+        "correctApproach": "Use the highest-level terrain primitive available. Fall back to batched terrain/height only when no shape-level tool exists, and cap per-batch at ~50."
+      },
+      {
+        "title": "Create material + set 3 properties + assign",
+        "request": {
+          "tool": "meta/batch_execute",
+          "arguments": {
+            "StopOnError": true,
+            "Calls": [
+              { "ToolName": "material/create",        "Arguments": { "Name": "RedMetal", "ShaderName": "Universal Render Pipeline/Lit" } },
+              { "ToolName": "material/set-property",  "Arguments": { "MaterialName": "RedMetal", "PropertyName": "_BaseColor", "Value": { "r": 0.9, "g": 0.1, "b": 0.1, "a": 1 } } },
+              { "ToolName": "material/set-property",  "Arguments": { "MaterialName": "RedMetal", "PropertyName": "_Metallic",  "Value": 0.8 } },
+              { "ToolName": "component/set-material", "Arguments": { "GameObjectName": "Cube_0", "MaterialName": "RedMetal" } }
+            ]
+          }
+        },
+        "note": "StopOnError=true fits here — downstream calls reference RedMetal by name. Referring by name instead of GUID dodges the output-dependency problem entirely."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.3 LTS",
+        "change": "Undo.SetCurrentGroupName + Undo.CollapseUndoOperations behave identically across 2021.3 → 6000.4. Batch Undo collapsing relies on stable Editor APIs.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Model Context Protocol — Tools specification", "url": "https://modelcontextprotocol.io/specification" },
+    { "title": "Unity ScriptReference — Undo.CollapseUndoOperations", "url": "https://docs.unity3d.com/ScriptReference/Undo.CollapseUndoOperations.html" },
+    { "title": "Unity ScriptReference — Undo.SetCurrentGroupName", "url": "https://docs.unity3d.com/ScriptReference/Undo.SetCurrentGroupName.html" }
+  ],
+
+  "sources": [
+    { "title": "Mosaic Bridge — BatchExecuteTool.cs (source of truth for semantics)", "url": "packages/com.mosaic.bridge/Editor/Tools/Meta/BatchExecuteTool.cs" },
+    { "title": "Mosaic Bridge — BatchExecuteParams.cs / BatchExecuteResult.cs", "url": "packages/com.mosaic.bridge/Editor/Tools/Meta/" },
+    { "title": "Gap analysis — terrain.md § G5, § 4D KB-terrain-03", "url": "_bmad-output/planning-artifacts/gap-analysis/terrain.md" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team. The tool contract (input shape, output shape, execution semantics, Undo grouping, StopOnError behavior) is derived verbatim from the Mosaic Bridge source at packages/com.mosaic.bridge/Editor/Tools/Meta/BatchExecuteTool.cs and is factual (not copyrightable). Failure-mode catalog, decision rules, and worked examples are original Mosaic editorial content, informed by the 2026-04-21 Gemini terrain session (gap-analysis/terrain.md § G5) where 36/36 batched sub-calls failed due to client-side tool-name prefixing. MCP specification is cited as an external reference and NOT reproduced here."
+}

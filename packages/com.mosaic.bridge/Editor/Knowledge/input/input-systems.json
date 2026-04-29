@@ -1,0 +1,243 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "input/input-systems",
+  "title": "Input System (new) vs Legacy Input Manager",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "core",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Two coexisting input stacks in Unity: the legacy UnityEngine.Input class (Input.GetKey, Input.GetAxis, InputManager asset) and the newer UnityEngine.InputSystem package (InputActionAsset, InputAction, PlayerInput, control paths). Project Settings > Player > Active Input Handling chooses which is active (Input Manager, Input System, or Both); calls to the wrong API silently no-op. Use when mosaic input tools (input/create, input/map, input/action, input/info) author InputActionAssets — never mix polling against legacy Input in the same module.",
+
+  "mosaicTools": [
+    "input/create",
+    "input/map",
+    "input/action",
+    "input/info"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_add_wasd_or_gamepad_controls_to_a_new_project":
+      "Use the Input System package. Call input/create to author an InputActionAsset, then input/map and input/action to define maps, actions, and bindings. Do NOT emit Input.GetKey code — in Unity 6 defaults Active Input Handling leans to Input System and legacy calls return false.",
+    "when_a_script_mixes_input_getkey_and_inputaction":
+      "Refuse the mix. Pick one stack per module. If the project is already Input-System-only, convert polling to an InputAction + callback and enable the map in OnEnable; if the project is legacy-only, keep Input.GetKey and do not introduce InputAction.",
+    "when_input_seems_not_to_fire_at_all":
+      "Check three things in order: (1) Active Input Handling in Project Settings > Player, (2) the InputActionMap is Enable()d in OnEnable, (3) the control path matches a real device (e.g. '<Gamepad>/leftStick', '<Keyboard>/w'). A typo in the path binds to nothing and fails silently.",
+    "when_authoring_a_monobehaviour_that_subscribes_to_inputaction_callbacks":
+      "Subscribe in OnEnable and unsubscribe the SAME delegate in OnDisable. Enable the action (or its map) in OnEnable, Disable in OnDisable. Otherwise each re-enable doubles subscriptions and leaks on domain reload (see kb://core/scene-lifecycle for the OnEnable/OnDisable pairing rule).",
+    "when_a_button_press_is_missed_intermittently":
+      "If the read is in FixedUpdate, legacy Input.GetKeyDown can be missed because FixedUpdate runs 0..n times per frame and GetKeyDown is only true during the frame the press was received. Switch to InputAction with a Button action type and subscribe to action.performed — the callback fires once per phase regardless of fixed-step cadence.",
+    "when_user_wants_runtime_rebinding":
+      "Only the Input System supports it cleanly. Use InputActionRebindingExtensions.PerformInteractiveRebinding() on the target action, serialize the override via action.SaveBindingOverridesAsJson(), restore with LoadBindingOverridesFromJson(). Legacy InputManager has no runtime rebind API."
+  },
+
+  "full": {
+    "twoStacks": {
+      "legacy": {
+        "namespace": "UnityEngine",
+        "entry": "Input class (static), backed by the InputManager asset (ProjectSettings/InputManager.asset).",
+        "typicalCalls": ["Input.GetKey", "Input.GetKeyDown", "Input.GetKeyUp", "Input.GetAxis", "Input.GetAxisRaw", "Input.GetButton", "Input.mousePosition", "Input.touches"],
+        "axesAndButtons": "Axes/buttons are named strings defined in InputManager (Horizontal, Vertical, Jump, Fire1...). Each axis has positive/negative keys, gravity, dead zone, sensitivity.",
+        "limits": "No per-device addressing, no composite bindings, no runtime rebinding API, no built-in action phases, no control schemes. Gamepad support is implicit via joystick axes/buttons with platform-specific numbering."
+      },
+      "newPackage": {
+        "package": "com.unity.inputsystem",
+        "namespace": "UnityEngine.InputSystem",
+        "assetType": "InputActionAsset (.inputactions JSON file)",
+        "coreTypes": ["InputActionAsset", "InputActionMap", "InputAction", "InputBinding", "InputControl", "InputDevice"],
+        "features": ["composite bindings (2D Vector, 1D Axis, Button With One Modifier)", "action types with phase callbacks", "control schemes", "device-specific queries", "runtime rebinding", "new-input polling OR callback model"]
+      },
+      "activeInputHandling": {
+        "location": "Project Settings > Player > Other Settings > Active Input Handling",
+        "options": ["Input Manager (Old)", "Input System Package (New)", "Both"],
+        "effect": {
+          "old": "UnityEngine.Input works; UnityEngine.InputSystem APIs compile (if package installed) but devices are not read by the new stack.",
+          "new": "UnityEngine.InputSystem is active; legacy Input.GetKey/GetAxis return default values (false / 0). This is the #1 'my input does nothing' cause on Unity 6 projects.",
+          "both": "Both stacks read devices simultaneously — higher CPU, potential double-handling of the same press. Rarely desirable for new code; used during migration."
+        },
+        "switchRequiresRestart": true
+      }
+    },
+
+    "actionsModel": {
+      "actionTypes": [
+        { "type": "Value",       "use": "Continuous signal like stick or mouse delta. Reports via performed every frame the value changes; call ReadValue<T>() in the handler." },
+        { "type": "Button",      "use": "Discrete press. Phases started (press begun) → performed (threshold crossed) → canceled (released)." },
+        { "type": "PassThrough", "use": "Raw event stream, one callback per incoming input event. Use for multi-device aggregation where you don't want conflict resolution." }
+      ],
+      "phases": ["Disabled", "Waiting", "Started", "Performed", "Canceled"],
+      "callbackModel": [
+        "action.started   += ctx => ...;",
+        "action.performed += ctx => ...;",
+        "action.canceled  += ctx => ...;",
+        "ctx.ReadValue<Vector2>() inside the handler for Value/PassThrough."
+      ],
+      "pollingModel": [
+        "action.IsPressed() — current held state",
+        "action.WasPressedThisFrame() — pressed this frame",
+        "action.WasReleasedThisFrame() — released this frame",
+        "action.ReadValue<T>() — current value"
+      ]
+    },
+
+    "bindings": {
+      "controlPath": "String like '<Gamepad>/leftStick' or '<Keyboard>/space'. Angle-brackets name a device layout; slash-separated controls walk into it.",
+      "exampleSingle": "<Keyboard>/space",
+      "exampleComposite2D": "2D Vector composite with up=<Keyboard>/w, down=<Keyboard>/s, left=<Keyboard>/a, right=<Keyboard>/d — reports Vector2.",
+      "compositeTypes": ["1D Axis (negative/positive)", "2D Vector (up/down/left/right)", "3D Vector", "Button With One Modifier", "Button With Two Modifiers"],
+      "processors": "Optional stages on a binding: invert, normalize, deadzone (stickDeadzone default ~0.125), scale. Authored on the binding, not in code.",
+      "typoIsSilent": "An invalid path binds to no control and raises no warning. Verify via input/info which returns resolved controls."
+    },
+
+    "playerInputComponent": {
+      "purpose": "MonoBehaviour that hosts an InputActionAsset and routes callbacks to a target GameObject.",
+      "behaviorModes": [
+        { "mode": "Send Messages",       "use": "Calls OnMove, OnJump etc. by name on the target. Convenient for prototypes, zero setup." },
+        { "mode": "Broadcast Messages",  "use": "Like Send Messages but to all children. Performance cost." },
+        { "mode": "Invoke Unity Events", "use": "Wire each action to a UnityEvent in the Inspector. Designer-friendly." },
+        { "mode": "Invoke C Sharp Events","use": "Subscribe to playerInput.onActionTriggered. Strongly-typed, no reflection." }
+      ],
+      "autoEnableMaps": "PlayerInput automatically enables the default action map on Awake and disables on Destroy. A raw InputActionAsset used without PlayerInput requires manual action.Enable()/Disable() or map.Enable()/Disable()."
+    },
+
+    "devicesAndSchemes": {
+      "devices": ["Keyboard", "Mouse", "Gamepad (Xbox/DualShock/DualSense/generic HID)", "Pen", "Touchscreen", "Joystick", "Accelerometer", "Pointer (base class)"],
+      "deviceQuery": [
+        "Keyboard.current.spaceKey.isPressed",
+        "Mouse.current.leftButton.wasPressedThisFrame",
+        "Gamepad.current?.leftStick.ReadValue()",
+        "Touchscreen.current.primaryTouch.position.ReadValue()"
+      ],
+      "nullSafety": "*.current is null when no device of that type is connected. Always null-check Gamepad.current / Touchscreen.current before dereferencing.",
+      "controlSchemes": "A Control Scheme groups devices (e.g. 'Keyboard and Mouse' = Keyboard + Mouse; 'Gamepad' = Gamepad). PlayerInput picks a scheme based on which device produced the most recent input. Schemes allow different binding sets per input class."
+    },
+
+    "runtimeRebinding": {
+      "api": "action.PerformInteractiveRebinding() → returns a RebindingOperation builder.",
+      "typicalFlow": [
+        "action.Disable();",
+        "var op = action.PerformInteractiveRebinding().WithControlsExcluding('<Mouse>/position').OnMatchWaitForAnother(0.1f).OnComplete(o => { o.Dispose(); action.Enable(); }).Start();"
+      ],
+      "persistence": [
+        "string json = playerInput.actions.SaveBindingOverridesAsJson();",
+        "playerInput.actions.LoadBindingOverridesFromJson(json);"
+      ],
+      "storage": "PlayerPrefs or a separate settings file — the JSON is small and portable."
+    },
+
+    "fixedUpdateCadence": {
+      "legacyRisk": "Input.GetKeyDown is only true during the single frame Unity received the OS key-down event. FixedUpdate may run zero or multiple times per frame; if zero during the frame the key went down, the check is missed. Poll GetKeyDown in Update, then consume a flag in FixedUpdate.",
+      "newSystemBehavior": "InputAction callbacks (started/performed/canceled) fire once per phase transition regardless of fixed-step cadence — safe to drive physics directly from callbacks or to poll action.IsPressed() in FixedUpdate.",
+      "updateMode": "InputSettings.updateMode controls when devices advance: Process Events In Dynamic Update (default) or Process Events In Fixed Update. Match to where you read."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "New project, no existing input code",
+        "rule": "Use Input System exclusively. In Unity 6 it is the recommended stack; legacy calls silently return defaults under the default Active Input Handling.",
+        "evidence": "Unity Manual — Input System Workflow."
+      },
+      {
+        "scenario": "Existing project uses Input.GetKey everywhere and user wants 'add one more control'",
+        "rule": "Stay on legacy unless user explicitly migrates. Adding a single InputAction alongside Input.GetKey only works if Active Input Handling is Both, and doubles device reads.",
+        "evidence": "Active Input Handling semantics."
+      },
+      {
+        "scenario": "Need runtime key rebinding",
+        "rule": "Input System only. Legacy InputManager has no rebind API. Require migration if project is legacy-only.",
+        "evidence": "Unity Manual — Input Bindings / Interactive Rebinding."
+      },
+      {
+        "scenario": "Reading input inside FixedUpdate",
+        "rule": "Prefer InputAction.IsPressed() or callback-driven consumption. If stuck on legacy, read Input.GetKeyDown in Update, store a bool, consume it in FixedUpdate.",
+        "evidence": "FixedUpdate runs 0..n times per frame; GetKeyDown is single-frame-true."
+      },
+      {
+        "scenario": "Script enables an InputActionMap",
+        "rule": "Enable in OnEnable, Disable in OnDisable — pair callbacks symmetrically. Subscribe/unsubscribe the same delegate. Mirrors the resource-pairing rule in kb://core/scene-lifecycle.",
+        "evidence": "OnEnable/OnDisable symmetry."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Input.GetKey returns false for every key in a Unity 6 project.",
+        "cause": "Active Input Handling is Input System (New). Legacy Input static calls are inert under that setting.",
+        "fix": "Either switch to Input System APIs, or set Active Input Handling to Both / Input Manager (Old) in Project Settings > Player (requires editor restart)."
+      },
+      {
+        "symptom": "InputAction is authored and Enable()d but no callback fires.",
+        "cause": "No PlayerInput component, no explicit action.performed += handler, or the map wasn't enabled (enabling the action alone is not enough if the map is disabled).",
+        "fix": "Either add PlayerInput with the asset and a BehaviorMode, or subscribe to action.performed in OnEnable and call map.Enable() / action.Enable()."
+      },
+      {
+        "symptom": "Callback fires twice then four times after domain reload.",
+        "cause": "action.performed += Handler in OnEnable without the matching -= in OnDisable. Each reload re-subscribes.",
+        "fix": "Store the delegate in a field and subscribe in OnEnable, unsubscribe the same reference in OnDisable."
+      },
+      {
+        "symptom": "Control path '<Keyboard>/spacebar' never binds.",
+        "cause": "Typo in control path — correct name is 'space'. Invalid paths bind silently to nothing.",
+        "fix": "Verify with input/info which returns resolved controls. Canonical key names: 'space', 'enter', 'escape', 'leftArrow', 'w', 'f1'."
+      },
+      {
+        "symptom": "Jump is missed roughly 1 press in 5 when read in FixedUpdate.",
+        "cause": "Legacy Input.GetKeyDown polled inside FixedUpdate; when FixedUpdate doesn't run on the frame the press arrived, the true-for-one-frame flag is gone.",
+        "fix": "Read GetKeyDown in Update and latch a bool consumed in FixedUpdate. Or migrate to InputAction Button + action.performed callback."
+      },
+      {
+        "symptom": "Gamepad.current is null on a machine with a controller plugged in.",
+        "cause": "OS hadn't announced the device before the first access, OR Active Input Handling is Input Manager (Old) so the new-system device list is empty.",
+        "fix": "Null-check *.current every read. Verify Active Input Handling includes Input System."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2021.3 LTS",
+        "change": "Input System package 1.x is stable and ships as a default option in the Package Manager. Active Input Handling Project Setting offers Input Manager / Input System / Both.",
+        "breaking": false
+      },
+      {
+        "version": "2022.2",
+        "change": "InputActionRebindingExtensions gained SaveBindingOverridesAsJson / LoadBindingOverridesFromJson helpers, simplifying rebind persistence.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "Unity 6 ships with Input System as the recommended default for new projects. Legacy Input Manager remains functional via Active Input Handling.",
+        "breaking": false,
+        "migrationNote": "Existing projects are not auto-migrated. New project templates now set Active Input Handling to Input System — scripts using Input.GetKey will no-op until the setting is changed."
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Input (overview)",                       "url": "https://docs.unity3d.com/Manual/Input.html" },
+    { "title": "Unity Manual — Input System package",                   "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/index.html" },
+    { "title": "Unity Manual — Input Manager (legacy)",                 "url": "https://docs.unity3d.com/Manual/class-InputManager.html" },
+    { "title": "Input System — Actions, Action Maps, Action Assets",    "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/Actions.html" },
+    { "title": "Input System — Bindings and Composite Bindings",        "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/ActionBindings.html" },
+    { "title": "Input System — PlayerInput component",                  "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/PlayerInput.html" },
+    { "title": "Input System — Interactive Rebinding",                  "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/ActionBindings.html#interactive-rebinding" },
+    { "title": "Input System — Control Schemes",                        "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/ActionBindings.html#control-schemes" },
+    { "title": "Input System — Supported Devices",                      "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/manual/SupportedDevices.html" },
+    { "title": "ScriptReference — UnityEngine.Input",                   "url": "https://docs.unity3d.com/ScriptReference/Input.html" },
+    { "title": "ScriptReference — InputAction",                         "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/api/UnityEngine.InputSystem.InputAction.html" },
+    { "title": "ScriptReference — InputActionAsset",                    "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/api/UnityEngine.InputSystem.InputActionAsset.html" },
+    { "title": "ScriptReference — InputActionRebindingExtensions",      "url": "https://docs.unity3d.com/Packages/com.unity.inputsystem@1.7/api/UnityEngine.InputSystem.InputActionRebindingExtensions.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, the Input System package manual, and the legacy Input ScriptReference. API names, action phases, control path syntax, composite binding types, and Project Setting locations are facts (not copyrightable). Explanatory prose, decision rules, llmGuidance, commonPitfalls, and the Active-Input-Handling failure-mode taxonomy are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

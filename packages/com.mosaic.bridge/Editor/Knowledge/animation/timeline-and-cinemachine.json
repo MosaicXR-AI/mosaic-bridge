@@ -1,0 +1,188 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "animation/timeline-and-cinemachine",
+  "title": "Timeline, Playable Director, Cinemachine",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "animation",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity's cinematic stack: a TimelineAsset owns tracks and clips; a PlayableDirector in the scene binds those tracks to actual GameObjects and plays the sequence; Cinemachine contributes virtual cameras that a single CinemachineBrain on the Main Camera blends between by priority or by a Cinemachine Track. Use this whenever any timeline/* or cinemachine/* tool creates assets, tracks, clips, virtual cameras, dollies, or blends — LLMs routinely build a TimelineAsset with tracks but never call SetGenericBinding (timeline runs, nothing plays), stack two CinemachineBrains on one camera, or call CM 2 names (CinemachineVirtualCamera, CinemachinePath) on a Unity 2023+/6 project that ships Cinemachine 3.",
+
+  "mosaicTools": [
+    "timeline/create-asset",
+    "timeline/add-track",
+    "timeline/add-clip",
+    "timeline/bind-track",
+    "timeline/add-signal",
+    "timeline/play",
+    "cinemachine/create-brain",
+    "cinemachine/create-virtual-camera",
+    "cinemachine/set-priority",
+    "cinemachine/add-dolly",
+    "cinemachine/add-to-timeline"
+  ],
+
+  "relatedKb": [
+    "animation/animator-state-machine",
+    "core/scene-lifecycle",
+    "core/gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_build_a_cutscene":
+      "Create a TimelineAsset (timeline/create-asset), add tracks (timeline/add-track), add clips (timeline/add-clip), put a PlayableDirector on a scene GameObject, assign the asset, then bind every track with timeline/bind-track before calling timeline/play. Skipping the bind step is the #1 cause of 'the timeline plays but nothing moves.'",
+    "when_adding_an_animation_track":
+      "An AnimationTrack needs both a clip (AnimationPlayableAsset referencing an AnimationClip) and a binding to an Animator component. The Animator does not need a controller — Timeline drives it directly — but the GameObject must have one. Raw Transforms with no Animator cannot be driven by an AnimationTrack.",
+    "when_adding_an_audio_track":
+      "AudioTrack binds to an AudioSource. Clips are AudioPlayableAsset wrapping an AudioClip. Do not add a separate AudioSource.Play call; the track owns playback timing.",
+    "when_adding_a_cinemachine_track":
+      "A Cinemachine Track binds to the CinemachineBrain (CM 2) or the Unity Camera that owns the brain (CM 3), and each clip references one CinemachineCamera (CM 3) / CinemachineVirtualCamera (CM 2). The track overrides the brain's priority-based selection for the clip's duration. Blending between clips is driven by clip overlap, not by priorities.",
+    "when_creating_the_camera_stack":
+      "Add exactly one CinemachineBrain to the Main Camera (or whichever Camera component should render). Every additional Camera that needs its own cinemachine controller gets its own brain. Never add two brains to the same Camera — evaluation order is undefined and the camera jitters.",
+    "when_creating_a_virtual_camera":
+      "Detect Cinemachine package version first. CM 3 (Unity 2023.1+/6 default) uses CinemachineCamera with Position Control + Rotation Control components. CM 2 (older LTS) uses CinemachineVirtualCamera with Body + Aim + Noise. Calling AddComponent<CinemachineVirtualCamera>() on a CM 3 project throws; the class no longer exists.",
+    "when_switching_between_virtual_cameras":
+      "Outside Timeline, raise the target VC's Priority above all others — the brain blends to it over the default blend duration. Inside Timeline, use a Cinemachine Track clip instead; priorities are ignored while the track is active.",
+    "when_asked_to_fire_a_gameplay_event_at_a_specific_timeline_time":
+      "Use a SignalEmitter marker on a SignalTrack, a SignalAsset to identify the signal, and a SignalReceiver MonoBehaviour that maps the asset to a UnityEvent. Do not script Update polling of PlayableDirector.time — signals are the sanctioned path and survive retiming.",
+    "when_debugging_'timeline_plays_but_nothing_happens'":
+      "Check track bindings on the PlayableDirector first (SetGenericBinding or the Bindings list in the inspector). An unbound AnimationTrack, AudioTrack, ActivationTrack, or CinemachineTrack silently does nothing. Bindings persist by track GUID — renaming a GameObject is safe; replacing the whole scene object breaks the binding.",
+    "when_moving_a_camera_along_a_path":
+      "CM 3: add a CinemachineSplineDolly Position Control component, assign a Unity Spline, drive Camera Position. CM 2: use CinemachinePath or CinemachineSmoothPath plus a CinemachineDollyCart (for constant speed) or a Tracked Dolly body. CinemachinePath does not exist in CM 3 — migrating projects need the upgrade tool."
+  },
+
+  "full": {
+    "conceptModel": {
+      "timeline": "TimelineAsset is a ScriptableObject that owns a tree of TrackAsset objects; each track owns TimelineClip objects wrapping a PlayableAsset. The asset is pure data — no scene references. A PlayableDirector MonoBehaviour in a scene references the asset and holds a per-track binding table mapping each track's GUID to a scene Object (Animator, AudioSource, GameObject, CinemachineBrain, etc.). At runtime the director builds a PlayableGraph from the asset, hooks up bindings, and ticks it.",
+      "cinemachine": "CinemachineBrain is a component that sits beside the Unity Camera and replaces its transform each frame. It scans all enabled CinemachineCameras (CM 3) / CinemachineVirtualCameras (CM 2) and picks the one with the highest Priority, blending to it over a configurable duration. A virtual camera does not render — it is a recipe (Position Control + Rotation Control + Noise, or Body + Aim + Noise in CM 2) that the brain applies to the real Camera.",
+      "intersection": "A Cinemachine Track is the bridge. Its binding is the brain (or the Camera in CM 3), and each of its clips references one virtual camera. While the track is active, the brain takes its active VC from the clip instead of from priorities, and clip overlaps produce blends."
+    },
+    "trackTypes": {
+      "AnimationTrack": "Drives an Animator. Clips are AnimationPlayableAsset. Supports clip blending, track offsets, and Avatar Mask per clip.",
+      "AudioTrack": "Drives an AudioSource. Clips are AudioPlayableAsset wrapping AudioClip. Supports volume fades via clip ease-in/out.",
+      "ActivationTrack": "Toggles the bound GameObject's active state for the clip's duration. No clip asset beyond the activation range itself.",
+      "ControlTrack": "Plays a nested PlayableDirector, Particle System, or prefab instance. Useful for composing sequences.",
+      "SignalTrack": "Holds SignalEmitter markers. Binding is a GameObject with a SignalReceiver that maps SignalAsset references to UnityEvents.",
+      "CinemachineTrack": "Drives the active Cinemachine camera. Binding is the brain (CM 2) or Camera (CM 3). Clips wrap virtual camera references."
+    },
+    "decisionRules": [
+      {
+        "scenario": "user asks to build a cinematic with camera cuts",
+        "rule": "One TimelineAsset + one Cinemachine Track + one CinemachineCamera per shot. Place clips end-to-end for hard cuts, overlap for blends. Do not try to script priority swaps during a timeline — the track owns selection.",
+        "evidence": "Cinemachine package manual, 'Cinemachine Track' section."
+      },
+      {
+        "scenario": "user asks for a cutscene event to trigger gameplay (enable enemy AI, spawn VFX)",
+        "rule": "SignalTrack + SignalAsset + SignalReceiver. Keep the SignalAsset in a shared folder so multiple timelines can raise the same signal. Avoid wiring to anonymous UnityEvents only — named SignalAssets are discoverable.",
+        "evidence": "Timeline package manual, 'Signals' workflow."
+      },
+      {
+        "scenario": "camera rig has more than one Camera (split-screen, mini-map, portal)",
+        "rule": "One CinemachineBrain per rendering Camera. Use Output Channels (CM 3) or layer-based filtering (CM 2) so each brain only evaluates its own pool of virtual cameras.",
+        "evidence": "Cinemachine 3 upgrade guide — channel system replaces CM 2 layer filtering."
+      },
+      {
+        "scenario": "binding survives scene reloads but a new Animator reference is needed",
+        "rule": "Replace the binding via PlayableDirector.SetGenericBinding(trackAsset, newAnimator). Never mutate the TimelineAsset at runtime — it is shared and will leak edits into the editor asset in Play mode.",
+        "evidence": "ScriptReference PlayableDirector.SetGenericBinding."
+      }
+    ],
+    "commonPitfalls": [
+      {
+        "symptom": "Timeline plays its full duration but objects don't move, audio doesn't fire, camera doesn't cut.",
+        "cause": "Tracks have no bindings on the PlayableDirector. The asset was created in isolation and dropped on a director without wiring.",
+        "fix": "After adding each track, call timeline/bind-track (or SetGenericBinding) with the scene object. Verify in inspector: every track row shows a resolved reference, not 'None'."
+      },
+      {
+        "symptom": "Camera jitters or snaps randomly every frame.",
+        "cause": "Two CinemachineBrain components on the same Camera, or a brain plus a script that also writes Camera.transform.",
+        "fix": "Keep exactly one brain per Camera. Remove hand-written transform writers; route through a virtual camera's Position/Rotation Control instead."
+      },
+      {
+        "symptom": "AddComponent<CinemachineVirtualCamera>() throws or the type is not found on a Unity 6 / 2023+ project.",
+        "cause": "Cinemachine 3 renamed CinemachineVirtualCamera → CinemachineCamera and restructured the component model. The old type is gone unless the project explicitly stayed on CM 2.9.",
+        "fix": "Check the installed Cinemachine package version. CM 3: use CinemachineCamera with CinemachineFollow / CinemachineRotationComposer / CinemachineSplineDolly. CM 2: original names still apply. Mosaic tools should branch on the detected package version, never guess."
+      },
+      {
+        "symptom": "Two virtual cameras have equal priority and live camera selection flickers between them.",
+        "cause": "Priority ties are resolved by CinemachineBrain's internal iteration order, which is not stable.",
+        "fix": "Give exactly one VC the highest priority at any time. For deliberate alternation, use a Clear Shot / State-Driven Camera manager VC, or drive selection from a Cinemachine Track."
+      },
+      {
+        "symptom": "Timeline playhead passed a signal time but the SignalReceiver never fired.",
+        "cause": "Either the SignalTrack has no binding, the SignalReceiver has no reaction entry for that SignalAsset, or Timeline was evaluated (scrubbed) but not played — Evaluate does not fire signals by default.",
+        "fix": "Bind the track, add a Reactions row mapping the SignalAsset to a UnityEvent, and call Play() (or enable 'Retroactive' on the emitter for scrub-replay)."
+      }
+    ],
+    "versionDeltas": [
+      {
+        "version": "2023.1",
+        "change": "Cinemachine 3.0 ships as the default package for new projects. Namespace moves from Cinemachine to Unity.Cinemachine. CinemachineVirtualCamera renamed to CinemachineCamera. Body/Aim components renamed and split: Framing Transposer → Position Composer, Composer → Rotation Composer, Transposer → Follow, Orbital Transposer → Orbital Follow.",
+        "breaking": true,
+        "migrationNote": "Use the CM 3 upgrade tool (Window > Cinemachine > Upgrade Manager) to convert existing scenes. Hand-written scripts referencing CM 2 types need manual rewrites. Projects heavily customised in CM 2 may be better off pinning com.unity.cinemachine@2.x."
+      },
+      {
+        "version": "2023.1",
+        "change": "CinemachinePath and CinemachineSmoothPath deprecated in favour of Unity Spline + CinemachineSplineDolly. CinemachineDollyCart replaced by CinemachineSplineCart.",
+        "breaking": true,
+        "migrationNote": "Convert paths to Splines via the upgrade tool. Scripts referencing CinemachinePath must move to Unity.Splines.SplineContainer."
+      },
+      {
+        "version": "6000.0",
+        "change": "Cinemachine 3 gains Output Channels (replacing CM 2 layer-based brain filtering) and Impulse v2 is standardised.",
+        "breaking": false
+      }
+    ],
+    "cinemachineComponentMap": {
+      "cm2_to_cm3": {
+        "CinemachineVirtualCamera": "CinemachineCamera",
+        "Transposer (Body)": "CinemachineFollow (Position Control)",
+        "Framing Transposer (Body)": "CinemachinePositionComposer",
+        "Orbital Transposer (Body)": "CinemachineOrbitalFollow",
+        "3rd Person Follow (Body)": "CinemachineThirdPersonFollow",
+        "Tracked Dolly (Body)": "CinemachineSplineDolly",
+        "Composer (Aim)": "CinemachineRotationComposer",
+        "Group Composer (Aim)": "CinemachineGroupFraming + RotationComposer",
+        "POV (Aim)": "CinemachinePanTilt",
+        "Hard Look At (Aim)": "CinemachineHardLookAt",
+        "Basic Multi-Channel Perlin (Noise)": "CinemachineBasicMultiChannelPerlin (same, under Unity.Cinemachine namespace)",
+        "CinemachinePath + CinemachineDollyCart": "Unity Spline + CinemachineSplineCart",
+        "CinemachineClearShot": "CinemachineClearShot (retained, ported)",
+        "CinemachineStateDrivenCamera": "CinemachineStateDrivenCamera (retained, ported)"
+      }
+    },
+    "playableDirectorLifecycle": {
+      "states": "PlayableDirector.state is Playing, Paused, or (implicitly) Stopped when the graph is destroyed. Play() builds the graph if needed and starts ticking. Pause() halts advancement but keeps the graph. Stop() destroys the graph; next Play() rebuilds.",
+      "time": "director.time advances per timeUpdateMode (GameTime, UnscaledGameTime, Manual, DSPClock). Setting it seeks. Evaluate() re-ticks at the current time without playing — useful for editor scrubbing and for 'set a pose' at load time.",
+      "bindings": "SetGenericBinding(TrackAsset trackKey, Object value) stores the mapping by track GUID on the director. GetGenericBinding reads it back. Bindings are per-director, not per-asset, so multiple directors can share one asset with different bindings (branching cutscenes, per-character dialogue)."
+    }
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Timeline", "url": "https://docs.unity3d.com/Manual/TimelineSection.html" },
+    { "title": "Timeline package manual (1.8)", "url": "https://docs.unity3d.com/Packages/com.unity.timeline@1.8/manual/index.html" },
+    { "title": "ScriptReference — PlayableDirector", "url": "https://docs.unity3d.com/ScriptReference/Playables.PlayableDirector.html" },
+    { "title": "ScriptReference — TimelineAsset", "url": "https://docs.unity3d.com/Packages/com.unity.timeline@1.8/api/UnityEngine.Timeline.TimelineAsset.html" },
+    { "title": "Cinemachine 3 manual", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/index.html" },
+    { "title": "Cinemachine 3 — CinemachineCamera", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineCamera.html" },
+    { "title": "Cinemachine 3 — Upgrade from 2", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineUpgradeFrom2.html" },
+    { "title": "Cinemachine 3 — Spline Dolly", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/CinemachineSplineDolly.html" },
+    { "title": "Cinemachine 2.9 manual (legacy)", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@2.9/manual/index.html" }
+  ],
+
+  "sources": [
+    { "title": "Unity Manual — Timeline section", "url": "https://docs.unity3d.com/Manual/TimelineSection.html" },
+    { "title": "Unity Packages — com.unity.timeline 1.8", "url": "https://docs.unity3d.com/Packages/com.unity.timeline@1.8/manual/index.html" },
+    { "title": "Unity Packages — com.unity.cinemachine 3.1", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@3.1/manual/index.html" },
+    { "title": "Unity Packages — com.unity.cinemachine 2.9", "url": "https://docs.unity3d.com/Packages/com.unity.cinemachine@2.9/manual/index.html" },
+    { "title": "ScriptReference — Playables.PlayableDirector", "url": "https://docs.unity3d.com/ScriptReference/Playables.PlayableDirector.html" }
+  ],
+
+  "authorshipNotes": "Content authored by the Mosaic team from publicly-documented Unity Timeline and Cinemachine APIs and package manuals. Component names, method signatures, and package version facts are not copyrightable. Explanatory prose, decision rules, pitfall diagnoses, and the CM 2 → CM 3 mapping table are original Mosaic editorial content. Unity Manual, package docs, and ScriptReference are cited as external references and NOT reproduced verbatim here."
+}

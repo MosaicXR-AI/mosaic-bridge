@@ -1,0 +1,313 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-editor-scripting-overview",
+  "title": "Editor Scripting: Undo, Menus, Windows, Reflection, Extensibility",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "editor",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "How Unity separates editor-only code from runtime (Editor/ folders and asmdef platform flags), how it exposes extension points (MenuItem, CustomEditor, CustomPropertyDrawer, EditorWindow, InitializeOnLoad), and how authored changes persist across undo, prefab overrides, and domain reloads (Undo.RecordObject, SerializedObject, EditorPrefs). Covers Mosaic tools in editor/*, undo/*, reflection/*, meta/*, and extensibility/*. The #1 failure class: a runtime assembly referencing an Editor-only type (build fails); #2: mutating a UnityEngine.Object without Undo.RecordObject (no undo entry, inspector never dirties); #3: SerializedProperty.FindPropertyRelative returning null on a renamed field. Read before any tool that authors editor extensions, records undo, reflects over types, or opens an editor window.",
+
+  "mosaicTools": [
+    "editor/menu-item-create",
+    "editor/window-open",
+    "editor/window-close",
+    "editor/custom-editor-create",
+    "editor/property-drawer-create",
+    "editor/initialize-on-load",
+    "undo/record-object",
+    "undo/register-created",
+    "undo/destroy-immediate",
+    "undo/group-begin",
+    "undo/group-end",
+    "undo/collapse",
+    "reflection/find-type",
+    "reflection/invoke-method",
+    "meta/editor-prefs-get",
+    "meta/editor-prefs-set",
+    "extensibility/serialized-object-update",
+    "extensibility/serialized-property-apply"
+  ],
+
+  "relatedKb": [
+    "kb-core-asset-database",
+    "kb-core-scene-lifecycle",
+    "kb-ui-ui-systems-overview"
+  ],
+
+  "llmGuidance": {
+    "when_authoring_code_that_calls_editor_apis":
+      "The script must live under an Editor/ folder OR in an assembly whose asmdef has includePlatforms set to Editor only. Otherwise the build step fails with 'type or namespace UnityEditor could not be found' because UnityEditor.dll is not shipped to players.",
+    "when_modifying_a_serialized_field_on_a_unityengine_object":
+      "Call Undo.RecordObject(target, \"action name\") BEFORE the mutation, not after. Undo records a snapshot; a post-write call captures the already-changed state and yields no undo entry. Then set EditorUtility.SetDirty(target) so the inspector and scene marker reflect the change.",
+    "when_creating_or_destroying_an_object_that_should_be_undoable":
+      "Use Undo.RegisterCreatedObjectUndo(newObj, name) after instantiation and Undo.DestroyObjectImmediate(obj) instead of Object.DestroyImmediate. Plain DestroyImmediate removes the object with no undo record; the user cannot get it back.",
+    "when_performing_a_multi_step_edit_that_should_collapse_into_one_undo":
+      "Undo.SetCurrentGroupName(\"label\"); int g = Undo.GetCurrentGroup(); /* many RecordObject + mutate calls */ Undo.CollapseUndoOperations(g). Without collapse the user has to hit Ctrl+Z once per internal step.",
+    "when_editing_fields_via_serializedobject":
+      "Pattern is: serializedObject.Update(); modify SerializedProperty values; serializedObject.ApplyModifiedProperties(). ApplyModifiedProperties handles Undo registration, prefab override propagation, and multi-object editing automatically — do NOT also call Undo.RecordObject in this path, you will get duplicate entries.",
+    "when_writing_a_menuitem_that_should_only_run_in_valid_context":
+      "Add a second method with the same path and [MenuItem(path, true)] that returns bool. Unity calls it as the validation predicate and greys out the menu entry when it returns false. Keep validation cheap — it runs on every menu open.",
+    "when_opening_an_editor_window":
+      "EditorWindow.GetWindow<T>() is a singleton-get: reuses the existing docked instance or creates one. For a transient floating window use CreateInstance<T>() then ShowUtility(). Use titleContent to set the tab label with icon; setting window.title directly is deprecated.",
+    "when_building_a_new_editor_ui":
+      "Prefer UI Toolkit (CreateGUI() returning a VisualElement) over IMGUI (OnGUI immediate-mode) for any new window in 2021.3+. UI Toolkit retains layout, supports USS styling, and is what Unity itself uses for new editor UIs. IMGUI is still fine for small inspector overrides.",
+    "when_using_reflection_to_find_a_unity_type":
+      "Use Type.GetType(\"Namespace.ClassName, AssemblyName\") with the explicit assembly suffix (e.g. ', Assembly-CSharp' or ', UnityEngine.CoreModule'). Plain Type.GetType(\"Name\") only searches mscorlib and the calling assembly and returns null for most Unity types. Cache the resulting MethodInfo/FieldInfo; reflection is 10-100x slower than direct calls.",
+    "when_needing_code_to_run_on_every_editor_startup":
+      "[InitializeOnLoad] on a static class with a static constructor runs on every domain reload (script compile, enter/exit playmode). [InitializeOnLoadMethod] on a static method is the lighter equivalent. Do not do heavy work here — it blocks the editor.",
+    "when_running_a_long_operation_without_coroutines":
+      "Hook EditorApplication.update (called every editor tick). Increment state each call and unhook when done. For a proper coroutine API install the com.unity.editorcoroutines package and use EditorCoroutineUtility.StartCoroutine.",
+    "when_doing_bulk_asset_edits_that_should_be_undoable":
+      "AssetDatabase.StartAssetEditing() + one Undo.SetCurrentGroupName + loop of RecordObject + AssetDatabase.StopAssetEditing() + Undo.CollapseUndoOperations(group). See kb-core-asset-database for the StartAssetEditing pattern; this KB covers the Undo wrapper around it."
+  },
+
+  "full": {
+    "editorVsRuntimeAssemblies": {
+      "editorFolderRule": "Any .cs under a folder named Editor (at any depth under Assets/ or an embedded package) compiles into Assembly-CSharp-Editor instead of Assembly-CSharp. That assembly references UnityEditor.dll and is stripped from player builds.",
+      "asmdefRule": "An .asmdef with 'includePlatforms': ['Editor'] forces the same behavior for the assembly it defines. Preferred over the folder convention in packages because it is explicit and renames cleanly.",
+      "referenceDirection": "Runtime assemblies may NOT reference editor assemblies. Editor assemblies may reference runtime assemblies. Violating this yields a compile error in the editor AND a build-time failure when producing a player.",
+      "conditionalCompilation": "For one-off editor blocks inside a runtime script, wrap in #if UNITY_EDITOR ... #endif. Use sparingly — large #if regions are a smell that the code should move to an editor assembly."
+    },
+
+    "menuItems": {
+      "basic": "[MenuItem(\"Mosaic/DoThing\")] on a public static void method adds 'DoThing' under the Mosaic menu in the main menu bar. Path uses forward slashes for hierarchy.",
+      "contextMenus": "[MenuItem(\"CONTEXT/Component/MyAction\")] adds to a component's gear-icon context menu. [MenuItem(\"Assets/...\")] adds to Project window right-click. [MenuItem(\"GameObject/...\")] adds to Hierarchy right-click and main GameObject menu.",
+      "validation": "A second [MenuItem(path, true)] method returning bool is the validator. Unity greys out the menu entry when it returns false. Selection.activeGameObject and Selection.objects are the common predicates.",
+      "priority": "[MenuItem(path, false, priority)] controls sort order and section dividers. Priorities 11+ apart between entries insert a separator. Built-in Unity items use priorities in documented ranges — keep custom menus above 1000 to avoid collisions.",
+      "shortcuts": "Append ' _k' for key 'k', ' %k' for Ctrl/Cmd+k, ' #k' for Shift+k, ' &k' for Alt+k. Example: [MenuItem(\"Mosaic/Save %s\")] binds Ctrl+S (conflicts with Unity's built-in Save — avoid).",
+      "shortcutManager": "For complex bindings, use [Shortcut(\"Mosaic/Thing\", KeyCode.K, ShortcutModifiers.Control)] (com.unity.shortcut-manager-like API, built in since 2019). Users can rebind via Shortcut Manager."
+    },
+
+    "customEditors": {
+      "declaration": "[CustomEditor(typeof(MyBehaviour))] on a class that inherits UnityEditor.Editor replaces the default inspector for MyBehaviour. CanEditMultipleObjects attribute enables the inspector when the user selects more than one instance.",
+      "onInspectorGUI": "Override OnInspectorGUI() — immediate-mode. Typical flow: serializedObject.Update(); EditorGUILayout.PropertyField(myProp); serializedObject.ApplyModifiedProperties(). DrawDefaultInspector() renders the original, useful as a starting point.",
+      "targetAccessors": "this.target is the object being edited (cast to your type). this.targets is the array for multi-edit. this.serializedObject wraps target(s) for property access — always prefer this over direct field access so Undo, dirty, and prefab propagation 'just work'.",
+      "uiToolkitEditors": "Override CreateInspectorGUI() returning a VisualElement instead of OnInspectorGUI. Unity 2021.1+ supports UI Toolkit inspectors. Mixing with PropertyField (UI Toolkit variant) gives automatic binding to serializedObject.",
+      "scope": "One CustomEditor per target type wins. If multiple editors match, Unity picks one nondeterministically — document ownership clearly in a package."
+    },
+
+    "propertyDrawers": {
+      "twoFlavors": "Type-based: [CustomPropertyDrawer(typeof(MyStruct))] draws every field of that type. Attribute-based: [CustomPropertyDrawer(typeof(MyRangeAttribute))] draws every field decorated with [MyRange]. The attribute pattern is reusable; type pattern targets your own serializable types.",
+      "imguiApi": "override OnGUI(Rect position, SerializedProperty property, GUIContent label). Rect is the full row the inspector allocates. Use EditorGUI.PropertyField on child props; return height via override of GetPropertyHeight.",
+      "uiToolkitApi": "override CreatePropertyGUI(SerializedProperty property) returning a VisualElement. Preferred for new drawers; simpler layout, no manual Rect arithmetic.",
+      "decoratorDrawers": "[CustomPropertyDrawer(typeof(MyDecoratorAttribute))] with a class deriving from DecoratorDrawer renders visual separators that don't consume serialized data (e.g. HeaderAttribute).",
+      "nestedProperties": "property.FindPropertyRelative(\"fieldName\") accesses child SerializedProperties of a struct/class. A null return means the field name is wrong or was renamed — catch this in drawer code to avoid NullReferenceException leaks into the inspector."
+    },
+
+    "editorWindows": {
+      "lifecycle": "EditorWindow.GetWindow<T>(title, focus, desiredDockNext) returns the singleton instance. OnEnable fires on create and on every domain reload. OnDisable fires on hide/close. OnDestroy fires exactly once when closed permanently.",
+      "persistentState": "Fields marked [SerializeField] survive domain reload because EditorWindow is itself a ScriptableObject-like persistent host. Plain fields reset on reload. Use this for in-window cached state instead of EditorPrefs for large data.",
+      "imguiDrawing": "override void OnGUI() — immediate-mode; called every repaint, mouse move, layout pass. Use GUILayout / EditorGUILayout helpers. Do not allocate per-frame — GC spikes stall the editor.",
+      "uiToolkitDrawing": "override void CreateGUI() — retained-mode; called once after OnEnable. Build the VisualElement tree and attach to rootVisualElement. Updates happen via bindings, SetEnabled, and style class changes. Much cheaper than IMGUI for complex windows.",
+      "dockingAndModes": "Show() docks or floats based on prior user placement. ShowUtility() forces a floating tool window above the main editor. ShowModal() blocks until closed. ShowPopup() is a chromeless, click-outside-dismiss popup. ShowNotification(GUIContent) prints a transient centered notice.",
+      "windowMenu": "Add [MenuItem(\"Window/Mosaic/MyTool\")] pointing at a static method that calls GetWindow<T>() to give users a canonical way to reopen.",
+      "titleAndIcon": "window.titleContent = new GUIContent(\"Label\", icon). Set once in OnEnable. Icons from EditorGUIUtility.IconContent(\"d_SceneAsset Icon\") pull Unity's built-in set."
+    },
+
+    "undoSystem": {
+      "recordObjectBeforeMutation": "Undo.RecordObject(target, \"label\") snapshots the object's serialized state BEFORE you mutate it. The label appears in Edit → Undo History. Recording after the change is a no-op — the snapshot is identical to the post-state.",
+      "recordObjectsBulk": "Undo.RecordObjects(Object[] targets, \"label\") batches multiple objects into one undo entry. Use when a single operation touches several objects (e.g. repositioning a selection).",
+      "creation": "Undo.RegisterCreatedObjectUndo(newObj, \"label\") makes a created GameObject/Component/Asset undoable — Ctrl+Z destroys it. Without this, the new object sticks around after undo.",
+      "destruction": "Undo.DestroyObjectImmediate(obj) destroys the object AND records an undo entry that can restore it. Using Object.DestroyImmediate directly is non-undoable. For runtime destruction (playmode), use Object.Destroy — not Undo-aware, which is expected.",
+      "componentHelpers": "Undo.AddComponent<T>(gameObject) adds and records. Undo.SetTransformParent(child, parent, \"label\") reparents with Undo. These exist for common operations because recording Transform or componentless adds requires several RecordObject calls manually.",
+      "grouping": "int g = Undo.GetCurrentGroup(); Undo.SetCurrentGroupName(\"Big Edit\"); /* do N operations */ Undo.CollapseUndoOperations(g). Single Ctrl+Z unwinds all of them.",
+      "incrementCurrentGroup": "Undo.IncrementCurrentGroup() forces a new group boundary without collapsing. Rarely needed — Unity auto-increments between distinct user actions.",
+      "postprocessors": "Undo.undoRedoPerformed is an event fired after any undo/redo. Hook it in editor windows to refresh their view; serializedObject.Update() is typically enough.",
+      "undoDoesNotCross": "Undo records do NOT persist across editor restart, assembly reload, or entering playmode. Don't treat Undo as a save system — it is a session-scoped editor convenience."
+    },
+
+    "serializedObjectModel": {
+      "whyItExists": "Direct field writes bypass Unity's change tracking. SerializedObject/SerializedProperty is the editor-side pipe that registers Undo, marks the object dirty, propagates to prefab instances, and handles multi-object editing — in one call.",
+      "updateApplyCycle": "serializedObject.Update() reads current values from target(s) into the wrapper. Mutate via property.intValue/floatValue/objectReferenceValue/etc. serializedObject.ApplyModifiedProperties() writes back, records Undo (with the inspector's action name), and fires OnValidate.",
+      "applyNoUndo": "ApplyModifiedPropertiesWithoutUndo() skips Undo registration. Use rarely, e.g. when a parent tool already managed its own undo group.",
+      "findProperty": "serializedObject.FindProperty(\"fieldName\") returns null for typos, renamed fields, or missing [SerializeField] on private fields. Always guard-check or the inspector throws on first draw.",
+      "arrayIteration": "SerializedProperty.arraySize for length; GetArrayElementAtIndex(i) for access; InsertArrayElementAtIndex / DeleteArrayElementAtIndex for mutation. Element insertion copies the previous element's value — set fresh values explicitly after insert.",
+      "prefabPropagation": "ApplyModifiedProperties on a prefab instance marks the specific property as an override and leaves siblings linked to the prefab. Direct field writes on the same object would break that linkage."
+    },
+
+    "editorPrefs": {
+      "whatItIs": "A key-value store scoped to the user's installation of Unity, not the project. Backed by registry on Windows, plist on macOS, ~/.config on Linux. Values persist across projects.",
+      "api": "EditorPrefs.SetInt/SetFloat/SetString/SetBool(key, value) and matching Get*(key, defaultValue). DeleteKey, DeleteAll, HasKey.",
+      "useCases": "Per-user tool settings (last-used folder, verbose logging flag, dark-mode preference). For project-scoped settings use a ScriptableObject under Assets/ instead; for session-only use SessionState.",
+      "sessionState": "SessionState.SetInt/SetString/etc. is per-editor-launch and cleared when Unity closes. Handy for 'remember this until I restart' state without polluting EditorPrefs.",
+      "namespacing": "Prefix keys with your package namespace (e.g. 'Mosaic.Tool.LastFolder') to avoid collisions. There is NO automatic sandboxing — any editor script can read/write any key."
+    },
+
+    "reflectionInEditor": {
+      "whyEditorScriptsUseIt": "Tooling often needs to introspect or invoke APIs that are internal to Unity (no public binding) or to a user's assembly not known at compile time. Examples: listing all MonoBehaviour subclasses, calling an internal EditorWindow method, discovering user scripts that have a specific attribute.",
+      "typeLookup": "Type.GetType(\"Fully.Qualified.Name, AssemblyName\"). Common assembly names: Assembly-CSharp (user runtime scripts), Assembly-CSharp-Editor (user editor scripts), UnityEngine.CoreModule, UnityEditor.CoreModule. For plain Unity types try UnityEngine.Object type cache via TypeCache.",
+      "typeCache": "UnityEditor.TypeCache.GetTypesDerivedFrom<T>() / GetTypesWithAttribute<T>() is Unity's optimized reflection for these queries. Avoids walking every assembly every call. Prefer over manual AppDomain.GetAssemblies() loops.",
+      "memberAccess": "BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static for GetMethod/GetField/GetProperty. Cache the MethodInfo/FieldInfo — lookup is the expensive part; invocation is cheap by comparison.",
+      "internalsVisibleTo": "Adding [assembly: InternalsVisibleTo(\"OtherAsm\")] in an asmdef-backed assembly grants compile-time access without reflection. Preferred when you own both assemblies.",
+      "caveats": "Reflection into UnityEditor internals is not a supported contract — any Unity version can rename or remove the symbol. Gate reflective code with try/catch and a fallback path, and flag version-specific branches clearly."
+    },
+
+    "initializeOnLoad": {
+      "classAttribute": "[InitializeOnLoad] on a static class causes its static constructor to run on every domain reload — every script compile, every enter/exit playmode. Use for hooking editor events (EditorApplication.update, playmodeStateChanged) at startup.",
+      "methodAttribute": "[InitializeOnLoadMethod] on a static method is the lighter alternative — the method runs on domain reload without needing a class-level static ctor.",
+      "runtimeEquivalent": "[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)] is the player-side analog. Lives in runtime assemblies, fires on player startup. Distinct system.",
+      "doNotBlock": "Both attributes run synchronously. Heavy work (network, file scans, database queries) delays every editor reload. Schedule real work onto EditorApplication.update and let the hook return fast.",
+      "ordering": "Multiple InitializeOnLoad classes run in unspecified order. If A depends on B, express via explicit method call, not attribute ordering."
+    },
+
+    "editorCoroutines": {
+      "problem": "MonoBehaviour.StartCoroutine requires a running GameObject in a scene. Editor tools have no MonoBehaviour context and need to iterate over time outside playmode.",
+      "updateHook": "EditorApplication.update += MyTick; ... if (done) EditorApplication.update -= MyTick. Called every editor repaint/idle. Sufficient for simple tickers and time-based state machines.",
+      "delayCall": "EditorApplication.delayCall += () => { ... } runs the lambda once on the next editor tick. Useful for 'do this after the current GUI pass finishes' patterns.",
+      "package": "com.unity.editorcoroutines adds EditorCoroutineUtility.StartCoroutine(IEnumerator, owner). Proper IEnumerator semantics (yield return new WaitForSeconds, etc.) in editor context. Optional package; install via Package Manager when the tool needs real coroutines.",
+      "pitfall": "Callbacks registered on EditorApplication.update survive domain reload only if the static class registering them is InitializeOnLoad; otherwise they vanish and the loop stops silently mid-operation."
+    },
+
+    "assemblyDefinitionsForEditor": {
+      "platformFlag": "asmdef 'includePlatforms': ['Editor'] marks the assembly as editor-only. Scripts inside can #using UnityEditor without guards.",
+      "referencingEditorFromEditor": "An editor asmdef can reference other editor asmdefs AND any runtime asmdef. A runtime asmdef cannot reference an editor asmdef — doing so blocks builds.",
+      "splitPackagePattern": "A common package shape is: RootPackage.asmdef (runtime, no UnityEditor), RootPackage.Editor.asmdef (editor, references runtime asmdef). This keeps runtime APIs shipped and editor APIs stripped from the player.",
+      "testAssemblies": "UnityEditor.TestTools and NUnit.Framework require separate asmdef with 'defineConstraints': ['UNITY_INCLUDE_TESTS'] and the testables flag."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Tool adds a new menu command under 'Tools/Mosaic/'",
+        "rule": "Place the script under an Editor/ folder or an editor-flagged asmdef. Declare [MenuItem(\"Tools/Mosaic/DoThing\")] on a public static void method. Add a validation overload [MenuItem(\"Tools/Mosaic/DoThing\", true)] returning bool if the command needs selection context.",
+        "evidence": "Unity Manual — MenuItem attribute and validator pattern."
+      },
+      {
+        "scenario": "Tool programmatically moves several GameObjects and the user expects one undo step",
+        "rule": "Undo.SetCurrentGroupName(\"Arrange Objects\"); int g = Undo.GetCurrentGroup(); foreach (var go in selection) { Undo.RecordObject(go.transform, \"move\"); go.transform.position = newPos; } Undo.CollapseUndoOperations(g);",
+        "evidence": "Undo.CollapseUndoOperations ScriptReference — group collapse contract."
+      },
+      {
+        "scenario": "Tool builds a new editor window with a complex form",
+        "rule": "Prefer UI Toolkit. class MyWindow : EditorWindow { void CreateGUI() { rootVisualElement.Add(...); } }. Avoid OnGUI for new windows in 2021.3+ — retained mode scales better and supports USS.",
+        "evidence": "Unity Manual — Editor Windows — UI Toolkit preferred for new authoring UIs."
+      },
+      {
+        "scenario": "Tool needs to find every MonoBehaviour type that implements a marker interface",
+        "rule": "Use TypeCache.GetTypesDerivedFrom<IMyMarker>() instead of walking AppDomain.CurrentDomain.GetAssemblies(). TypeCache is indexed; the manual walk is O(assemblies × types).",
+        "evidence": "UnityEditor.TypeCache ScriptReference — indexed type queries."
+      },
+      {
+        "scenario": "Tool edits a field on a selected GameObject via a custom inspector",
+        "rule": "serializedObject.Update(); EditorGUILayout.PropertyField(serializedObject.FindProperty(\"myField\")); serializedObject.ApplyModifiedProperties(). Do NOT also call Undo.RecordObject — ApplyModifiedProperties already does.",
+        "evidence": "SerializedObject.ApplyModifiedProperties ScriptReference — automatic Undo registration."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Player build fails with 'type or namespace UnityEditor could not be found'.",
+        "cause": "A runtime script referenced a class from an Editor/ folder or an editor-flagged asmdef, OR used 'using UnityEditor' without a #if UNITY_EDITOR guard.",
+        "fix": "Move the code into an Editor/ folder, or split the class so the editor bits live in an editor assembly that references the runtime one. For a single stray line, wrap in #if UNITY_EDITOR ... #endif."
+      },
+      {
+        "symptom": "User mutated a field programmatically via a tool; Ctrl+Z does nothing.",
+        "cause": "The mutation happened without Undo.RecordObject (or the record was called AFTER the assignment, capturing the post-state).",
+        "fix": "Undo.RecordObject(target, \"label\") must precede the write. Follow with EditorUtility.SetDirty(target) so scene/asset dirty flag trips."
+      },
+      {
+        "symptom": "Ctrl+Z over a batch operation requires dozens of presses instead of one.",
+        "cause": "No Undo group boundary; each RecordObject became its own entry.",
+        "fix": "Capture Undo.GetCurrentGroup() before the batch, perform all ops, then Undo.CollapseUndoOperations(group). One press unwinds the lot."
+      },
+      {
+        "symptom": "Custom inspector throws NullReferenceException in OnInspectorGUI after a field rename.",
+        "cause": "serializedObject.FindProperty(\"oldName\") returned null; the drawer then dereferenced it.",
+        "fix": "Check for null on every FindProperty/FindPropertyRelative result. Search the codebase for the old name after renaming serialized fields. Consider [FormerlySerializedAs] to preserve data migration."
+      },
+      {
+        "symptom": "EditorWindow loses all its state after a script compile.",
+        "cause": "Fields were not [SerializeField] — domain reload destroys non-serialized state on EditorWindows.",
+        "fix": "Mark state fields with [SerializeField]. For complex state that cannot be serialized, rebuild in OnEnable from a persistent source (EditorPrefs, ScriptableObject, file)."
+      },
+      {
+        "symptom": "Type.GetType(\"MyNamespace.MyClass\") returns null even though the class clearly exists.",
+        "cause": "Type.GetType only searches mscorlib and the calling assembly by default.",
+        "fix": "Include the assembly: Type.GetType(\"MyNamespace.MyClass, Assembly-CSharp\"). Or use TypeCache.GetTypesDerivedFrom for Unity types."
+      },
+      {
+        "symptom": "[InitializeOnLoad] code makes the editor slow to reload after every save.",
+        "cause": "Heavy work (asset scans, HTTP calls, file I/O) running in the static ctor blocks domain reload completion.",
+        "fix": "Defer work onto EditorApplication.update or EditorApplication.delayCall. Static ctor should only wire handlers."
+      },
+      {
+        "symptom": "Tool's menu item is always greyed out.",
+        "cause": "A [MenuItem(path, true)] validator exists and returns false. Often an unmet Selection check or a typo in the path string between command and validator.",
+        "fix": "Ensure the validator path matches the command path EXACTLY. Validate the predicate by logging its return."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2019.1",
+        "change": "UI Toolkit (then called UIElements) for editor windows reached GA. CreateGUI / VisualElement became the recommended authoring path alongside legacy IMGUI.",
+        "breaking": false
+      },
+      {
+        "version": "2019.3",
+        "change": "[InitializeOnLoadMethod] attribute added as a lightweight alternative to class-level [InitializeOnLoad] + static ctor.",
+        "breaking": false
+      },
+      {
+        "version": "2020.1",
+        "change": "com.unity.editorcoroutines package stabilized; EditorCoroutineUtility.StartCoroutine supports IEnumerator in editor contexts.",
+        "breaking": false
+      },
+      {
+        "version": "2021.1",
+        "change": "Editor.CreateInspectorGUI (UI Toolkit inspectors) reached parity with OnInspectorGUI for most built-in drawers. New inspectors should target this API.",
+        "breaking": false
+      },
+      {
+        "version": "2021.3 LTS",
+        "change": "Undo, SerializedObject, EditorWindow, MenuItem, and TypeCache APIs stable across 2021.3 → 6000.4. No breaking signature changes in this range.",
+        "breaking": false
+      },
+      {
+        "version": "6000.0",
+        "change": "UI Toolkit is the documented default for new editor UIs. IMGUI remains fully supported; no migration required for existing tools.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Extending the Editor",                         "url": "https://docs.unity3d.com/Manual/ExtendingTheEditor.html" },
+    { "title": "Unity Manual — Editor Windows",                              "url": "https://docs.unity3d.com/Manual/editor-EditorWindows.html" },
+    { "title": "Unity Manual — Custom Editors",                              "url": "https://docs.unity3d.com/Manual/editor-CustomEditors.html" },
+    { "title": "Unity Manual — Property Drawers",                            "url": "https://docs.unity3d.com/Manual/editor-PropertyDrawers.html" },
+    { "title": "Unity Manual — Undo",                                        "url": "https://docs.unity3d.com/Manual/Undo.html" },
+    { "title": "Unity Manual — Special Folders (Editor)",                    "url": "https://docs.unity3d.com/Manual/SpecialFolders.html" },
+    { "title": "Unity Manual — UI Toolkit for Editor",                       "url": "https://docs.unity3d.com/Manual/UIE-editor-windows.html" },
+    { "title": "Unity Manual — Assembly Definitions",                        "url": "https://docs.unity3d.com/Manual/ScriptCompilationAssemblyDefinitionFiles.html" },
+    { "title": "ScriptReference — MenuItem",                                 "url": "https://docs.unity3d.com/ScriptReference/MenuItem.html" },
+    { "title": "ScriptReference — EditorWindow",                             "url": "https://docs.unity3d.com/ScriptReference/EditorWindow.html" },
+    { "title": "ScriptReference — Editor",                                   "url": "https://docs.unity3d.com/ScriptReference/Editor.html" },
+    { "title": "ScriptReference — CustomEditor",                             "url": "https://docs.unity3d.com/ScriptReference/CustomEditor.html" },
+    { "title": "ScriptReference — CustomPropertyDrawer",                     "url": "https://docs.unity3d.com/ScriptReference/CustomPropertyDrawer.html" },
+    { "title": "ScriptReference — PropertyDrawer",                           "url": "https://docs.unity3d.com/ScriptReference/PropertyDrawer.html" },
+    { "title": "ScriptReference — Undo",                                     "url": "https://docs.unity3d.com/ScriptReference/Undo.html" },
+    { "title": "ScriptReference — Undo.RecordObject",                        "url": "https://docs.unity3d.com/ScriptReference/Undo.RecordObject.html" },
+    { "title": "ScriptReference — Undo.CollapseUndoOperations",              "url": "https://docs.unity3d.com/ScriptReference/Undo.CollapseUndoOperations.html" },
+    { "title": "ScriptReference — SerializedObject",                         "url": "https://docs.unity3d.com/ScriptReference/SerializedObject.html" },
+    { "title": "ScriptReference — SerializedProperty",                       "url": "https://docs.unity3d.com/ScriptReference/SerializedProperty.html" },
+    { "title": "ScriptReference — EditorPrefs",                              "url": "https://docs.unity3d.com/ScriptReference/EditorPrefs.html" },
+    { "title": "ScriptReference — SessionState",                             "url": "https://docs.unity3d.com/ScriptReference/SessionState.html" },
+    { "title": "ScriptReference — EditorApplication",                        "url": "https://docs.unity3d.com/ScriptReference/EditorApplication.html" },
+    { "title": "ScriptReference — InitializeOnLoadAttribute",                "url": "https://docs.unity3d.com/ScriptReference/InitializeOnLoadAttribute.html" },
+    { "title": "ScriptReference — InitializeOnLoadMethodAttribute",          "url": "https://docs.unity3d.com/ScriptReference/InitializeOnLoadMethodAttribute.html" },
+    { "title": "ScriptReference — TypeCache",                                "url": "https://docs.unity3d.com/ScriptReference/TypeCache.html" },
+    { "title": "Unity Manual — Editor Coroutines package",                   "url": "https://docs.unity3d.com/Packages/com.unity.editorcoroutines@1.0/manual/index.html" },
+    { "title": "Unity Manual — Shortcut Manager",                            "url": "https://docs.unity3d.com/Manual/ShortcutManager.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs and Manual pages covering Extending the Editor, Editor Windows, Custom Editors, Property Drawers, Undo, SerializedObject/SerializedProperty, EditorPrefs, InitializeOnLoad, TypeCache, and Assembly Definitions. API signatures, attribute names, method contracts, and path conventions are factual (not copyrightable). Explanatory prose, the editor-vs-runtime mental model, llmGuidance scenarios, decisionRules, and commonPitfalls are original Mosaic editorial content informed by observed LLM tool-call failure modes (runtime referencing UnityEditor, post-mutation Undo.RecordObject, ungrouped undo batches, FindProperty on renamed fields, reflection without assembly qualifier, heavy work in static ctors). No Unity documentation text is reproduced here; all Manual and ScriptReference pages are cited as externalReferences for the LLM to fetch when it needs source text."
+}

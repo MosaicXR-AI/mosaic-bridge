@@ -1,0 +1,179 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-ui-ui-systems-overview",
+  "title": "UI Toolkit vs UGUI vs TextMeshPro",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "ui",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Unity ships three parallel UI systems: UGUI (Canvas + RectTransform MonoBehaviour stack — the dominant runtime choice), UI Toolkit (UXML/USS, retained-mode VisualElement tree — the future, editor-ready, runtime maturing), and IMGUI (immediate-mode, editor-tools only). The mosaic ui/* and tmp/* tools target UGUI + TextMeshPro — they create Canvas, add Image/Button/Slider/etc., configure RectTransform anchors, and spawn TMP_Text. LLMs mix the systems and confuse anchored vs world position constantly. Read before creating any runtime UI; choose UGUI+TMP unless you have a concrete reason to use UI Toolkit at runtime.",
+
+  "mosaicTools": [
+    "ui/create_canvas",
+    "ui/add_element",
+    "ui/info",
+    "ui/set_properties",
+    "ui/set_rect_transform",
+    "tmp/create",
+    "tmp/info",
+    "tmp/set_properties"
+  ],
+
+  "relatedKb": [
+    "kb-core-scene-lifecycle",
+    "kb-core-asset-database",
+    "kb-core-gameobject-transform-semantics"
+  ],
+
+  "llmGuidance": {
+    "when_creating_new_runtime_ui":
+      "Default to UGUI + TextMeshPro via ui/create_canvas → ui/add_element → tmp/create. Do not mix in UXML/USS unless the user explicitly asked for UI Toolkit.",
+    "when_creating_a_text_label":
+      "Always use tmp/create. Legacy UnityEngine.UI.Text is effectively deprecated — lower quality, no SDF outline. TMP requires TMP Essentials imported once; squares = missing font asset.",
+    "when_positioning_a_ui_element":
+      "Use ui/set_rect_transform with anchoredPosition, NOT Transform.position. UI layout is driven by anchorMin/anchorMax/pivot/anchoredPosition/sizeDelta.",
+    "when_ui_looks_right_in_editor_but_wrong_in_build":
+      "Suspect Canvas Scaler first (use 'Scale With Screen Size' + reference resolution). Then suspect anchors pinned to a corner when the element should stretch.",
+    "when_asked_to_add_a_clickable_button":
+      "Ensure the Canvas has a GraphicRaycaster and the scene has an EventSystem. ui/create_canvas adds the raycaster; a hand-made Canvas may not. No EventSystem = silent click failure.",
+    "when_asked_for_editor_tool_ui":
+      "UI Toolkit (UXML + USS) is the recommended path for EditorWindows and Inspectors in 2022+. IMGUI only when extending existing IMGUI code.",
+    "when_asked_to_mix_ui_toolkit_and_ugui":
+      "Allowed but keep them in separate PanelSettings / Canvases. They do not share layout, focus, or event routing; do not nest one under the other."
+  },
+
+  "full": {
+    "threeSystems": [
+      { "name": "UGUI (UnityEngine.UI)", "model": "Retained MonoBehaviour — Canvas + RectTransform + Graphic components on GameObjects; CanvasRenderer meshes batched per-Canvas.", "runtime": "Primary runtime UI for most shipping Unity games.", "editor": "Not supported for custom editor windows.", "notes": "Mature, deep component ecosystem. Canvas rebuilds can be expensive on any dirty." },
+      { "name": "UI Toolkit (com.unity.ui)", "model": "Retained VisualElement tree authored in UXML (XML) and styled with USS (CSS-like); single draw per PanelSettings.", "runtime": "GA since 2021.2 via UIDocument + PanelSettings; feature set still narrower than UGUI (no built-in world-space, thinner gamepad focus, fewer components).", "editor": "Recommended path for custom EditorWindows and Inspectors in 2022+.", "notes": "Strong separation of structure/style/behavior; does not interop with RectTransform." },
+      { "name": "IMGUI (OnGUI / UnityEditor.GUI)", "model": "Immediate-mode — callbacks redraw every frame; no retained tree.", "runtime": "Discouraged — allocates, cannot batch.", "editor": "Legacy editor UI; only touch when maintaining existing Editor/GUILayout code." }
+    ],
+
+    "ugui": {
+      "canvas": {
+        "renderModes": [
+          { "mode": "Screen Space - Overlay",  "behavior": "Canvas drawn last, on top of everything, in screen pixels. No Camera reference needed. Default for HUDs." },
+          { "mode": "Screen Space - Camera",   "behavior": "Rendered by a specific Camera at a planeDistance. Can interleave with world geometry (particles between UI and camera)." },
+          { "mode": "World Space",             "behavior": "Canvas is a 3D quad in world coordinates. Use for in-world signs, VR panels. Size is controlled by the RectTransform, not the Canvas Scaler." }
+        ],
+        "canvasScaler": {
+          "modes": [
+            "Constant Pixel Size — 1 UI unit = 1 screen pixel. Different-sized screens render differently-sized UI.",
+            "Scale With Screen Size — reference resolution + Match slider (Width/Height/Expand/Shrink). The production default.",
+            "Constant Physical Size — DPI-aware, rarely used."
+          ],
+          "rule": "For ~16:9 games set Match = 0.5 (or higher). For mobile portrait prioritize Match = 0 (width)."
+        },
+        "graphicRaycaster": "Translates pointer events into UI hits. Required on any Canvas that needs clicks. Needs an EventSystem somewhere in the scene."
+      },
+
+      "rectTransform": {
+        "anchorMin": "Vector2 in [0,1], bottom-left relative to parent rect.",
+        "anchorMax": "Vector2 in [0,1], top-right relative to parent rect.",
+        "pivot": "Vector2 in [0,1], pivot inside the element's own rect; rotation center and anchoredPosition reference.",
+        "anchoredPosition": "Offset of the pivot from the anchor rectangle's reference point; zero when pivot sits on the anchor.",
+        "sizeDelta": "When anchors coincide → (width,height). When anchors are separated → (extraWidth,extraHeight) added to the stretched rect.",
+        "presets": "Inspector anchor preset grid; Shift+Alt sets pivot+position at the same time.",
+        "rule_of_thumb": "Pinned (anchorMin == anchorMax) → size absolute, position offset. Stretched → sizeDelta is padding delta, not final width."
+      },
+
+      "components": [
+        { "component": "Image",        "use": "Sprite-backed rect; Simple/Sliced/Tiled/Filled draw modes; raycast target by default." },
+        { "component": "RawImage",     "use": "Any Texture (including RenderTexture) without a Sprite import." },
+        { "component": "Button",       "use": "Selectable with onClick UnityEvent; needs a target Graphic for state tinting." },
+        { "component": "Toggle",       "use": "Boolean; ToggleGroup supports radio semantics." },
+        { "component": "Slider",       "use": "Float range with handleRect + fillRect." },
+        { "component": "TMP_Dropdown / TMP_InputField", "use": "Prefer TMP variants; legacy Dropdown / InputField use UnityEngine.UI.Text." },
+        { "component": "ScrollRect",   "use": "Viewport + Content; Content is a larger child RectTransform, usually with ContentSizeFitter." }
+      ],
+
+      "layoutGroups": [
+        { "component": "HorizontalLayoutGroup / VerticalLayoutGroup", "behavior": "Lays children along one axis; childForceExpand / childControlSize toggle per axis." },
+        { "component": "GridLayoutGroup",    "behavior": "Fixed-size cells, wraps per constraint (flexible / fixed columns / fixed rows)." },
+        { "component": "ContentSizeFitter",  "behavior": "Resizes THIS RectTransform to its preferred size; common on ScrollRect Content." },
+        { "component": "LayoutElement",      "behavior": "Per-child min/preferred/flexible width+height overrides; last resort when groups misbehave." }
+      ]
+    },
+
+    "textMeshPro": {
+      "twoFlavors": [
+        { "type": "TMP_Text (UI)",         "where": "Child of a Canvas on a RectTransform — HUD / menu text. This is what tmp/create emits under a ui/* canvas." },
+        { "type": "TMP_Text (3D / world)", "where": "Regular GameObject with a MeshRenderer — in-world signs, floating labels." }
+      ],
+      "fontAssets": "TMP does not use TTF directly. A Font Asset (SDF atlas) is generated once via Window → TextMeshPro → Font Asset Creator. Squares = no font asset or glyphs missing from a Dynamic atlas.",
+      "spriteAssets": "Inline sprites (emoji, icons) are packed into a TMP Sprite Asset and referenced via <sprite=\"name\"> tags.",
+      "materialPresets": "Each Font Asset has one base material + N presets (outline, glow, shadow). To add an outline, create a Material Preset — never edit the base material, which is shared by every text using that font."
+    },
+
+    "uiToolkit": {
+      "runtimeEntry": "Scene GameObject with a UIDocument component referencing a PanelSettings asset and a VisualTreeAsset (UXML).",
+      "panelSettings": "Scaling (match mode, reference resolution), sort order, theme, event camera, target display — the Canvas+CanvasScaler analog.",
+      "uxml": "XML tree of VisualElement, Label, Button, TextField, Toggle, Slider, ScrollView, ListView, Foldout, etc. name='foo' + class='primary'.",
+      "uss": "CSS-like; selectors (element, .class, #name, :hover, :checked) and properties (color, margin, flex-direction, width, display). Attach to a UIDocument or a specific VisualElement.",
+      "flexbox": "Layout is flexbox (flex-direction: column by default) — the #1 mental mismatch for devs arriving from UGUI anchors.",
+      "uQuery": "VisualElement.Q<T>(name) / Query<T>(name).ToList(); root via uiDocument.rootVisualElement.",
+      "events": "element.RegisterCallback<ClickEvent>(OnClick); events bubble from target up. Button also exposes .clicked += handler."
+    },
+
+    "mixingSystems": {
+      "rule": "Keep systems separate at the container boundary. UI Toolkit runtime UI and UGUI runtime UI can coexist in one scene — use two GameObjects, one Canvas with UGUI children, one UIDocument with a PanelSettings.",
+      "sorting": "PanelSettings has a sortingOrder; Canvas has sortingOrder. Layering between the two follows these values plus the Canvas render mode rules.",
+      "doNot": "Do not try to nest a VisualElement under a RectTransform or a UGUI child under a VisualElement. The scene graphs do not interoperate."
+    },
+
+    "decisionRules": [
+      { "scenario": "HUD with health bar and score text", "rule": "UGUI. ui/create_canvas (Overlay, Scale With Screen Size, match 0.5), ui/add_element Image (Filled) for the bar, tmp/create for the score. Do not reach for UI Toolkit unless requested.", "evidence": "UGUI remains the dominant runtime UI path through Unity 6; mosaic ui/* tools are UGUI-native." },
+      { "scenario": "Custom EditorWindow", "rule": "UI Toolkit (UXML + USS). Fall back to IMGUI only when extending existing IMGUI editor code.", "evidence": "Unity Manual — UI Toolkit for Editor." },
+      { "scenario": "Center a panel on screen", "rule": "anchorMin = anchorMax = pivot = (0.5, 0.5), anchoredPosition = (0,0). sizeDelta = panel size. Do NOT set Transform.position.", "evidence": "RectTransform anchored layout." },
+      { "scenario": "Stretch to fill parent", "rule": "anchorMin = (0,0), anchorMax = (1,1), pivot = (0.5,0.5), sizeDelta = (0,0) for exact match; positive sizeDelta insets padding.", "evidence": "Inspector anchor preset 'stretch-stretch'." },
+      { "scenario": "World-space UI over a character", "rule": "Canvas in World Space, parented to the character root, with a LateUpdate billboard script facing the main camera. Use TMP for text.", "evidence": "Canvas render modes — World Space." }
+    ],
+
+    "commonPitfalls": [
+      { "symptom": "UI looks right in Editor Game view but off-screen or mis-scaled in the player.", "cause": "Canvas Scaler is 'Constant Pixel Size'; UI doesn't adapt to actual resolution.", "fix": "Use 'Scale With Screen Size' with a reference resolution (e.g., 1920x1080) and an appropriate Match value." },
+      { "symptom": "TMP_Text renders as solid square boxes.", "cause": "No TMP Font Asset, or glyphs missing from the atlas.", "fix": "Font Asset Creator → generate SDF from TTF covering expected glyphs; assign to TMP_Text.font." },
+      { "symptom": "Button never fires onClick but still tints on hover.", "cause": "Missing GraphicRaycaster on the Canvas, missing EventSystem in the scene, or a full-rect Image overlay blocking raycasts.", "fix": "Add GraphicRaycaster; add EventSystem; set Image.raycastTarget = false on decorative overlays." },
+      { "symptom": "UI Toolkit element renders but ignores styles.", "cause": "StyleSheet not attached to the UIDocument or VisualElement.", "fix": "Attach the .uss to PanelSettings theme, add <Style src='…'/> at the top of the UXML, or root.styleSheets.Add(sheet) at runtime." },
+      { "symptom": "Setting transform.position on a UGUI element moves it off-screen.", "cause": "RectTransform layout uses anchoredPosition; Transform.position fights the anchor math.", "fix": "Use anchoredPosition (with correct anchors/pivot/sizeDelta) via ui/set_rect_transform." },
+      { "symptom": "Child in a HorizontalLayoutGroup / VerticalLayoutGroup collapses to zero or overlaps.", "cause": "childControlWidth/Height is on but the child has no LayoutElement, so preferred size is zero.", "fix": "Add a LayoutElement with minWidth/preferredWidth, or disable childControlSize and size manually." },
+      { "symptom": "TMP outline/shadow edits bleed into every text using the same font.", "cause": "The base Font Material was edited directly; it is shared.", "fix": "Create a Material Preset and assign ONLY that preset to the affected TMP_Text." }
+    ],
+
+    "versionDeltas": [
+      { "version": "2021.2", "change": "UI Toolkit runtime GA via UIDocument + PanelSettings. Prior to this, UI Toolkit was editor-only.", "breaking": false, "migrationNote": "Runtime-UI projects on 2021.2+ may adopt UI Toolkit; older projects stay on UGUI." },
+      { "version": "2022.1", "change": "UI Toolkit package split: core (com.unity.ui) is built-in; UI Builder (com.unity.ui.builder) is opt-in.", "breaking": false },
+      { "version": "2023.1", "change": "Legacy UnityEngine.UI.Text is documented as effectively deprecated; TextMeshPro is the recommended UGUI text.", "breaking": false, "migrationNote": "Prefer TMP_Text, TMP_Dropdown, TMP_InputField for new UI." },
+      { "version": "6000.0", "change": "TextMeshPro integrated as a built-in module; no separate package import, though TMP Essentials is still imported once.", "breaking": false }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity Manual — Comparison of UI systems",                  "url": "https://docs.unity3d.com/Manual/UI-system-compare.html" },
+    { "title": "Unity Manual — UI Toolkit",                                "url": "https://docs.unity3d.com/Manual/UIElements.html" },
+    { "title": "Unity Manual — UI Toolkit at runtime (UIDocument)",        "url": "https://docs.unity3d.com/Manual/UIE-get-started-with-runtime-ui.html" },
+    { "title": "Unity Manual — UGUI (Unity UI) package",                   "url": "https://docs.unity3d.com/Manual/com.unity.ugui.html" },
+    { "title": "Unity Manual — Canvas component",                          "url": "https://docs.unity3d.com/Manual/class-Canvas.html" },
+    { "title": "Unity Manual — Canvas Scaler",                             "url": "https://docs.unity3d.com/Manual/script-CanvasScaler.html" },
+    { "title": "Unity Manual — RectTransform",                             "url": "https://docs.unity3d.com/Manual/class-RectTransform.html" },
+    { "title": "Unity Manual — Auto Layout (layout groups)",               "url": "https://docs.unity3d.com/Manual/UIAutoLayout.html" },
+    { "title": "Unity Manual — TextMeshPro",                               "url": "https://docs.unity3d.com/Manual/com.unity.textmeshpro.html" },
+    { "title": "Unity Manual — IMGUI",                                     "url": "https://docs.unity3d.com/Manual/GUIScriptingGuide.html" },
+    { "title": "ScriptReference — Canvas",                                 "url": "https://docs.unity3d.com/ScriptReference/Canvas.html" },
+    { "title": "ScriptReference — RectTransform",                          "url": "https://docs.unity3d.com/ScriptReference/RectTransform.html" },
+    { "title": "ScriptReference — GraphicRaycaster",                       "url": "https://docs.unity3d.com/ScriptReference/UI.GraphicRaycaster.html" },
+    { "title": "ScriptReference — UIDocument",                             "url": "https://docs.unity3d.com/ScriptReference/UIElements.UIDocument.html" },
+    { "title": "ScriptReference — PanelSettings",                          "url": "https://docs.unity3d.com/ScriptReference/UIElements.PanelSettings.html" },
+    { "title": "ScriptReference — VisualElement",                          "url": "https://docs.unity3d.com/ScriptReference/UIElements.VisualElement.html" },
+    { "title": "ScriptReference — TMP_Text",                               "url": "https://docs.unity3d.com/Packages/com.unity.textmeshpro@3.0/api/TMPro.TMP_Text.html" }
+  ],
+
+  "sources": [],
+
+  "authorshipNotes": "Content authored by Mosaic team from publicly-documented Unity APIs, Manual pages, and ScriptReference entries. Component names, property signatures, render-mode enum values, and callback names are facts (not copyrightable). Explanatory prose, decision rules, llmGuidance, and commonPitfalls are original Mosaic editorial content. Unity Manual and ScriptReference pages are cited as externalReferences and NOT reproduced here."
+}

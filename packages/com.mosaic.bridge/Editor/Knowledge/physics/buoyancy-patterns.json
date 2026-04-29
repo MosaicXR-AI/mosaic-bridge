@@ -1,0 +1,264 @@
+{
+  "$schema": "https://mosaic.dev/kb/entry.v1",
+  "id": "kb-physics-buoyancy-patterns",
+  "title": "Buoyancy: Static & Dynamic Water, Force Scaling, Stability",
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-21",
+  "category": "physics",
+
+  "unityVersions": {
+    "min": "2021.3",
+    "max": null,
+    "testedOn": ["2022.3 LTS", "6000.0", "6000.4"]
+  },
+
+  "summary": "Buoyancy patterns for floating Rigidbodies on water in Unity: Archimedes force derivation, three complexity tiers (static plane, height-sampled waves, emergent SPH), multi-point sampling for righting torque, force clamping, and drag tuning. Use when the user asks to 'float an object', 'add buoyancy', or 'make a boat bob on waves'. Choose tier by water type and scale forces by submerged fraction — the top failures are single-point buoyancy on a boat (flips bow-first) and unclamped force on a deeply-submerged body (explodes out of the water).",
+
+  "mosaicTools": [
+    "physics/buoyancy-create",
+    "physics/buoyancy-attach",
+    "physics/buoyancy-sample-points",
+    "physics/buoyancy-water-source"
+  ],
+
+  "relatedKb": [
+    "kb-physics-colliders-rigidbodies",
+    "kb-physics-sph-parameter-tuning",
+    "kb-physics-simulation-coord-spaces"
+  ],
+
+  "llmGuidance": {
+    "when_asked_to_make_an_object_float_on_a_flat_pond":
+      "Tier A. submergedDepth = max(0, waterY - objectY). Single AddForceAtPosition at CoM is fine for spheres and simple props.",
+    "when_asked_to_make_a_boat_float_on_waves":
+      "Tier B. Place >=4 sample points across the hull footprint (bow-port, bow-starboard, stern-port, stern-starboard). Compute water height per point, then submergedDepth, then apply scaled buoyancy at that point. Single-point buoyancy at CoM produces unphysical flips — never for a boat.",
+    "when_the_scene_already_has_an_sph_or_pbd_fluid_sim":
+      "Do NOT add scripted buoyancy. It's emergent from particle pressure on the collider. Give the solid a collider + Rigidbody and let the solver push it.",
+    "when_the_object_jitters_at_the_water_surface":
+      "Raise linear drag to >=3 while submerged and angular drag to >=0.5. Jitter means gravity and buoyancy alternate per FixedUpdate with no damping.",
+    "when_the_object_pops_out_of_the_water_on_spawn":
+      "Clamp per-sample force to ~5 * rb.mass * g. Unclamped F = rho*V*g on a fully-submerged body applied in one tick accelerates far above terminal velocity.",
+    "when_the_object_sinks_despite_being_called_floating":
+      "Check density: objectDensity = mass / volume. If > fluidDensity (fresh water ~1000, salt ~1025), net force is down. Lower mass, raise volume, or bump fluidDensity.",
+    "when_generating_a_buoyancy_script":
+      "FixedUpdate only (see kb-physics-colliders-rigidbodies). Sample water height ONCE per FixedUpdate — stale timestamps produce oscillation against the object's own wake.",
+    "when_the_water_is_gerstner_waves":
+      "Height y(x,z,t) = sum_k A_k * sin(dot(D_k, pos) * w_k + t * phi_k) plus horizontal displacement. Use the full Gerstner function, not just Y-noise — horizontal terms shift crest locations.",
+    "when_asked_for_center_of_buoyancy":
+      "Centroid of the submerged region, not CoM. In multi-sample: weighted sum of sample positions by local submergedDepth. Offset from CoM creates righting torque.",
+    "when_simulating_fast_water_impact_like_a_diver":
+      "Sub-step buoyancy 2-4x per FixedUpdate at fractional dt. Single-step at high vertical velocity misses the entry frame or overshoots."
+  },
+
+  "full": {
+    "archimedesPrinciple": {
+      "statement": "A body wholly or partially submerged in a fluid experiences an upward buoyant force equal to the weight of the fluid it displaces.",
+      "formula": "F_buoy = rho_fluid * V_submerged * -Physics.gravity",
+      "units": {
+        "F_buoy": "Newtons (kg*m/s^2)",
+        "rho_fluid": "kg/m^3 (fresh water ~1000, salt water ~1025, light crude ~870)",
+        "V_submerged": "m^3",
+        "Physics.gravity": "Vector3 m/s^2 (default (0, -9.81, 0))"
+      },
+      "unityApi": "rb.AddForceAtPosition(F_buoy, centerOfBuoyancy, ForceMode.Force) inside FixedUpdate.",
+      "direction": "Opposite of gravity. The negation of Physics.gravity preserves project-custom gravity directions (e.g. low-gravity levels or sideways gravity puzzle scenes)."
+    },
+
+    "complexityTiers": [
+      {
+        "tier": "A — static water plane",
+        "waterModel": "Horizontal plane at Y = waterLevel.",
+        "heightFunction": "y(x, z, t) = waterLevel",
+        "submergedDepth": "max(0, waterLevel - objectBoundsMinY)",
+        "volumeEstimate": "Object bounds intersected with half-space y <= waterLevel.",
+        "sampling": "Single point at CoM is fine for symmetric objects (balls, cubes).",
+        "cost": "Negligible. One vector op per FixedUpdate.",
+        "useFor": "Ponds, flat pools, still lakes."
+      },
+      {
+        "tier": "B — height-sampled wave surface",
+        "waterModel": "Surface function y(x, z, t). Gerstner sum or noise field.",
+        "heightFunction": "y(x,z,t) = sum_k A_k * sin(dot(D_k, (x,z)) * w_k + t * phi_k), plus optional horizontal displacement for Gerstner.",
+        "submergedDepth": "Per sample p: max(0, y(p.x, p.z, t) - p.y)",
+        "volumeEstimate": "Sum over N samples of (submergedDepth_i * areaShare_i).",
+        "sampling": "N>=4 for boats. Distribute across hull footprint (bow-port, bow-starboard, stern-port, stern-starboard).",
+        "cost": "N wave evals per tick. 4 waves x 8 samples = 32 sin() calls — cheap.",
+        "useFor": "Oceans, rivers, anywhere the player sees waves."
+      },
+      {
+        "tier": "C — SPH / PBD fluid coupling",
+        "waterModel": "Fluid IS a particle sim. No analytic height function.",
+        "heightFunction": "N/A — emergent from particles.",
+        "submergedDepth": "N/A — buoyancy from per-particle pressure on the collider during solver constraints.",
+        "volumeEstimate": "N/A.",
+        "sampling": "N/A.",
+        "cost": "High (the sim itself). No extra cost if solver supports two-way coupling.",
+        "useFor": "Interactive fluid (pouring, splashing). Mosaic simulation/fluid. Do not stack scripted buoyancy — double-counts."
+      }
+    ],
+
+    "samplePointApproach": {
+      "why": "A single force at CoM cannot produce righting torque. Distributing buoyancy across submerged sample points creates torque when the object tilts: the deeper side generates more upward force, rotating toward level.",
+      "placement": [
+        "Box/boat hull: 4 corners of the footprint at mesh waterline.",
+        "Cylinder on its side: points along central axis every ~25% length.",
+        "Complex hull: 8-16 points from collider bounds corners and edge midpoints.",
+        "Rule of thumb: N = max(4, footprintLength / characteristicWavelength)."
+      ],
+      "perSampleBuoyancy": "F_i = rho_fluid * V_total * (submergedDepth_i / sum_j submergedDepth_j) * -gravity. Ratio distributes total volume by per-sample depth.",
+      "centerOfBuoyancy": "COB = sum_i (samplePos_i * submergedDepth_i) / sum_i submergedDepth_i. Unity integrates torque when you pass per-sample positions to AddForceAtPosition."
+    },
+
+    "dragAndDamping": {
+      "purpose": "Without drag, buoyancy + gravity form an undamped oscillator — object bobs forever or resonates with the wave function.",
+      "linearDrag": {
+        "model": "F_d = -c_d * v",
+        "stability": "Always stable.",
+        "useFor": "Default for gameplay buoyancy."
+      },
+      "quadraticDrag": {
+        "model": "F_d = -c_d * |v| * v",
+        "stability": "Physical but diverges when c_d * |v|^2 * dt > v (damping overshoots to negative velocity).",
+        "mitigation": "Clamp |v| before computing drag, or sub-step.",
+        "useFor": "Hero props where the realism is noticed."
+      },
+      "unityRigidbodyFields": {
+        "rb.drag": "Per-frame linear damping (~c_d*dt). Coarse but often enough.",
+        "rb.angularDrag": "Angular equivalent.",
+        "swappingAtWaterline": "Cache dry-air drag (~0.05). On submerge set rb.drag = underwaterDrag (>=3); restore on emerge. This alone kills most surface jitter."
+      }
+    },
+
+    "waveSurfaces": {
+      "gerstner": {
+        "usedIn": "Crest Ocean, Oberon, Ceto — nearly every realistic Unity ocean asset.",
+        "xDisplacement": "p.x' = p.x - (D.x / w) * A * sin(...)",
+        "yHeight": "p.y' = A * cos(...)",
+        "zDisplacement": "p.z' = p.z - (D.y / w) * A * sin(...)",
+        "summation": "Sum 3-8 components with different (A_k, D_k, w_k, phi_k).",
+        "steepness": "Q_k: 0 = sine, 1 = peaked trochoid. Keep sum(Q_k * A_k * w_k) <= 1 to avoid self-intersecting crests.",
+        "whenToUse": "Open ocean, large lake."
+      },
+      "perlinSimplex": {
+        "model": "y(x,z,t) = A * noise(x * freq, z * freq, t * timeScale)",
+        "properties": "Smooth, single-valued, cheap. No foamy crests.",
+        "whenToUse": "Ponds, streams, stylized water, mobile targets."
+      },
+      "samplingTimestamp": "All samples in a FixedUpdate MUST share one t. Cache Time.time once per tick — per-sample reads drift on some platforms."
+    },
+
+    "stabilityKnobs": {
+      "maxBuoyancyForceClamp": "|F_buoy_per_sample| <= k * rb.mass * g (k = 3-5). Kills the spawn-into-water 'cannon'.",
+      "underwaterLinearDrag": "rb.drag >= 3 when any sample is submerged; restore dry value on full emerge.",
+      "underwaterAngularDrag": "rb.angularDrag >= 0.5. Prevents endless spin after a tilt impulse.",
+      "subStepBuoyancy": "Sample loop 2-4x per FixedUpdate at dt/n. Only needed for fast vertical impacts (divers, cannonballs).",
+      "heightQueryCache": "Evaluate water height once per sample per tick. Repeated Gerstner calls waste cycles.",
+      "sleepHandling": "Let the script early-return when all samples are above water so the Rigidbody sleeps naturally; don't disable the component."
+    },
+
+    "decisionRules": [
+      {
+        "scenario": "Flat water surface, any object",
+        "rule": "Tier A. Single-plane submergedDepth, single AddForceAtPosition at CoM.",
+        "evidence": "Archimedes' principle — constant waterLevel simplifies V_submerged to a closed form."
+      },
+      {
+        "scenario": "Visible waves + player-facing props (boats, crates)",
+        "rule": "Tier B with >=4 samples. Per-sample buoyancy via AddForceAtPosition.",
+        "evidence": "Single-point on an elongated hull cannot produce righting torque; observed in field — Gemini session 2026-04-20 repro of boat flip."
+      },
+      {
+        "scenario": "Scene has SPH/PBD fluid",
+        "rule": "Tier C. No scripted buoyancy — let the solver handle two-way coupling.",
+        "evidence": "Double-counted forces diverge; see gap-analysis/fluid.md §G3."
+      },
+      {
+        "scenario": "Object oscillates at surface",
+        "rule": "Raise underwater rb.drag to >=3 and rb.angularDrag to >=0.5.",
+        "evidence": "Undamped spring = gravity + buoyancy. Damping is required for physical equilibrium."
+      },
+      {
+        "scenario": "Fast projectile enters water",
+        "rule": "Sub-step buoyancy 2-4x per FixedUpdate AND set rb.collisionDetectionMode = Continuous.",
+        "evidence": "See kb-physics-colliders-rigidbodies for CCD; single-step buoyancy misses entry frame."
+      }
+    ],
+
+    "commonPitfalls": [
+      {
+        "symptom": "Boat flips bow-first then bobs upside down.",
+        "cause": "Buoyancy at CoM — no righting torque.",
+        "fix": "Multi-sample; >=4 points across the hull footprint."
+      },
+      {
+        "symptom": "Object pops out of water on spawn frame.",
+        "cause": "Fully-submerged V*rho*g applied in one tick, unclamped.",
+        "fix": "Clamp per-sample force to k * mass * g (k=3-5)."
+      },
+      {
+        "symptom": "Object jitters at the waterline.",
+        "cause": "No drag damping; gravity and buoyancy alternate per tick.",
+        "fix": "rb.drag >= 3 underwater, rb.angularDrag >= 0.5."
+      },
+      {
+        "symptom": "Heavy object floats high; light object sinks.",
+        "cause": "fluidDensity mismatches mass/volume ratio.",
+        "fix": "objectDensity = mass / boundsVolume. For float: objectDensity < fluidDensity. Tune fluidDensity (~1000) or mass."
+      },
+      {
+        "symptom": "Object oscillates against its own wake.",
+        "cause": "Wave height uses a stale t or Time.time drifts per sample.",
+        "fix": "Cache t once per FixedUpdate; reuse for every sample."
+      },
+      {
+        "symptom": "Scripted buoyancy fights SPH solver; violent vibration.",
+        "cause": "Double-counted force — script stacked on particle-collider coupling.",
+        "fix": "Remove the script. Tier C is emergent."
+      },
+      {
+        "symptom": "Quadratic drag NaN on high-velocity dive.",
+        "cause": "c_d * |v|^2 * dt overshoots velocity in one step.",
+        "fix": "Clamp |v| in the drag term, or sub-step."
+      },
+      {
+        "symptom": "Object sinks through waterline on slow descent.",
+        "cause": "Sample points placed above mesh waterline — never submerged.",
+        "fix": "Sample at collider bounds.min.y, not CoM.y or bounds.center.y."
+      }
+    ],
+
+    "versionDeltas": [
+      {
+        "version": "2022.2",
+        "change": "Unity.Physics (DOTS/ECS) gains stable two-way coupling primitives. Custom buoyancy scripts still run under classic Rigidbody — DOTS path requires ECS-native force application.",
+        "breaking": false,
+        "migrationNote": "Classic MonoBehaviour buoyancy patterns (AddForceAtPosition in FixedUpdate) remain valid for non-ECS projects. For DOTS projects, apply forces via PhysicsVelocity / PhysicsMass components inside an ISystem."
+      },
+      {
+        "version": "6000.0",
+        "change": "Physics.gravity default unchanged ((0, -9.81, 0)). The renamed PhysicsMaterial affects friction/bounciness only — buoyancy math is unaffected.",
+        "breaking": false
+      }
+    ]
+  },
+
+  "externalReferences": [
+    { "title": "Unity ScriptReference — Rigidbody.AddForceAtPosition", "url": "https://docs.unity3d.com/ScriptReference/Rigidbody.AddForceAtPosition.html" },
+    { "title": "Unity ScriptReference — Rigidbody.drag",               "url": "https://docs.unity3d.com/ScriptReference/Rigidbody-drag.html" },
+    { "title": "Unity ScriptReference — Rigidbody.angularDrag",        "url": "https://docs.unity3d.com/ScriptReference/Rigidbody-angularDrag.html" },
+    { "title": "Unity ScriptReference — Physics.gravity",              "url": "https://docs.unity3d.com/ScriptReference/Physics-gravity.html" },
+    { "title": "Unity Manual — Water (legacy built-in)",               "url": "https://docs.unity3d.com/Manual/HOWTO-Water.html" },
+    { "title": "Catlike Coding — Flow, Waves, Gerstner",               "url": "https://catlikecoding.com/unity/tutorials/flow/waves/" },
+    { "title": "NVIDIA GPU Gems — Effective Water Simulation (Gerstner)", "url": "https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models" },
+    { "title": "Obi Fluid — Buoyancy component (vendor reference)",    "url": "http://obi.virtualmethodstudio.com/manual/7.0/fluidscripting.html" }
+  ],
+
+  "sources": [
+    { "title": "Archimedes — On Floating Bodies (c. 250 BC, public domain translations)", "url": "https://en.wikipedia.org/wiki/On_Floating_Bodies" },
+    { "title": "Fournier & Reeves — A Simple Model of Ocean Waves (SIGGRAPH 1986)",        "url": "https://dl.acm.org/doi/10.1145/15886.15894" },
+    { "title": "Tessendorf — Simulating Ocean Water (SIGGRAPH course 2001)",               "url": "https://people.computing.clemson.edu/~jtessen/reports/papers_files/coursenotes2004.pdf" },
+    { "title": "Batchelor — An Introduction to Fluid Dynamics (Cambridge, 1967, §4 on drag)", "url": "https://doi.org/10.1017/CBO9780511800955" }
+  ],
+
+  "authorshipNotes": "Content authored by Mosaic team from first-principles physics (Archimedes' principle, Newtonian drag, Gerstner wave parameterization) and publicly-documented Unity Rigidbody APIs. Physical formulas (F = rho*V*g, Gerstner sum) are open academic facts and not copyrightable. API signatures (AddForceAtPosition, Rigidbody.drag) are factual. Explanatory prose, decision rules, sampling heuristics, stability knob values, and pitfall diagnoses are original Mosaic editorial content derived from empirical tuning in Unity 2022.3 LTS and 6000.4. Gerstner equations restated in our notation; NVIDIA GPU Gems chapter 1 cited as externalReference for the canonical formulation."
+}

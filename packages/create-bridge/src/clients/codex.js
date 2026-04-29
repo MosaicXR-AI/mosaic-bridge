@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { homePath } from '../utils.js';
 import { buildCommandAndArgs } from './index.js';
+import { AGENTS_MD_CONTENT } from '../templates.js';
 
 /**
  * OpenAI Codex CLI stores MCP config in TOML (not JSON like the others).
@@ -72,6 +73,12 @@ export async function configureCodex(ctx) {
 
   const text = stringifyToml(root);
   fs.writeFileSync(configPath, text + '\n', { encoding: 'utf8' });
+
+  // Write AGENTS.md to the Unity project root
+  const agentsMdPath = path.join(projectPath, 'AGENTS.md');
+  if (!fs.existsSync(agentsMdPath) || force) {
+    fs.writeFileSync(agentsMdPath, AGENTS_MD_CONTENT, 'utf8');
+  }
 
   return {
     action: already ? 'overwritten' : 'added',

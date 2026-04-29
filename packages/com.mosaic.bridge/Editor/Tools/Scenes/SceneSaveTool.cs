@@ -7,7 +7,9 @@ namespace Mosaic.Bridge.Tools.Scenes
     public static class SceneSaveTool
     {
         [MosaicTool("scene/save",
-                    "Saves the currently active scene to disk",
+                    "Saves the currently active scene to disk. " +
+                    "May timeout in large scenes with many assets. " +
+                    "If this tool hangs, use editor/run-menu-item with MenuPath='File/Save' as a fallback.",
                     isReadOnly: false)]
         public static ToolResult<SceneSaveResult> Save(object p)
         {

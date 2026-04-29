@@ -11,9 +11,10 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
     {
         internal sealed class SlotDef
         {
-            internal int    Id          { get; set; }
-            internal string DisplayName { get; set; }
-            internal int    SlotType    { get; set; }  // 0=Input 1=Output
+            internal int    Id              { get; set; }
+            internal string DisplayName     { get; set; }
+            internal int    SlotType        { get; set; }   // 0=Input 1=Output
+            internal int    StageCapability { get; set; } = 3;  // 1=Vertex 2=Fragment 3=Both
         }
 
         internal sealed class NodeDef
@@ -21,6 +22,8 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
             internal string     TypeName    { get; set; }  // fully-qualified C# type
             internal string     DisplayName { get; set; }  // shown in node header
             internal SlotDef[]  Slots       { get; set; }
+            internal int        SGVersion   { get; set; }  // m_SGVersion in JSON (default 0)
+            internal string     ExtraFields { get; set; }  // additional JSON fields for this node type
         }
 
         // Friendly alias → NodeDef
@@ -98,18 +101,39 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
                 Slots = new[]{ S(0,"Out",1) } },
 
             // ── Texture sampling ─────────────────────────────────────────────
+            // Texture/Sampler inputs + all outputs are fragment-only (StageCapability=2).
             ["sampletexture2d"] = new NodeDef { TypeName = "UnityEditor.ShaderGraph.SampleTexture2DNode", DisplayName = "Sample Texture 2D",
-                Slots = new[]{ S(0,"Texture",0), S(1,"UV",0), S(2,"Sampler",0), S(4,"RGBA",1), S(5,"R",1), S(6,"G",1), S(7,"B",1), S(8,"A",1) } },
+                Slots = new[]{ S(0,"Texture",0,2), S(1,"UV",0), S(2,"Sampler",0,2), S(4,"RGBA",1,2), S(5,"R",1,2), S(6,"G",1,2), S(7,"B",1,2), S(8,"A",1,2) } },
             ["sampletexture"]   = new NodeDef { TypeName = "UnityEditor.ShaderGraph.SampleTexture2DNode", DisplayName = "Sample Texture 2D",
-                Slots = new[]{ S(0,"Texture",0), S(1,"UV",0), S(2,"Sampler",0), S(4,"RGBA",1), S(5,"R",1), S(6,"G",1), S(7,"B",1), S(8,"A",1) } },
+                Slots = new[]{ S(0,"Texture",0,2), S(1,"UV",0), S(2,"Sampler",0,2), S(4,"RGBA",1,2), S(5,"R",1,2), S(6,"G",1,2), S(7,"B",1,2), S(8,"A",1,2) } },
             ["samplecubemap"]   = new NodeDef { TypeName = "UnityEditor.ShaderGraph.SampleCubemapNode", DisplayName = "Sample Cubemap",
-                Slots = new[]{ S(0,"Cube",0), S(1,"Dir",0), S(2,"LOD",0), S(3,"Sampler",0), S(4,"Out",1) } },
+                Slots = new[]{ S(0,"Cube",0,2), S(1,"Dir",0), S(2,"LOD",0), S(3,"Sampler",0,2), S(4,"Out",1,2) } },
 
             // ── Transform ────────────────────────────────────────────────────
             ["transformvector"] = new NodeDef { TypeName = "UnityEditor.ShaderGraph.TransformNode", DisplayName = "Transform",
                 Slots = new[]{ S(0,"In",0), S(1,"Out",1) } },
             ["normalunpack"]    = new NodeDef { TypeName = "UnityEditor.ShaderGraph.NormalUnpackNode", DisplayName = "Normal Unpack",
                 Slots = new[]{ S(0,"In",0), S(1,"Out",1) } },
+
+            // ── Procedural / Noise ───────────────────────────────────────────
+            // VoronoiNode requires SGVersion=1 and m_HashType in JSON output.
+            // UV slot must be serialized as UVMaterialSlot — handled in ShaderGraphAddNodeTool.
+            ["voronoi"]      = new NodeDef { TypeName = "UnityEditor.ShaderGraph.VoronoiNode", DisplayName = "Voronoi",
+                SGVersion = 1,
+                ExtraFields = "\"m_HashType\": 0",
+                Slots = new[]{ S(0,"UV",0), S(1,"AngleOffset",0), S(2,"CellDensity",0), S(3,"Out",1), S(4,"Cells",1) } },
+            ["simplenoise"]  = new NodeDef { TypeName = "UnityEditor.ShaderGraph.SimpleNoiseNode", DisplayName = "Simple Noise",
+                Slots = new[]{ S(0,"UV",0), S(1,"Scale",0), S(2,"Out",1) } },
+            ["gradientnoise"]= new NodeDef { TypeName = "UnityEditor.ShaderGraph.GradientNoiseNode", DisplayName = "Gradient Noise",
+                Slots = new[]{ S(0,"UV",0), S(1,"Scale",0), S(2,"Out",1) } },
+
+            // ── Custom Function ──────────────────────────────────────────────
+            // CustomFunctionNode requires SGVersion=1, m_SourceType=1 for inline body.
+            // Output slots need m_LiteralMode:false — handled in ShaderGraphAddNodeTool.
+            ["customfunction"] = new NodeDef { TypeName = "UnityEditor.ShaderGraph.CustomFunctionNode", DisplayName = "Custom Function",
+                SGVersion = 1,
+                ExtraFields = "\"m_SourceType\": 1",
+                Slots = new[]{ S(0,"Out",1) } },
         };
 
         internal static NodeDef Get(string alias)
@@ -120,7 +144,7 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
 
         internal static IEnumerable<string> AllAliases() => _registry.Keys;
 
-        private static SlotDef S(int id, string name, int slotType) =>
-            new SlotDef { Id = id, DisplayName = name, SlotType = slotType };
+        private static SlotDef S(int id, string name, int slotType, int stageCap = 3) =>
+            new SlotDef { Id = id, DisplayName = name, SlotType = slotType, StageCapability = stageCap };
     }
 }

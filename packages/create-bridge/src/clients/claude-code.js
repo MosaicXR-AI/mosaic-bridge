@@ -7,10 +7,12 @@ import { buildMcpServerEntry } from './index.js';
  * session (project-local). We place it at the Unity project root so the user
  * opens Claude Code there and gets our MCP server automatically.
  *
+ * Skills are written separately in flow.js to .claude/skills/ (Claude Code) and
+ * .agents/skills/ (all other LLMs) — this follows the bmad-method convention.
+ *
  * Note: the Mosaic Bridge Unity package ALSO writes this file on first bridge
  * startup. This installer writes it proactively so the file is in place even
- * before the user opens Unity for the first time — no "why don't I see the
- * tools yet?" confusion.
+ * before the user opens Unity for the first time.
  */
 export async function configureClaudeCode(ctx) {
   const { projectPath, serverName, force } = ctx;

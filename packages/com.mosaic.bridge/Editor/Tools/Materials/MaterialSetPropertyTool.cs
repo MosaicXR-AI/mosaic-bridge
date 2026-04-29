@@ -109,7 +109,20 @@ namespace Mosaic.Bridge.Tools.Materials
             }
 
             EditorUtility.SetDirty(mat);
-            AssetDatabase.SaveAssets();
+
+            // Retry SaveAssets up to 3 times — rapid parallel calls can cause silent failures
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    AssetDatabase.SaveAssets();
+                    break;
+                }
+                catch (System.Exception) when (attempt < 2)
+                {
+                    System.Threading.Thread.Sleep(80 * (attempt + 1));
+                }
+            }
 
             return ToolResult<MaterialSetPropertyResult>.Ok(new MaterialSetPropertyResult
             {

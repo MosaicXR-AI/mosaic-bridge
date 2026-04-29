@@ -1,0 +1,96 @@
+{
+  "title": "Unity API Quirks and Gotchas",
+  "description": "Hard-won notes on Unity API behavior that caused failures in real testing sessions",
+  "categories": {
+    "scene_management": [
+      {
+        "api": "EditorSceneManager.SaveScene",
+        "issue": "Can silently time out on large scenes with many assets",
+        "workaround": "Use editor/run-menu-item with MenuPath='File/Save' as fallback if scene/save hangs"
+      },
+      {
+        "api": "AssetDatabase.SaveAssets",
+        "issue": "Rapid parallel calls can fail silently",
+        "workaround": "Retry up to 3 times with 80ms×attempt backoff (already done in material/set-property)"
+      }
+    ],
+    "serialized_properties": [
+      {
+        "api": "SerializedObject.FindProperty",
+        "issue": "Requires Unity's serialized field name with m_ prefix, NOT the C# property name",
+        "examples": { "correct": "m_Mass", "wrong": "mass" },
+        "workaround": "Use component/get_properties to discover exact serialized names"
+      },
+      {
+        "api": "SerializedPropertyType.Color",
+        "issue": "Not included in basic switch — needs explicit case",
+        "note": "Fixed in component/set_property: now supports Color, Vector2, Vector4, Quaternion, ObjectReference"
+      }
+    ],
+    "shadergraph": [
+      {
+        "issue": "Empty string m_ObjectId",
+        "cause": "Unity ShaderGraph 14.x+ requires UUID-format GUIDs (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)",
+        "fix": "Use Guid.NewGuid().ToString(\"D\") — never ToString(\"N\") or empty string"
+      },
+      {
+        "issue": "PBRMasterNode deprecated",
+        "cause": "Unity 14.x+ removed PBRMasterNode and UnlitMasterNode in favor of block-based contexts",
+        "fix": "Use BlockNode objects in m_VertexContext and m_FragmentContext"
+      },
+      {
+        "issue": "m_SGVersion hardcoded to 0",
+        "cause": "VoronoiNode requires m_SGVersion=1 or it silently produces wrong output",
+        "fix": "Read SGVersion from ShaderGraphNodeRegistry.NodeDef.SGVersion"
+      },
+      {
+        "issue": "m_StageCapability=3 on texture slots",
+        "cause": "Texture sampling is fragment-only; wrong capability causes import errors",
+        "fix": "Set m_StageCapability=2 for Texture and Sampler inputs in SampleTexture2D/SampleCubemap"
+      },
+      {
+        "issue": "Missing m_HashType on VoronoiNode",
+        "cause": "VoronoiNode SGVersion=1 requires m_HashType=0 in JSON",
+        "fix": "Use ExtraFields in NodeDef registry; injected into node JSON by add-node tool"
+      },
+      {
+        "issue": "TimeNode missing slots",
+        "cause": "All 5 output slots (Time, Sine Time, Cosine Time, Delta Time, Smooth Delta) must be declared",
+        "fix": "Slots 0-4 all defined in registry"
+      }
+    ],
+    "ui": [
+      {
+        "api": "Canvas.worldCamera",
+        "issue": "WorldSpace canvas is invisible without a camera assigned",
+        "fix": "ui/create_canvas now auto-assigns Camera.main when RenderMode=WorldSpace"
+      }
+    ],
+    "particles": [
+      {
+        "api": "ParticleSystemRenderer.sharedMaterial",
+        "issue": "URP-only shader lookup fails in Built-in pipeline projects",
+        "fix": "particle/set-renderer uses cascading fallback: URP Unlit → URP Lit → Standard Unlit → Standard Surface → Unlit/Color"
+      }
+    ],
+    "asset_api": [
+      {
+        "api": "Shader.Find",
+        "issue": "Returns null silently if shader not installed or pipeline mismatch",
+        "fix": "Always check for null and return a meaningful error — never create Material(null)"
+      },
+      {
+        "api": "Script filename validation",
+        "issue": "Unity rejects asset names with < > : | ? * and control characters",
+        "fix": "script/create now validates with regex before writing"
+      }
+    ],
+    "spriteshapeprofile": [
+      {
+        "api": "SpriteShapeProfile",
+        "issue": "Correct API name is 'SpriteShapeProfile', not 'SpriteShape'",
+        "note": "From BuildingWindowLightsSession — verify API names against current package docs"
+      }
+    ]
+  }
+}

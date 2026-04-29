@@ -89,6 +89,11 @@ namespace Mosaic.Bridge.Tools.AdvancedRendering
                 shader = Shader.Find(pipeline == "urp" ? "Universal Render Pipeline/Lit" : "Standard");
             if (shader == null)
                 shader = Shader.Find("Unlit/Texture");
+            if (shader == null)
+                return ToolResult<ShaderParallaxCreateResult>.Fail(
+                    $"Could not find any usable shader for pipeline '{pipeline}'. " +
+                    "Ensure the URP or Built-in render pipeline package is installed.",
+                    ErrorCodes.NOT_FOUND);
 
             var mat = new Material(shader);
             mat.SetFloat("_HeightScale", heightScale);

@@ -10,7 +10,8 @@ namespace Mosaic.Bridge.Tools.Physics
     public static class PhysicsAddColliderTool
     {
         [MosaicTool("physics/add-collider",
-                    "Adds a collider component (Box, Sphere, Capsule, or Mesh) to a GameObject",
+                    "Adds a collider component (Box, Sphere, Capsule, or Mesh) to a GameObject. " +
+                    "Set AddRigidbody=true to also add a Rigidbody (skipped if one is already present).",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<PhysicsAddColliderResult> Execute(PhysicsAddColliderParams p)
         {
@@ -75,6 +76,13 @@ namespace Mosaic.Bridge.Tools.Physics
             if (p.IsTrigger.HasValue)
                 collider.isTrigger = p.IsTrigger.Value;
 
+            bool rigidbodyAdded = false;
+            if (p.AddRigidbody == true && go.GetComponent<Rigidbody>() == null)
+            {
+                Undo.AddComponent<Rigidbody>(go);
+                rigidbodyAdded = true;
+            }
+
             // Build result with collider dimensions
             var result = new PhysicsAddColliderResult
             {
@@ -83,7 +91,8 @@ namespace Mosaic.Bridge.Tools.Physics
                 ColliderType   = normalizedType,
                 IsTrigger      = collider.isTrigger,
                 Center         = PhysicsToolHelpers.ToFloatArray(collider.bounds.center - go.transform.position),
-                Size           = PhysicsToolHelpers.ToFloatArray(collider.bounds.size)
+                Size           = PhysicsToolHelpers.ToFloatArray(collider.bounds.size),
+                RigidbodyAdded = rigidbodyAdded
             };
 
             return ToolResult<PhysicsAddColliderResult>.Ok(result);

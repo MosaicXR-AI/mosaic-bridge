@@ -1,0 +1,19 @@
+Tool,Category,Description,Notes
+project/preflight,Project,Returns pipeline + packages + scene + console errors,Run at session start
+material/create,Materials,Creates material with pipeline-auto-detected shader,Returns SuggestedColorProperty
+material/create-batch,Materials,Creates multiple materials in one call,Returns Created/Skipped/Failed lists
+material/set-property,Materials,Sets float/color/texture/keyword on material,Use _BaseColor (URP) or _Color (BuiltIn)
+graphics/set-shader,Graphics,Assigns shader to material,Returns SuggestedColorProperty after switch
+particle/create,Particles,Creates particle system with preset (rain/snow/fire/smoke/dust/magic),Pipeline auto-detected
+particle/set-renderer,Particles,Sets render mode + material (UseUrpParticlesMaterial=true for URP),
+shadergraph/create,ShaderGraph,Creates .shadergraph with block-based MultiJson template,ShaderType=Lit|Unlit
+shadergraph/add-node,ShaderGraph,Adds a node (UUID GUID returned for wiring),See shader-guide workflow for aliases
+shadergraph/connect,ShaderGraph,Connects two node slots,Use NodeId from add-node result
+shadergraph/info,ShaderGraph,Returns node count + edges + properties,
+shadergraph/get-properties,ShaderGraph,Lists all shader properties,
+physics/add-collider,Physics,Adds Box/Sphere/Capsule/Mesh collider,AddRigidbody=true option available
+audio/set-spatial,Audio,Sets spatial audio (min/max distance etc),Warns if no AudioListener in scene
+ui/create_canvas,UI,Creates Canvas (auto-assigns Camera.main for WorldSpace),
+scene/save,Scenes,Saves active scene,Falls back to editor/run-menu-item File/Save if slow
+script/create,Scripts,Creates .cs/.shader/.hlsl etc,Validates filename characters
+editor/execute-code,Editor,Evaluates single C# expression,Multi-line → script/create instead

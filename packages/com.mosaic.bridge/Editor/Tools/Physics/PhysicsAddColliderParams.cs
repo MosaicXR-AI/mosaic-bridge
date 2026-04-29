@@ -16,5 +16,7 @@ namespace Mosaic.Bridge.Tools.Physics
         public float[] Center { get; set; }
         /// <summary>Size for BoxCollider [x,y,z]. Ignored for other types.</summary>
         public float[] Size { get; set; }
+        /// <summary>When true, also adds a Rigidbody if one is not already present.</summary>
+        public bool? AddRigidbody { get; set; }
     }
 }

@@ -1,0 +1,4 @@
+Agent,File,Command,Description,Best For
+mosaic-guide,agents/mosaic-guide.md,commands/mosaic-agent-guide.md,Zara — project guide + preflight + session handoff,Starting sessions / fixing pipeline issues / saving handoffs
+mosaic-shader,agents/mosaic-shader.md,commands/mosaic-agent-shader.md,Ray — ShaderGraph + HLSL shader expert,Creating shaders / debugging node errors / Voronoi/noise effects
+mosaic-scene,agents/mosaic-scene.md,commands/mosaic-agent-scene.md,Max — complete scene builder,Full scene construction / particles / physics / materials workflow

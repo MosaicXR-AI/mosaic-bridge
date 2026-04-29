@@ -15,11 +15,13 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
         [MosaicTool("shadergraph/add-node",
                     "Adds a node to an existing ShaderGraph (.shadergraph) file. " +
                     "Supported node types (NodeType aliases): " +
-                    "Math — add, subtract, multiply, divide, power, lerp, clamp, saturate, abs, negate, sqrt, floor, ceil, frac, step, smoothstep, remap; " +
+                    "Math — add, subtract, multiply, divide, power, lerp, clamp, saturate, abs, negate, sqrt, floor, ceil, frac, step, smoothstep, remap, normalblend; " +
                     "Utility — split, combine, swizzle, fresnel; " +
                     "Input — float, vector2, vector3, vector4, color, uv, time, position, normal, viewdir; " +
-                    "Texture — sampletexture2d, samplecubemap. " +
-                    "Returns NodeId (GUID) and Slots — use NodeId in shadergraph/connect to wire the node.",
+                    "Texture — sampletexture2d, samplecubemap; " +
+                    "Procedural — voronoi, simplenoise, gradientnoise; " +
+                    "Custom — customfunction. " +
+                    "Returns NodeId (UUID) and Slots — use NodeId in shadergraph/connect to wire the node.",
                     isReadOnly: false)]
         public static ToolResult<ShaderGraphAddNodeResult> Execute(ShaderGraphAddNodeParams p)
         {
@@ -44,8 +46,8 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
                 return ToolResult<ShaderGraphAddNodeResult>.Fail(
                     $"ShaderGraph not found at '{p.GraphPath}'", ErrorCodes.NOT_FOUND);
 
-            // Generate a unique node ID (without hyphens — Unity uses compact GUIDs)
-            var nodeId = Guid.NewGuid().ToString("N");
+            // UUID format required by Unity ShaderGraph 14.x+: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+            var nodeId = Guid.NewGuid().ToString("D");
             string displayName = !string.IsNullOrEmpty(p.NodeName) ? p.NodeName : def.DisplayName;
 
             float posX = p.Position?.Length > 0 ? p.Position[0] : 0f;
@@ -57,16 +59,16 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
             {
                 var slotObj = new JObject
                 {
-                    ["m_Id"]             = slot.Id,
-                    ["m_DisplayName"]    = slot.DisplayName,
-                    ["m_SlotType"]       = slot.SlotType,
-                    ["m_Priority"]       = int.MaxValue,
-                    ["m_Hidden"]         = false,
+                    ["m_Id"]               = slot.Id,
+                    ["m_DisplayName"]      = slot.DisplayName,
+                    ["m_SlotType"]         = slot.SlotType,
+                    ["m_Priority"]         = int.MaxValue,
+                    ["m_Hidden"]           = false,
                     ["m_ShaderOutputName"] = slot.DisplayName.Replace(" ", "_"),
-                    ["m_StageCapability"]  = 3,
-                    ["m_Value"]          = 0.0,
-                    ["m_DefaultValue"]   = 0.0,
-                    ["m_Labels"]         = new JArray()
+                    ["m_StageCapability"]  = slot.StageCapability,
+                    ["m_Value"]            = 0.0,
+                    ["m_DefaultValue"]     = 0.0,
+                    ["m_Labels"]           = new JArray()
                 };
 
                 // For Float nodes, apply the default value to the output slot
@@ -81,12 +83,12 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
             // Build node JSON object
             var nodeObj = new JObject
             {
-                ["m_Type"]        = def.TypeName,
-                ["m_SGVersion"]   = 0,
-                ["m_ObjectId"]    = nodeId,
-                ["m_Group"]       = new JObject { ["m_Id"] = "" },
-                ["m_Name"]        = displayName,
-                ["m_DrawState"]   = new JObject
+                ["m_Type"]           = def.TypeName,
+                ["m_SGVersion"]      = def.SGVersion,
+                ["m_ObjectId"]       = nodeId,
+                ["m_Group"]          = new JObject { ["m_Id"] = "" },
+                ["m_Name"]           = displayName,
+                ["m_DrawState"]      = new JObject
                 {
                     ["m_Expanded"] = true,
                     ["m_Position"] = new JObject
@@ -106,6 +108,19 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
             // Optional: default value field for Float/Vector nodes
             if (p.DefaultValue.HasValue)
                 nodeObj["m_Value"] = p.DefaultValue.Value;
+
+            // Inject node-specific extra fields (e.g. m_HashType for VoronoiNode,
+            // m_SourceType for CustomFunctionNode)
+            if (!string.IsNullOrEmpty(def.ExtraFields))
+            {
+                try
+                {
+                    var extra = JObject.Parse("{" + def.ExtraFields + "}");
+                    foreach (var kv in extra)
+                        nodeObj[kv.Key] = kv.Value;
+                }
+                catch { /* malformed ExtraFields — skip silently */ }
+            }
 
             // Nodes are serialized as escaped JSON strings in the array
             string nodeJson = nodeObj.ToString(Formatting.None);

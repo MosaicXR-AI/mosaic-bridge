@@ -2,86 +2,18 @@ import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { validateUnityProject, injectBridgePackage } from './unity.js';
 import { getClientRegistry } from './clients/index.js';
+import { CLAUDE_MD_CONTENT } from './templates.js';
+import { copyDirSync } from './utils.js';
+
+const SKILLS_SRC = path.resolve(fileURLToPath(import.meta.url), '../../plugin/skills');
 
 const BRIDGE_PACKAGE_NAME = 'com.mosaic.bridge';
 const BRIDGE_GIT_URL =
   'https://github.com/MosaicXR-AI/mosaic-bridge.git?path=/packages/com.mosaic.bridge';
 
-const CLAUDE_MD_CONTENT = `# Unity Project — AI Assistant Instructions
-
-This project uses **Mosaic Bridge MCP** to drive the Unity Editor via tool calls.
-
----
-
-## Scene Building — Interview Protocol
-
-When I ask you to "build a scene", "create an environment", "make a desert/forest/city", or describe any vague place/mood:
-
-**STOP. Do not call any Mosaic tools. Run the Scene Interview first.**
-
-Ask all four Tier 1 questions in a single message:
-
-1. **Scene type?** — game level / playable · cinematic · archviz · prototype
-2. **Geographic or thematic reference?** — be specific: "Wadi Rum Jordan", "Pacific Northwest forest", "dystopian 2080 Tokyo". Generic = generic output.
-3. **Scale?** — < 100m · 100m–1km · 1–10km · 10km+
-4. **Player perspective?** — first person · third person · drone / flight · top-down · no player (cinematic only)
-
-If needed, ask follow-up questions:
-- Visual style (realistic / stylized / lowpoly)
-- Time of day + weather ("golden hour, light haze")
-- Per-region visual characteristics (list the biomes)
-- Focal points / landmarks
-- Platform target (desktop / mobile / VR)
-- Build phased (confirm each phase) or one-shot?
-
-After interview, generate a **ScenePlan summary** and wait for my confirmation before executing any tools.
-
----
-
-## Spatial Coherence Contract
-
-**Every placed object Y must = terrain.SampleHeight(x, z) + small_offset.**
-
-Never use Y=0 as a placement coordinate unless the scene is a flat indoor space.
-
-Use \`terrain/sample-height\` before every \`gameobject/create\` or \`prefab/instantiate\` call.
-Use \`scene/plan-composition\` to get pre-resolved Y coordinates for all landmarks at once.
-Use \`gameobject/snap-to-ground\` to fix already-placed objects after terrain sculpting.
-
----
-
-## Execution Pipeline Order
-
-Always build in this order (skipping creates visual artifacts):
-
-1. **Terrain** — create, sculpt major features, secondary detail
-2. **Water** — if applicable; sets the shoreline Y reference
-3. **Terrain textures** — layer setup + splatmap painting
-4. **Sky + Lighting** — directional light, skybox, ambient
-5. **Large structures** — buildings, rock formations (use terrain/sample-height for Y)
-6. **Vegetation** — trees (terrain system) then grass then small details
-7. **Post-processing** — fog, bloom, color grade (last pass)
-8. **Camera / player controller** — calibrated to final scene scale
-
----
-
-## Tool Usage Rules
-
-- **Render pipeline:** Always call \`settings/get-render\` before material or shader work. Use \`currentRenderPipeline\` field.
-- **Terrain trees:** Prefab root must have \`MeshRenderer\`, \`LODGroup\`, or \`BillboardRenderer\`. Nested-child visuals are ignored.
-- **Material keywords:** Use \`keyword\` ValueType on \`material/set-property\` for \`_EMISSION\`, \`_NORMALMAP\`, \`_ALPHATEST_ON\`.
-- **ShaderGraph nodes:** Use \`shadergraph/add-node\` + \`shadergraph/connect\` — do not fall back to raw HLSL .shader files.
-- **Nested component properties:** \`component/set_reference\` now supports dot-notation paths (e.g. "Lens.FieldOfView") and m_ prefix fallback.
-- **HDRI skybox:** Use \`texture/set-import-settings\` with \`TextureShape=Cube\` to convert equirectangular HDRI to cubemap.
-
----
-
-## When in Doubt
-
-Ask a clarifying question rather than guessing. A 2-minute interview prevents a 20-minute rebuild.
-`;
 
 /**
  * The main orchestrated flow — prompts the user, then runs steps.
@@ -164,6 +96,22 @@ export async function runInteractive(opts) {
     }
   } else {
     p.log.info(pc.dim('Skipped Unity package install (--skip-unity)'));
+  }
+
+  // Write Mosaic Bridge skills to Unity project (both .claude/skills/ and .agents/skills/).
+  // This is always written regardless of which LLM clients were selected —
+  // .claude/skills/ activates slash commands in Claude Code, .agents/skills/ is the
+  // universal convention used by Cursor, Gemini, Codex, Windsurf, OpenCode, and others.
+  try {
+    const claudeSkillsDst = path.join(projectInfo.projectPath, '.claude', 'skills');
+    const agentsSkillsDst = path.join(projectInfo.projectPath, '.agents', 'skills');
+    copyDirSync(SKILLS_SRC, claudeSkillsDst);
+    copyDirSync(SKILLS_SRC, agentsSkillsDst);
+    p.log.success(pc.green('✓ Mosaic Bridge skills installed (.claude/skills + .agents/skills)'));
+    results.push({ kind: 'skills', ok: true });
+  } catch (err) {
+    p.log.warn(pc.yellow(`⚠ Skills install skipped: ${err.message}`));
+    results.push({ kind: 'skills', ok: false, error: err });
   }
 
   if (!opts.skipClients && clientKeys.length > 0) {

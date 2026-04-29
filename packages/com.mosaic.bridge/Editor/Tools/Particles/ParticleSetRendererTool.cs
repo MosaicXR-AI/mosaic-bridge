@@ -67,15 +67,31 @@ namespace Mosaic.Bridge.Tools.Particles
 
             if (p.UseUrpParticlesMaterial == true)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
-                if (shader == null)
-                    shader = Shader.Find("Particles/Standard Unlit");
-                if (shader != null)
+                // Try shaders in priority order — works across URP, HDRP, and Built-in
+                string[] candidates =
                 {
-                    var mat = new Material(shader);
-                    mat.SetFloat("_Surface", 1f); // Transparent
-                    renderer.sharedMaterial = mat;
+                    "Universal Render Pipeline/Particles/Unlit",
+                    "Universal Render Pipeline/Particles/Lit",
+                    "Particles/Standard Unlit",
+                    "Particles/Standard Surface",
+                    "Unlit/Color",
+                };
+                UnityEngine.Shader particleShader = null;
+                foreach (var c in candidates)
+                {
+                    particleShader = UnityEngine.Shader.Find(c);
+                    if (particleShader != null) break;
                 }
+                if (particleShader == null)
+                    return ToolResult<ParticleSetRendererResult>.Fail(
+                        "No particle-compatible shader found in this project. " +
+                        "Ensure a render pipeline package (URP/HDRP) or Particle shaders are installed.",
+                        ErrorCodes.NOT_FOUND);
+
+                var mat = new Material(particleShader);
+                if (mat.HasProperty("_Surface"))
+                    mat.SetFloat("_Surface", 1f); // Transparent where supported
+                renderer.sharedMaterial = mat;
             }
             else if (!string.IsNullOrEmpty(p.MaterialPath))
             {

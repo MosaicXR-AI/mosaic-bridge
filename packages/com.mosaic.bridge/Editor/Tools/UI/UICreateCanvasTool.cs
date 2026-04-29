@@ -60,6 +60,10 @@ namespace Mosaic.Bridge.Tools.UI
             canvasGo.AddComponent<CanvasScaler>();
             canvasGo.AddComponent<GraphicRaycaster>();
 
+            // WorldSpace canvases require a camera; auto-assign Camera.main if available.
+            if (renderMode == UnityEngine.RenderMode.WorldSpace && Camera.main != null)
+                canvas.worldCamera = Camera.main;
+
             // 3. Ensure EventSystem exists
             bool eventSystemCreated = false;
 #if UNITY_2023_1_OR_NEWER

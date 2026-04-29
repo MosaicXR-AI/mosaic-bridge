@@ -362,6 +362,25 @@ namespace Mosaic.Bridge.Tools.Particles
             return null;
         }
 
+        private static Material GetPipelineParticleMaterial()
+        {
+            // Try URP particle shader first, then Built-in, then generic unlit fallback
+            string[] shaderCandidates =
+            {
+                "Universal Render Pipeline/Particles/Unlit",
+                "Universal Render Pipeline/Particles/Lit",
+                "Particles/Standard Unlit",
+                "Particles/Standard Surface",
+                "Unlit/Color",
+            };
+            foreach (var candidate in shaderCandidates)
+            {
+                var s = Shader.Find(candidate);
+                if (s != null) return new Material(s);
+            }
+            return null;
+        }
+
         private static void ApplyPreset(ParticleSystem ps, string preset)
         {
             var main = ps.main;
@@ -369,11 +388,10 @@ namespace Mosaic.Bridge.Tools.Particles
             var shape = ps.shape;
             var renderer = ps.GetComponent<ParticleSystemRenderer>();
 
-            // Auto-assign URP-compatible material on all presets to avoid magenta in URP projects
-            var urpShader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
-                         ?? Shader.Find("Particles/Standard Unlit");
-            if (urpShader != null)
-                renderer.sharedMaterial = new Material(urpShader);
+            // Auto-assign pipeline-appropriate particle material to avoid magenta
+            var particleMat = GetPipelineParticleMaterial();
+            if (particleMat != null)
+                renderer.sharedMaterial = particleMat;
 
             switch (preset)
             {

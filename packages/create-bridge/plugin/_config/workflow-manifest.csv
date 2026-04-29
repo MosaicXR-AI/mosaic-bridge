@@ -1,0 +1,5 @@
+Workflow,File,Description,Trigger
+preflight,workflows/preflight/workflow.md,Run at session start to detect pipeline / packages / errors,Always first
+shader-guide,workflows/shader-guide/workflow.md,Step-by-step ShaderGraph build with serialization rules,Before creating any ShaderGraph
+session-handoff,workflows/session-handoff/workflow.md,Save session notes for next context window,End of session / context limit approaching
+scene-plan,workflows/scene-plan/workflow.md,Generate layered build plan before executing tool calls,Before building any scene

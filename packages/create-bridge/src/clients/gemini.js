@@ -1,6 +1,9 @@
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { atomicWriteJson, readJson, homePath } from '../utils.js';
 import { buildMcpServerEntry } from './index.js';
+import { GEMINI_MD_CONTENT } from '../templates.js';
 
 /**
  * Gemini CLI stores MCP config in:
@@ -45,6 +48,12 @@ export async function configureGemini(ctx) {
 
   existing.mcpServers[serverName] = buildMcpServerEntry({ projectPath });
   atomicWriteJson(configPath, existing);
+
+  // Write GEMINI.md to the Unity project root
+  const geminiMdPath = path.join(projectPath, 'GEMINI.md');
+  if (!fs.existsSync(geminiMdPath) || force) {
+    fs.writeFileSync(geminiMdPath, GEMINI_MD_CONTENT, 'utf8');
+  }
 
   return {
     action: already ? 'overwritten' : 'added',

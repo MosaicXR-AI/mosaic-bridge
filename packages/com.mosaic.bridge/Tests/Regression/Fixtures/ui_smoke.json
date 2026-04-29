@@ -9,7 +9,7 @@
     "statusCode": 200,
     "dataFields": ["Name", "InstanceId", "RenderMode"],
     "dataChecks": {
-      "RenderMode": "Overlay"
+      "RenderMode": "ScreenSpaceOverlay"
     }
   },
   "cleanup": "delete_created_object",

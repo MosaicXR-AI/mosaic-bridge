@@ -1,0 +1,10 @@
+{
+  "fixture": "probuilder_smoke",
+  "tool": "mosaic_probuilder_select",
+  "category": "probuilder",
+  "description": "Smoke test for probuilder/select — missing GameObjectName returns INVALID_PARAM",
+  "parameters": { "GameObjectName": "", "Mode": "vertex", "Indices": [] },
+  "expectations": { "success": false, "statusCode": 400 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

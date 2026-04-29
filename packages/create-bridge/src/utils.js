@@ -55,6 +55,23 @@ export function homePath(...parts) {
 }
 
 /**
+ * Recursively copies a directory tree from src to dst.
+ * Creates dst if it doesn't exist. Overwrites existing files.
+ */
+export function copyDirSync(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, dstPath);
+    } else {
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
+}
+
+/**
  * Checks whether a command exists in PATH. Returns the path or null.
  * Uses `which` on Unix, `where` on Windows.
  */

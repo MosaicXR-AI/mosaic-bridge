@@ -13,7 +13,8 @@ namespace Mosaic.Bridge.Tools.Components
         [MosaicTool("component/set_reference",
                     "Sets a serialized property on a component. Supports object-reference fields (e.g. Follow targets, " +
                     "material slots) AND value-type fields (float, int, bool, string/enum, color, vector). " +
-                    "PropertyPath accepts dot-notation for nested struct members and automatically tries the Unity " +
+                    "PropertyPath accepts dot-notation for nested struct members, array index expressions " +
+                    "(e.g. 'Knots[0].Position'), and automatically tries the Unity " +
                     "'m_' prefix convention, so both 'Lens.FieldOfView' and 'm_Lens.m_FieldOfView' work. " +
                     "Provide TargetObjectPath for object references, or FloatValue/IntValue/BoolValue/StringValue/" +
                     "ColorValue/VectorValue for primitive fields.",
@@ -207,10 +208,9 @@ namespace Mosaic.Bridge.Tools.Components
         // ── Helpers ───────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Finds a serialized property supporting dot-notation nested paths and
-        /// automatic 'm_' prefix fallback for each path segment.
-        /// Resolves: "Target.TrackingTarget" → tries "Target", "m_Target", then
-        /// FindPropertyRelative("TrackingTarget"), FindPropertyRelative("m_TrackingTarget").
+        /// Finds a serialized property supporting dot-notation nested paths,
+        /// automatic 'm_' prefix fallback for each segment, and array index
+        /// expressions like "Knots[0].Position".
         /// </summary>
         private static SerializedProperty FindPropertyFuzzy(SerializedObject so, string path)
         {
@@ -218,26 +218,50 @@ namespace Mosaic.Bridge.Tools.Components
             var direct = so.FindProperty(path);
             if (direct != null) return direct;
 
-            // 2. Segment-by-segment traversal with m_ fallback
+            // 2. Segment-by-segment traversal with m_ fallback and array-index support
             var segments = path.Split('.');
             SerializedProperty current = null;
 
             for (int i = 0; i < segments.Length; i++)
             {
                 string seg = segments[i];
-                string mSeg = seg.StartsWith("m_", StringComparison.Ordinal) ? seg : "m_" + seg;
+
+                // Parse optional array index: "Knots[0]" → baseSeg="Knots", arrayIndex=0
+                int bracketOpen = seg.IndexOf('[');
+                int arrayIndex  = -1;
+                string baseSeg  = seg;
+
+                if (bracketOpen >= 0)
+                {
+                    int bracketClose = seg.IndexOf(']', bracketOpen);
+                    if (bracketClose > bracketOpen)
+                    {
+                        baseSeg = seg.Substring(0, bracketOpen);
+                        int.TryParse(
+                            seg.Substring(bracketOpen + 1, bracketClose - bracketOpen - 1),
+                            out arrayIndex);
+                    }
+                }
+
+                string mSeg = baseSeg.StartsWith("m_", StringComparison.Ordinal) ? baseSeg : "m_" + baseSeg;
 
                 if (i == 0)
-                {
-                    current = so.FindProperty(seg) ?? so.FindProperty(mSeg);
-                }
+                    current = so.FindProperty(baseSeg) ?? so.FindProperty(mSeg);
                 else
                 {
                     if (current == null) return null;
-                    current = current.FindPropertyRelative(seg) ?? current.FindPropertyRelative(mSeg);
+                    current = current.FindPropertyRelative(baseSeg) ?? current.FindPropertyRelative(mSeg);
                 }
 
                 if (current == null) return null;
+
+                // Step into the array element when an index was specified
+                if (arrayIndex >= 0)
+                {
+                    if (!current.isArray || arrayIndex >= current.arraySize) return null;
+                    current = current.GetArrayElementAtIndex(arrayIndex);
+                    if (current == null) return null;
+                }
             }
 
             return current;

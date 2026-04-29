@@ -1,0 +1,10 @@
+{
+  "fixture": "urp_smoke",
+  "tool": "mosaic_urp_volume",
+  "category": "urp",
+  "description": "Smoke test for urp/volume — missing Name returns INVALID_PARAM",
+  "parameters": { "Name": "" },
+  "expectations": { "success": false, "statusCode": 400 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

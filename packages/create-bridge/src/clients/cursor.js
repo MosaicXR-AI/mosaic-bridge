@@ -1,7 +1,9 @@
 import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs';
 import { atomicWriteJson, readJson, homePath } from '../utils.js';
 import { buildMcpServerEntry } from './index.js';
+import { CURSOR_RULES_CONTENT } from '../templates.js';
 
 /**
  * Cursor reads MCP config from `~/.cursor/mcp.json` (user-global) or a
@@ -30,6 +32,14 @@ export async function configureCursor(ctx) {
 
   existing.mcpServers[serverName] = buildMcpServerEntry({ projectPath });
   atomicWriteJson(configPath, existing);
+
+  // Write .cursor/rules/mosaic-bridge.mdc to the Unity project root
+  const rulesDir = path.join(projectPath, '.cursor', 'rules');
+  const rulesMdcPath = path.join(rulesDir, 'mosaic-bridge.mdc');
+  if (!fs.existsSync(rulesMdcPath) || force) {
+    fs.mkdirSync(rulesDir, { recursive: true });
+    fs.writeFileSync(rulesMdcPath, CURSOR_RULES_CONTENT, 'utf8');
+  }
 
   return {
     action: already ? 'overwritten' : 'added',

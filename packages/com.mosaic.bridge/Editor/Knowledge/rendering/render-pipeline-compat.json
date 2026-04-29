@@ -1,0 +1,58 @@
+{
+  "title": "Render Pipeline Compatibility",
+  "description": "Shader names, property names, and tool behavior by Unity render pipeline",
+  "detection": {
+    "method": "GraphicsSettings.defaultRenderPipeline type name",
+    "rules": {
+      "null":              "BuiltIn",
+      "contains 'Universal' or 'URP'": "URP",
+      "contains 'HighDefinition' or 'HDRP'": "HDRP",
+      "other SRP":         "SRP"
+    }
+  },
+  "pipelines": {
+    "BuiltIn": {
+      "default_shader":    "Standard",
+      "color_property":    "_Color",
+      "particle_shaders":  ["Particles/Standard Unlit", "Particles/Standard Surface", "Unlit/Color"],
+      "common_shaders":    ["Standard", "Unlit/Color", "Unlit/Texture", "Mobile/Diffuse"],
+      "notes": "Legacy pipeline. Use '_Color' for color properties. No URP packages required."
+    },
+    "URP": {
+      "default_shader":    "Universal Render Pipeline/Lit",
+      "color_property":    "_BaseColor",
+      "particle_shaders":  ["Universal Render Pipeline/Particles/Unlit", "Universal Render Pipeline/Particles/Lit"],
+      "common_shaders":    ["Universal Render Pipeline/Lit", "Universal Render Pipeline/Unlit", "Universal Render Pipeline/Particles/Unlit"],
+      "notes": "Universal Render Pipeline. Use '_BaseColor' for color properties. Requires com.unity.render-pipelines.universal package."
+    },
+    "HDRP": {
+      "default_shader":    "HDRP/Lit",
+      "color_property":    "_BaseColor",
+      "particle_shaders":  ["HDRP/Unlit"],
+      "common_shaders":    ["HDRP/Lit", "HDRP/Unlit", "HDRP/Eye"],
+      "notes": "High Definition Render Pipeline. Use '_BaseColor' for color properties. Requires com.unity.render-pipelines.high-definition package."
+    }
+  },
+  "common_mistakes": [
+    {
+      "symptom": "Magenta material",
+      "cause": "Shader not found or pipeline mismatch",
+      "fix": "Call project/preflight to identify the pipeline, then use the correct shader name"
+    },
+    {
+      "symptom": "Color property not applied",
+      "cause": "Using '_Color' in URP/HDRP or '_BaseColor' in Built-in",
+      "fix": "Use '_BaseColor' for URP/HDRP, '_Color' for Built-in. Check SuggestedColorProperty in material/create result."
+    },
+    {
+      "symptom": "Particle system invisible",
+      "cause": "No particle-compatible shader found",
+      "fix": "Use UseUrpParticlesMaterial=true in particle/set-renderer, or specify MaterialPath explicitly"
+    },
+    {
+      "symptom": "shader/parallax-create fails silently",
+      "cause": "Neither URP nor Built-in shaders available as fallback",
+      "fix": "Ensure render pipeline package is installed. Check InstalledPackages from project/preflight."
+    }
+  ]
+}

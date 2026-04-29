@@ -69,15 +69,25 @@ namespace Mosaic.Bridge.Tools.Audio
             if (p.Spread.HasValue)
                 source.spread = Mathf.Clamp(p.Spread.Value, 0f, 360f);
 
+#if UNITY_2023_1_OR_NEWER
+            bool hasListener = UnityEngine.Object.FindAnyObjectByType<AudioListener>() != null;
+#else
+            bool hasListener = UnityEngine.Object.FindObjectOfType<AudioListener>() != null;
+#endif
+            string listenerWarning = hasListener
+                ? null
+                : "No AudioListener found in the scene — spatial audio will be silent. Add an AudioListener component (usually on the Main Camera).";
+
             return ToolResult<AudioSetSpatialResult>.Ok(new AudioSetSpatialResult
             {
-                InstanceId     = go.GetInstanceID(),
-                GameObjectName = go.name,
-                MinDistance     = source.minDistance,
-                MaxDistance     = source.maxDistance,
-                RolloffMode    = source.rolloffMode.ToString(),
-                DopplerLevel   = source.dopplerLevel,
-                Spread         = source.spread
+                InstanceId             = go.GetInstanceID(),
+                GameObjectName         = go.name,
+                MinDistance            = source.minDistance,
+                MaxDistance            = source.maxDistance,
+                RolloffMode            = source.rolloffMode.ToString(),
+                DopplerLevel           = source.dopplerLevel,
+                Spread                 = source.spread,
+                NoAudioListenerWarning = listenerWarning
             });
         }
     }

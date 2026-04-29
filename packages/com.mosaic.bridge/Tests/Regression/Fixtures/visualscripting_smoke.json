@@ -1,0 +1,10 @@
+{
+  "fixture": "visualscripting_smoke",
+  "tool": "mosaic_visualscripting_create_graph",
+  "category": "visualscripting",
+  "description": "Smoke test for visualscripting/create_graph — missing Path returns INVALID_PARAM",
+  "parameters": { "Path": "", "Name": "" },
+  "expectations": { "success": false, "statusCode": 400 },
+  "cleanup": null,
+  "tags": ["smoke"]
+}

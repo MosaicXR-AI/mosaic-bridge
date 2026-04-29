@@ -9,7 +9,9 @@ namespace Mosaic.Bridge.Tools.Graphics
     public static class GraphicsSetShaderTool
     {
         [MosaicTool("graphics/set-shader",
-                    "Assigns a shader to a material asset",
+                    "Assigns a shader to a material asset by name. " +
+                    "After switching shaders, color property names change: URP/HDRP use '_BaseColor', Built-in uses '_Color'. " +
+                    "Use material/set-property to update property values after a shader switch.",
                     isReadOnly: false)]
         public static ToolResult<GraphicsSetShaderResult> SetShader(GraphicsSetShaderParams p)
         {
@@ -28,15 +30,25 @@ namespace Mosaic.Bridge.Tools.Graphics
 
             Undo.RecordObject(material, "Mosaic: Set Shader");
             material.shader = shader;
+
+            if (material.shader == null || material.shader.name != shader.name)
+                return ToolResult<GraphicsSetShaderResult>.Fail(
+                    $"Shader '{p.ShaderName}' was found but assignment failed — it may be unsupported by the active render pipeline.",
+                    ErrorCodes.INTERNAL_ERROR);
+
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
 
+            string colorProp = shader.name.StartsWith("Universal Render Pipeline") || shader.name.StartsWith("HDRP")
+                ? "_BaseColor" : "_Color";
+
             return ToolResult<GraphicsSetShaderResult>.Ok(new GraphicsSetShaderResult
             {
-                MaterialPath = p.MaterialPath,
-                MaterialName = material.name,
-                ShaderName = shader.name,
-                PreviousShaderName = previousShader
+                MaterialPath           = p.MaterialPath,
+                MaterialName           = material.name,
+                ShaderName             = shader.name,
+                PreviousShaderName     = previousShader,
+                SuggestedColorProperty = colorProp
             });
         }
     }

@@ -54,7 +54,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(result.Success, result.Error);
             Assert.IsNotNull(result.Data);
             Assert.AreEqual("Canvas", result.Data.Name);
-            Assert.AreEqual("Overlay", result.Data.RenderMode);
+            Assert.AreEqual("ScreenSpaceOverlay", result.Data.RenderMode);
             Track(result.Data.InstanceId);
         }
 

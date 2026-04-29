@@ -23,6 +23,16 @@ namespace Mosaic.Bridge.Tools.Scripts
                     $"Path must start with 'Assets/' — got '{p.Path}'",
                     ErrorCodes.INVALID_PARAM);
 
+            // Validate filename characters — Unity rejects paths with < > : " | ? *
+            var fileName = Path.GetFileNameWithoutExtension(p.Path);
+            if (string.IsNullOrEmpty(fileName))
+                return ToolResult<ScriptCreateResult>.Fail(
+                    "Filename cannot be empty", ErrorCodes.INVALID_PARAM);
+            if (System.Text.RegularExpressions.Regex.IsMatch(fileName, @"[<>:""|?*\x00-\x1f\\]"))
+                return ToolResult<ScriptCreateResult>.Fail(
+                    $"Filename '{fileName}' contains invalid characters. Avoid: < > : \" | ? * and control characters",
+                    ErrorCodes.INVALID_PARAM);
+
             var ext = Path.GetExtension(p.Path)?.ToLowerInvariant();
             if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
                 return ToolResult<ScriptCreateResult>.Fail(

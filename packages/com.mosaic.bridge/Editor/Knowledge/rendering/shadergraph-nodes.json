@@ -1,0 +1,93 @@
+{
+  "title": "ShaderGraph Node Reference",
+  "description": "Node aliases, slot IDs, and serialization quirks for Unity ShaderGraph 14.x-17.x (Unity 2022 LTS - Unity 6)",
+  "format_rules": [
+    "UUID-format GUIDs required: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (use Guid.NewGuid().ToString(\"D\"))",
+    "Files use MultiJson format: multiple top-level JSON objects per file, each with its own m_ObjectId",
+    "m_StageCapability: 1=Vertex, 2=Fragment, 3=Both. Texture sampling nodes use 2 (fragment-only)",
+    "m_SGVersion must match the node's actual version — VoronoiNode requires SGVersion=1",
+    "CustomFunctionNode requires SGVersion=1 and m_SourceType=1 for inline body"
+  ],
+  "nodes": {
+    "math": {
+      "add":        { "type": "UnityEditor.ShaderGraph.AddNode",        "slots": {"0":"A(in)","1":"B(in)","2":"Out(out)"} },
+      "subtract":   { "type": "UnityEditor.ShaderGraph.SubtractNode",   "slots": {"0":"A(in)","1":"B(in)","2":"Out(out)"} },
+      "multiply":   { "type": "UnityEditor.ShaderGraph.MultiplyNode",   "slots": {"0":"A(in)","1":"B(in)","2":"Out(out)"} },
+      "divide":     { "type": "UnityEditor.ShaderGraph.DivideNode",     "slots": {"0":"A(in)","1":"B(in)","2":"Out(out)"} },
+      "power":      { "type": "UnityEditor.ShaderGraph.PowerNode",      "slots": {"0":"Base(in)","1":"Exp(in)","2":"Out(out)"} },
+      "lerp":       { "type": "UnityEditor.ShaderGraph.LerpNode",       "slots": {"0":"A(in)","1":"B(in)","2":"T(in)","3":"Out(out)"} },
+      "clamp":      { "type": "UnityEditor.ShaderGraph.ClampNode",      "slots": {"0":"In(in)","1":"Min(in)","2":"Max(in)","3":"Out(out)"} },
+      "saturate":   { "type": "UnityEditor.ShaderGraph.SaturateNode",   "slots": {"0":"In(in)","1":"Out(out)"} },
+      "smoothstep": { "type": "UnityEditor.ShaderGraph.SmoothstepNode", "slots": {"0":"Edge1(in)","1":"Edge2(in)","2":"In(in)","3":"Out(out)"} },
+      "step":       { "type": "UnityEditor.ShaderGraph.StepNode",       "slots": {"0":"Edge(in)","1":"In(in)","2":"Out(out)"} },
+      "remap":      { "type": "UnityEditor.ShaderGraph.RemapNode",      "slots": {"0":"In(in)","1":"InMin(in)","2":"InMax(in)","3":"OutMin(in)","4":"OutMax(in)","5":"Out(out)"} }
+    },
+    "utility": {
+      "split":   { "type": "UnityEditor.ShaderGraph.SplitNode",        "slots": {"0":"In(in)","1":"R(out)","2":"G(out)","3":"B(out)","4":"A(out)"} },
+      "combine": { "type": "UnityEditor.ShaderGraph.CombineNode",      "slots": {"0":"R(in)","1":"G(in)","2":"B(in)","3":"A(in)","4":"RGBA(out)","5":"RGB(out)","6":"RG(out)"} },
+      "swizzle": { "type": "UnityEditor.ShaderGraph.SwizzleNode",      "slots": {"0":"In(in)","1":"Out(out)"} },
+      "fresnel":  { "type": "UnityEditor.ShaderGraph.FresnelEffectNode","slots": {"0":"Normal(in)","1":"View Direction(in)","2":"Power(in)","3":"Out(out)"} }
+    },
+    "input": {
+      "float":    { "type": "UnityEditor.ShaderGraph.Vector1Node",          "slots": {"0":"Out(out)"} },
+      "vector2":  { "type": "UnityEditor.ShaderGraph.Vector2Node",          "slots": {"0":"Out(out)"} },
+      "vector3":  { "type": "UnityEditor.ShaderGraph.Vector3Node",          "slots": {"0":"Out(out)"} },
+      "vector4":  { "type": "UnityEditor.ShaderGraph.Vector4Node",          "slots": {"0":"Out(out)"} },
+      "color":    { "type": "UnityEditor.ShaderGraph.ColorNode",            "slots": {"0":"Out(out)"} },
+      "uv":       { "type": "UnityEditor.ShaderGraph.UVNode",               "slots": {"0":"Out(out)"} },
+      "time":     { "type": "UnityEditor.ShaderGraph.TimeNode",             "slots": {"0":"Time(out)","1":"Sine Time(out)","2":"Cosine Time(out)","3":"Delta Time(out)","4":"Smooth Delta(out)"}, "note": "ALL 5 output slots must be declared" },
+      "position": { "type": "UnityEditor.ShaderGraph.PositionNode",         "slots": {"0":"Out(out)"} },
+      "normal":   { "type": "UnityEditor.ShaderGraph.NormalVectorNode",     "slots": {"0":"Out(out)"} },
+      "viewdir":  { "type": "UnityEditor.ShaderGraph.ViewDirectionNode",    "slots": {"0":"Out(out)"} }
+    },
+    "texture": {
+      "sampletexture2d": {
+        "type": "UnityEditor.ShaderGraph.SampleTexture2DNode",
+        "slots": {"0":"Texture(in,stageCapability=2)","1":"UV(in)","2":"Sampler(in,stageCapability=2)","4":"RGBA(out,stageCapability=2)","5":"R(out,stageCapability=2)","6":"G(out,stageCapability=2)","7":"B(out,stageCapability=2)","8":"A(out,stageCapability=2)"},
+        "note": "Texture and Sampler slots require m_StageCapability=2 (fragment only)"
+      },
+      "samplecubemap": {
+        "type": "UnityEditor.ShaderGraph.SampleCubemapNode",
+        "slots": {"0":"Cube(in,stageCapability=2)","1":"Dir(in)","2":"LOD(in)","3":"Sampler(in,stageCapability=2)","4":"Out(out,stageCapability=2)"}
+      }
+    },
+    "procedural": {
+      "voronoi": {
+        "type": "UnityEditor.ShaderGraph.VoronoiNode",
+        "sgVersion": 1,
+        "extraFields": { "m_HashType": 0 },
+        "slots": {"0":"UV(in)","1":"AngleOffset(in)","2":"CellDensity(in)","3":"Out(out)","4":"Cells(out)"},
+        "note": "SGVersion=1 required; UV slot serialized as UVMaterialSlot in Unity's native format"
+      },
+      "simplenoise":   { "type": "UnityEditor.ShaderGraph.SimpleNoiseNode",   "slots": {"0":"UV(in)","1":"Scale(in)","2":"Out(out)"} },
+      "gradientnoise": { "type": "UnityEditor.ShaderGraph.GradientNoiseNode", "slots": {"0":"UV(in)","1":"Scale(in)","2":"Out(out)"} }
+    },
+    "custom": {
+      "customfunction": {
+        "type": "UnityEditor.ShaderGraph.CustomFunctionNode",
+        "sgVersion": 1,
+        "extraFields": { "m_SourceType": 1 },
+        "slots": {"0":"Out(out)"},
+        "note": "SGVersion=1 required; m_SourceType=1 for inline HLSL body; output slots need m_LiteralMode:false"
+      }
+    }
+  },
+  "block_nodes": {
+    "vertex": {
+      "Position":  { "descriptor": "VertexDescription.Position", "slotIndex": 9,  "slotType": "Vector3MaterialSlot", "stageCap": 1 },
+      "Normal":    { "descriptor": "VertexDescription.Normal",   "slotIndex": 10, "slotType": "Vector3MaterialSlot", "stageCap": 1 },
+      "Tangent":   { "descriptor": "VertexDescription.Tangent",  "slotIndex": 11, "slotType": "Vector3MaterialSlot", "stageCap": 1 }
+    },
+    "fragment_lit": {
+      "BaseColor":   { "descriptor": "SurfaceDescription.BaseColor",  "slotIndex": 0, "slotType": "ColorRGBMaterialSlot", "stageCap": 2 },
+      "NormalTS":    { "descriptor": "SurfaceDescription.NormalTS",   "slotIndex": 2, "slotType": "Vector3MaterialSlot",  "stageCap": 2 },
+      "Metallic":    { "descriptor": "SurfaceDescription.Metallic",   "slotIndex": 6, "slotType": "Vector1MaterialSlot",  "stageCap": 2 },
+      "Smoothness":  { "descriptor": "SurfaceDescription.Smoothness", "slotIndex": 3, "slotType": "Vector1MaterialSlot",  "stageCap": 2 },
+      "Emission":    { "descriptor": "SurfaceDescription.Emission",   "slotIndex": 4, "slotType": "ColorRGBMaterialSlot", "stageCap": 2 },
+      "Occlusion":   { "descriptor": "SurfaceDescription.Occlusion",  "slotIndex": 7, "slotType": "Vector1MaterialSlot",  "stageCap": 2 }
+    },
+    "fragment_unlit": {
+      "BaseColor": { "descriptor": "SurfaceDescription.BaseColor", "slotIndex": 0, "slotType": "ColorRGBMaterialSlot", "stageCap": 2 }
+    }
+  }
+}

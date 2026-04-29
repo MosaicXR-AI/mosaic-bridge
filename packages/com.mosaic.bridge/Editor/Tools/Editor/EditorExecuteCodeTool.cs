@@ -62,6 +62,16 @@ namespace Mosaic.Bridge.Tools.EditorOps
         {
             string code = p.Code.Trim();
 
+            // Reject multi-statement input early with actionable guidance.
+            // A newline or semicolon inside the expression (outside of strings) signals
+            // a block — redirect to script/create + editor/run-menu-item instead.
+            if (ContainsMultipleStatements(code))
+                return ToolResult<EditorExecuteCodeResult>.Fail(
+                    "editor/execute-code only accepts a single expression (e.g. 'UnityEditor.Selection.activeGameObject.name'). " +
+                    "For multi-line blocks: create a temporary script with script/create, " +
+                    "then trigger it via editor/run-menu-item.",
+                    ErrorCodes.INVALID_PARAM);
+
             // Parse expression into type path + member + optional args
             var parsed = ParseExpression(code);
             if (parsed.Error != null)
@@ -166,6 +176,31 @@ namespace Mosaic.Bridge.Tools.EditorOps
                     $"Execution failed: {ex.GetType().Name}: {ex.Message}",
                     ErrorCodes.INTERNAL_ERROR);
             }
+        }
+
+        // ── Multi-statement detection ───────────────────────────────────────────
+
+        private static bool ContainsMultipleStatements(string code)
+        {
+            bool inString = false;
+            char prev = '\0';
+            int parenDepth = 0;
+
+            for (int i = 0; i < code.Length; i++)
+            {
+                char c = code[i];
+                if (c == '"' && prev != '\\') inString = !inString;
+                if (!inString)
+                {
+                    if (c == '(') parenDepth++;
+                    else if (c == ')') parenDepth--;
+                    else if (c == '\n' || c == '\r') return true;
+                    else if (c == ';' && parenDepth == 0) return true;
+                    else if (c == '{' || c == '}') return true;
+                }
+                prev = c;
+            }
+            return false;
         }
 
         // ── Expression parsing ──────────────────────────────────────────────────

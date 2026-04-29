@@ -1,28 +1,30 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Newtonsoft.Json.Linq;
 
 namespace Mosaic.Bridge.Tools.ShaderGraphs
 {
     /// <summary>
     /// Helper for reading and writing ShaderGraph .shadergraph JSON files directly.
-    /// ShaderGraph files are JSON on disk, making them parseable without reflection
-    /// into Unity's internal ShaderGraph APIs.
+    /// Handles both legacy single-JSON and the MultiJson format used in SG 14.x+
+    /// (Unity 2022 LTS – Unity 6): multiple top-level JSON objects in one file,
+    /// each with its own m_ObjectId, cross-referenced by m_Id.
     /// </summary>
     internal static class ShaderGraphJsonHelper
     {
-        /// <summary>Parse a .shadergraph file and return the root JObject.</summary>
+        /// <summary>Parse a .shadergraph file and return the GraphData JObject.</summary>
         public static JObject ReadGraph(string assetPath)
         {
             string fullPath = GetFullPath(assetPath);
             if (!File.Exists(fullPath))
                 return null;
 
-            string json = File.ReadAllText(fullPath);
-            return JObject.Parse(json);
+            string content = File.ReadAllText(fullPath);
+            return ParseGraphFromContent(content);
         }
 
-        /// <summary>Write a JObject back to a .shadergraph file.</summary>
+        /// <summary>Write the GraphData JObject back to disk, preserving other MultiJson blocks.</summary>
         public static void WriteGraph(string assetPath, JObject graph)
         {
             string fullPath = GetFullPath(assetPath);
@@ -30,7 +32,115 @@ namespace Mosaic.Bridge.Tools.ShaderGraphs
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
-            File.WriteAllText(fullPath, graph.ToString(Newtonsoft.Json.Formatting.Indented));
+            string existingContent = File.Exists(fullPath) ? File.ReadAllText(fullPath) : null;
+            string output;
+
+            if (!string.IsNullOrEmpty(existingContent) && IsMultiJson(existingContent))
+            {
+                // Replace the GraphData block; keep all other blocks intact.
+                var blocks = ExtractJsonBlocks(existingContent);
+                var sb = new StringBuilder();
+                bool replaced = false;
+                foreach (var block in blocks)
+                {
+                    if (!replaced)
+                    {
+                        try
+                        {
+                            var obj = JObject.Parse(block);
+                            if (obj["m_Type"]?.Value<string>() == "UnityEditor.ShaderGraph.GraphData")
+                            {
+                                sb.AppendLine(graph.ToString(Newtonsoft.Json.Formatting.Indented));
+                                replaced = true;
+                                continue;
+                            }
+                        }
+                        catch { }
+                    }
+                    sb.AppendLine(block);
+                }
+                if (!replaced)
+                    sb.AppendLine(graph.ToString(Newtonsoft.Json.Formatting.Indented));
+                output = sb.ToString();
+            }
+            else
+            {
+                output = graph.ToString(Newtonsoft.Json.Formatting.Indented);
+            }
+
+            File.WriteAllText(fullPath, output);
+        }
+
+        // ── MultiJson helpers ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Return true when the file contains more than one top-level JSON object
+        /// (i.e. Unity ShaderGraph 14.x+ MultiJson format).
+        /// </summary>
+        internal static bool IsMultiJson(string content)
+        {
+            // Try parsing as a single JSON object first.
+            try { JObject.Parse(content.Trim()); return false; }
+            catch { return ExtractJsonBlocks(content).Count > 1; }
+        }
+
+        /// <summary>
+        /// Extract all top-level {...} blocks from a MultiJson file.
+        /// Each block is a complete JSON object.
+        /// </summary>
+        internal static List<string> ExtractJsonBlocks(string content)
+        {
+            var blocks = new List<string>();
+            int depth = 0, start = -1;
+            bool inString = false;
+            char prev = '\0';
+
+            for (int i = 0; i < content.Length; i++)
+            {
+                char c = content[i];
+                if (c == '"' && prev != '\\') inString = !inString;
+                if (!inString)
+                {
+                    if (c == '{') { if (depth++ == 0) start = i; }
+                    else if (c == '}')
+                    {
+                        if (--depth == 0 && start >= 0)
+                        {
+                            blocks.Add(content.Substring(start, i - start + 1));
+                            start = -1;
+                        }
+                    }
+                }
+                prev = c;
+            }
+            return blocks;
+        }
+
+        internal static JObject ParseGraphFromContent(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content)) return null;
+
+            // Single JSON — covers legacy format and newly-created graphs
+            try
+            {
+                var obj = JObject.Parse(content.Trim());
+                return obj;
+            }
+            catch { }
+
+            // MultiJson: find the GraphData block
+            foreach (var block in ExtractJsonBlocks(content))
+            {
+                try
+                {
+                    var obj = JObject.Parse(block);
+                    if (obj["m_Type"]?.Value<string>() == "UnityEditor.ShaderGraph.GraphData")
+                        return obj;
+                }
+                catch { }
+            }
+
+            return null;
         }
 
         /// <summary>Count nodes in the graph JSON.</summary>

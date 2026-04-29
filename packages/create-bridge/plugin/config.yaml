@@ -1,0 +1,12 @@
+user_name: Developer
+communication_language: English
+output_folder: docs/Sessions
+document_output_language: English
+
+# Default Unity settings (agents will call project/preflight to discover actuals)
+default_render_pipeline: URP
+default_color_property: _BaseColor
+
+# Session handoff
+session_handoff_dir: docs/Sessions
+session_handoff_template: _config/session-template.md

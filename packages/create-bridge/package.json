@@ -16,6 +16,9 @@
   "files": [
     "bin/**/*.js",
     "src/**/*.js",
+    "plugin/skills/**",
+    "plugin/workflows/**",
+    "plugin/config.yaml",
     "README.md",
     "LICENSE"
   ],

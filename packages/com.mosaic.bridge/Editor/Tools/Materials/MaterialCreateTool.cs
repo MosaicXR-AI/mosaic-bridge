@@ -75,14 +75,20 @@ namespace Mosaic.Bridge.Tools.Materials
 
         internal static string DetectRenderPipeline()
         {
-            var pipeline = GraphicsSettings.defaultRenderPipeline;
-            if (pipeline == null)
-                return "BuiltIn";
+            // QualitySettings.renderPipeline (per-quality-level override) wins over
+            // GraphicsSettings.defaultRenderPipeline (project-wide default, serialized as m_CustomRenderPipeline).
+            // Materials use whichever is active for the current quality level — checking only one
+            // misses the override case and leads to magenta material errors.
+            var pipeline = QualitySettings.renderPipeline ?? GraphicsSettings.defaultRenderPipeline;
+            return ClassifyPipeline(pipeline);
+        }
+
+        internal static string ClassifyPipeline(RenderPipelineAsset pipeline)
+        {
+            if (pipeline == null) return "BuiltIn";
             string typeName = pipeline.GetType().Name;
-            if (typeName.Contains("Universal") || typeName.Contains("URP"))
-                return "URP";
-            if (typeName.Contains("HighDefinition") || typeName.Contains("HDRP"))
-                return "HDRP";
+            if (typeName.Contains("Universal") || typeName.Contains("URP")) return "URP";
+            if (typeName.Contains("HighDefinition") || typeName.Contains("HDRP")) return "HDRP";
             return "SRP";
         }
 

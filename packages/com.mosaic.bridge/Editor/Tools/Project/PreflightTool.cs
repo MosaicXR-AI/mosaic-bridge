@@ -16,21 +16,39 @@ namespace Mosaic.Bridge.Tools.Project
     {
         [MosaicTool("project/preflight",
                     "Returns a snapshot of the current Unity project environment: Unity version, " +
-                    "active render pipeline (BuiltIn/URP/HDRP), suggested color property name (_Color vs _BaseColor), " +
-                    "active scene info, installed UPM packages, and recent console errors. " +
+                    "active render pipeline (BuiltIn/URP/HDRP), suggested color property (_Color vs _BaseColor), " +
+                    "BOTH the GraphicsSettings default pipeline asset (m_CustomRenderPipeline) AND the per-quality-level " +
+                    "QualitySettings render pipeline asset, with PipelineMismatch=true when they differ. " +
+                    "Also reports active input system (Legacy/New/Both) and whether com.unity.inputsystem is installed. " +
                     "Call this at the START of any session to avoid render-pipeline mismatches and missing-package failures.",
                     isReadOnly: true, Context = ToolContext.Both)]
         public static ToolResult<PreflightResult> Execute(PreflightParams p)
         {
             // ── Render pipeline ─────────────────────────────────────────────
-            string pipeline  = MaterialCreateTool.DetectRenderPipeline();
+            // Quality-level override (QualitySettings.renderPipeline) wins over
+            // GraphicsSettings.defaultRenderPipeline (the m_CustomRenderPipeline serialized field).
+            var graphicsPipeline = GraphicsSettings.defaultRenderPipeline;
+            var qualityPipeline  = QualitySettings.renderPipeline;
+            var activePipeline   = qualityPipeline ?? graphicsPipeline;
+
+            string pipeline  = MaterialCreateTool.ClassifyPipeline(activePipeline);
             string colorProp = (pipeline == "URP" || pipeline == "HDRP") ? "_BaseColor" : "_Color";
+
+            string graphicsPath = graphicsPipeline != null ? AssetDatabase.GetAssetPath(graphicsPipeline) : null;
+            string qualityPath  = qualityPipeline  != null ? AssetDatabase.GetAssetPath(qualityPipeline)  : null;
+
+            bool mismatch = qualityPipeline != null && graphicsPipeline != null
+                            && qualityPipeline != graphicsPipeline;
+
+            string qualityLevel = QualitySettings.names.Length > 0
+                ? QualitySettings.names[QualitySettings.GetQualityLevel()]
+                : "Unknown";
+
+            // ── Input system (Unity 2019.1+ supports the new package; default in 2022.2+) ──
+            DetectInputSystem(out string inputSystem, out bool inputPackageInstalled);
 
             // ── Active scene ─────────────────────────────────────────────────
             var scene     = EditorSceneManager.GetActiveScene();
-            string scenePath = scene.path;
-            string sceneName = scene.name;
-            bool isDirty     = scene.isDirty;
 
             // ── Installed packages ───────────────────────────────────────────
             string[] packages = GetInstalledPackages();
@@ -40,17 +58,48 @@ namespace Mosaic.Bridge.Tools.Project
 
             return ToolResult<PreflightResult>.Ok(new PreflightResult
             {
-                UnityVersion      = Application.unityVersion,
-                RenderPipeline    = pipeline,
-                ColorProperty     = colorProp,
-                ActiveScenePath   = scenePath,
-                ActiveSceneName   = sceneName,
-                SceneIsDirty      = isDirty,
-                InstalledPackages = packages,
-                ConsoleErrorCount = errorCount,
-                ConsoleWarnCount  = warnCount,
-                RecentErrors      = recentErrors
+                UnityVersion              = Application.unityVersion,
+                RenderPipeline            = pipeline,
+                ColorProperty             = colorProp,
+                GraphicsPipelineAsset     = graphicsPath,
+                QualityPipelineAsset      = qualityPath,
+                ActiveQualityLevel        = qualityLevel,
+                PipelineMismatch          = mismatch,
+                InputSystem               = inputSystem,
+                InputSystemPackageInstalled = inputPackageInstalled,
+                ActiveScenePath           = scene.path,
+                ActiveSceneName           = scene.name,
+                SceneIsDirty              = scene.isDirty,
+                InstalledPackages         = packages,
+                ConsoleErrorCount         = errorCount,
+                ConsoleWarnCount          = warnCount,
+                RecentErrors              = recentErrors
             });
+        }
+
+        private static void DetectInputSystem(out string mode, out bool packageInstalled)
+        {
+            // The "Active Input Handling" Player Setting is private — read it via reflection.
+            // Values: 0 = Old (Legacy InputManager), 1 = New (Input System package), 2 = Both.
+            mode = "Unknown";
+            packageInstalled = false;
+
+            try
+            {
+                // Detect package via assembly reference (com.unity.inputsystem)
+                packageInstalled = AppDomain.CurrentDomain.GetAssemblies()
+                    .Any(a => a.GetName().Name == "Unity.InputSystem");
+
+                var playerSettingsType = Type.GetType("UnityEditor.PlayerSettings,UnityEditor");
+                var prop = playerSettingsType?.GetProperty("activeInputHandler",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (prop != null)
+                {
+                    int v = (int)prop.GetValue(null);
+                    mode = v switch { 0 => "Legacy", 1 => "New", 2 => "Both", _ => "Unknown" };
+                }
+            }
+            catch { }
         }
 
         private static string[] GetInstalledPackages()

@@ -60,7 +60,15 @@ Always call \`project/preflight\` at the start of each session:
 \`\`\`json
 { "tool": "project/preflight" }
 \`\`\`
-This returns the **RenderPipeline** (URP/HDRP/BuiltIn) and **ColorProperty** (_BaseColor or _Color).
+The result includes:
+- **RenderPipeline** — the active pipeline (URP / HDRP / BuiltIn) materials actually resolve against
+- **ColorProperty** — \`_BaseColor\` (URP/HDRP) or \`_Color\` (BuiltIn)
+- **GraphicsPipelineAsset** — project default (\`Edit → Project Settings → Graphics\`, serialized as \`m_CustomRenderPipeline\`)
+- **QualityPipelineAsset** — per-quality-level override (\`Edit → Project Settings → Quality → Rendering → Render Pipeline Asset\`)
+- **PipelineMismatch** — \`true\` when the Quality override differs from the Graphics default. **If true, the Quality asset wins for the active quality level.** Always read both before creating materials, otherwise materials may render magenta on platforms with different quality presets.
+- **InputSystem** — \`Legacy\` / \`New\` / \`Both\` (active input handling)
+- **InputSystemPackageInstalled** — whether \`com.unity.inputsystem\` is in the manifest
+
 Never assume the pipeline — always verify it first.
 
 ## Render Pipeline Quick Reference
@@ -73,9 +81,50 @@ Never assume the pipeline — always verify it first.
 
 Magenta material = wrong shader for pipeline. Use \`material/create\` without ShaderName to auto-detect.
 
+## Prefab-First Object Creation
+
+**Never create the same visual object more than once. Build a prefab, then instantiate.**
+
+When the scene needs more than one of the same thing (trees, rocks, enemies, props, modular tiles, particle effects), the workflow is:
+
+1. Build the object **once** at the origin or off-scene.
+2. Save it as a prefab via \`prefab/create\` to \`Assets/Prefabs/{Category}/{Name}.prefab\`.
+3. For every additional placement, use \`asset/instantiate-prefab\` (or \`prefab/instantiate\`) — never re-build the geometry.
+4. If you need a variation, use \`prefab/create-variant\` instead of duplicating-and-modifying.
+
+The cost difference is real: 50 individually-built trees with the same materials/meshes will fragment your scene file, prevent batching, and make every later edit a 50-step operation. 50 instances of one prefab = one source of truth.
+
+## Visual Verification — Multi-Angle Screenshots
+
+**After creating any visual object (model, prefab, particle effect, ShaderGraph applied, lit scene), capture screenshots from at least 4 angles before declaring it done.**
+
+The workflow:
+
+1. Frame the object: \`selection/focus-scene-view\` (selects + centers the scene-view camera on the target).
+2. Move any blocking geometry temporarily, or hide it via \`gameobject/set-active\`. Re-enable after capture.
+3. Loop through 4–5 viewpoints using \`sceneview/set-camera\` — typical set: front (+Z looking -Z), back, left, right, and a 3/4 elevated angle. For tall objects add a top-down.
+4. \`camera/screenshot-scene\` after each move; save to \`Assets/_screenshots/{ObjectName}/{angle}.png\`.
+5. Inspect the screenshots before reporting success. Magenta materials, missing meshes, scale errors, and z-fighting are obvious in renders and invisible in JSON.
+
+Type-checking and tool-success ≠ visual correctness. If you can't see it, you haven't verified it.
+
+## Input System Selection
+
+**Always use the new Input System package (\`com.unity.inputsystem\`) when writing input-handling code, unless the user explicitly asks for the legacy \`UnityEngine.Input\` API.**
+
+Reasoning:
+- The new Input System has been the recommended API since Unity 2019.1 and ships as a verified package on Unity 2021 LTS+.
+- New Unity templates default to it. Mixing legacy + new on the same project triggers warnings and breaks rebinding flows.
+- Check \`InputSystem\` from \`project/preflight\`: if \`Legacy\` only, suggest enabling the new system in Player Settings → Active Input Handling and installing \`com.unity.inputsystem\` before writing input code.
+
+Use \`PlayerInput\` components, \`InputAction\` assets, and the \`OnMove(InputValue)\` callback pattern — not \`Input.GetAxis\` / \`Input.GetKeyDown\`.
+
 ## Tool Usage Rules
 
-- **Render pipeline:** Always call \`project/preflight\` before material or shader work.
+- **Render pipeline:** Always call \`project/preflight\` before material or shader work; check both Graphics + Quality pipeline assets.
+- **Repeated objects:** Build once → \`prefab/create\` → \`asset/instantiate-prefab\` for every other placement.
+- **Visual verification:** \`selection/focus-scene-view\` + \`sceneview/set-camera\` + \`camera/screenshot-scene\` from 4–5 angles after any visual change.
+- **Input code:** Use the new Input System package by default; only fall back to legacy \`UnityEngine.Input\` on explicit user request.
 - **Terrain trees:** Prefab root must have \`MeshRenderer\`, \`LODGroup\`, or \`BillboardRenderer\`.
 - **Material keywords:** Use \`keyword\` ValueType on \`material/set-property\` for \`_EMISSION\`, \`_NORMALMAP\`, \`_ALPHATEST_ON\`.
 - **ShaderGraph nodes:** Use \`shadergraph/add-node\` + \`shadergraph/connect\` — do not fall back to raw HLSL .shader files.

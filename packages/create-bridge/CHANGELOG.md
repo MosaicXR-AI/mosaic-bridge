@@ -2,6 +2,27 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.7] — 2026-05-05
+
+### Changed
+
+- **Multi-Angle Screenshots section** in the LLM instruction templates now lists
+  the exact tool sequence and standard rotation values:
+  - 7-step tool table: \`selection/set\` → \`selection/focus-scene-view\` →
+    \`sceneview/info\` → (optional \`gameobject/set-active\` to hide blockers) →
+    \`sceneview/set-camera\` → \`camera/screenshot-scene\` → restore.
+  - Standard 5-angle rotation table reusing the \`Pivot\` + \`Size\` from
+    \`sceneview/info\`: front \`[20,0,0]\`, right \`[20,90,0]\`, back \`[20,180,0]\`,
+    left \`[20,270,0]\`, 3/4 elevated \`[35,45,0]\`, top-down \`[89,0,0]\`.
+  - Worked example showing the full call sequence for a hero object with one
+    obstructing wall hidden + restored.
+  - Notes on \`selection/focus-scene-view\` taking no params (operates on the
+    current selection — always \`selection/set\` first), and the difference
+    between \`camera/screenshot-scene\` (SceneView) vs \`camera/screenshot-camera\`
+    (in-scene Camera component) vs \`camera/screenshot-game\` (GameView).
+
+---
+
 ## [1.0.0-beta.6] — 2026-05-05
 
 ### Added

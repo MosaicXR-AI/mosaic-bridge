@@ -96,15 +96,65 @@ The cost difference is real: 50 individually-built trees with the same materials
 
 ## Visual Verification — Multi-Angle Screenshots
 
-**After creating any visual object (model, prefab, particle effect, ShaderGraph applied, lit scene), capture screenshots from at least 4 angles before declaring it done.**
+**After creating any visual object (model, prefab, particle effect, ShaderGraph applied, lit scene), capture screenshots from at least 4 angles before declaring the task done.**
 
-The workflow:
+### Tools used
 
-1. Frame the object: \`selection/focus-scene-view\` (selects + centers the scene-view camera on the target).
-2. Move any blocking geometry temporarily, or hide it via \`gameobject/set-active\`. Re-enable after capture.
-3. Loop through 4–5 viewpoints using \`sceneview/set-camera\` — typical set: front (+Z looking -Z), back, left, right, and a 3/4 elevated angle. For tall objects add a top-down.
-4. \`camera/screenshot-scene\` after each move; save to \`Assets/_screenshots/{ObjectName}/{angle}.png\`.
-5. Inspect the screenshots before reporting success. Magenta materials, missing meshes, scale errors, and z-fighting are obvious in renders and invisible in JSON.
+| Step | Tool | Purpose |
+|------|------|---------|
+| 1 | \`selection/set\` | Select the target by \`Name\` / \`Names\` / \`InstanceIds\` / \`AssetPaths\` |
+| 2 | \`selection/focus-scene-view\` | Frame + center the SceneView orbit on the selection (no params) |
+| 3 | \`sceneview/info\` | Read the resulting \`Pivot\` and \`Size\` to use as the orbit anchor |
+| 4 | \`gameobject/set-active\` | (Optional) hide blockers — re-enable in step 7 |
+| 5 | \`sceneview/set-camera\` | Move the SceneView camera. Reuse the same \`Pivot\` + \`Size\`; only change \`Rotation\` |
+| 6 | \`camera/screenshot-scene\` | Capture: \`SavePath\`, \`Width\` (default 1920), \`Height\` (default 1080), \`Format\` (\`png\`/\`jpeg\`) |
+| 7 | \`gameobject/set-active\` | Restore anything hidden in step 4 |
+
+### Standard 5-angle set
+
+Reuse the \`Pivot\` and \`Size\` from \`sceneview/info\`. Only \`Rotation\` (euler degrees) changes:
+
+| Angle | Rotation \`[x, y, z]\` |
+|-------|----------------------|
+| Front (looking -Z) | \`[20, 0, 0]\` |
+| Right | \`[20, 90, 0]\` |
+| Back | \`[20, 180, 0]\` |
+| Left | \`[20, 270, 0]\` |
+| 3/4 elevated hero | \`[35, 45, 0]\` |
+| (Tall objects) Top-down | \`[89, 0, 0]\` |
+
+The \`x\` component is the elevation. \`20°\` keeps the floor visible without clipping; raise it for tall scenes. The \`y\` component is the orbit angle around the pivot.
+
+### Example sequence
+
+\`\`\`
+selection/set            → { "Name": "MyHero" }
+selection/focus-scene-view → {}
+sceneview/info           → returns { Pivot, Size, ... }
+                           // capture Pivot and Size — reuse below
+
+// Optional: hide an obstructing wall
+gameobject/set-active    → { "Name": "BlockingWall", "Active": false }
+
+// Front
+sceneview/set-camera     → { "Pivot": [px,py,pz], "Size": s, "Rotation": [20, 0, 0] }
+camera/screenshot-scene  → { "SavePath": "Assets/_screenshots/MyHero/front.png" }
+
+// Right
+sceneview/set-camera     → { "Pivot": [px,py,pz], "Size": s, "Rotation": [20, 90, 0] }
+camera/screenshot-scene  → { "SavePath": "Assets/_screenshots/MyHero/right.png" }
+
+// Back, Left, 3/4 — same pattern with rotations [20,180,0], [20,270,0], [35,45,0]
+
+// Restore
+gameobject/set-active    → { "Name": "BlockingWall", "Active": true }
+\`\`\`
+
+### Notes
+
+- \`selection/focus-scene-view\` takes **no parameters** — it operates on whatever \`selection/set\` selected. Always select first.
+- For an in-scene \`Camera\` component (not the SceneView), use \`camera/screenshot-camera\`. \`camera/screenshot-game\` captures the GameView — only useful when a Camera is actively rendering it.
+- Inspect the screenshots before reporting success. Magenta materials, missing meshes, scale errors, and z-fighting are obvious in renders and invisible in JSON.
 
 Type-checking and tool-success ≠ visual correctness. If you can't see it, you haven't verified it.
 

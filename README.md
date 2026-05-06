@@ -19,6 +19,17 @@ and more.
 Free and open source under Apache 2.0. No telemetry. Your project never leaves
 your machine.
 
+## See it work
+
+[![Flappy Bird built in Unity by Claude — 48 minutes, no manual code](docs/demo-flappy-hero.gif)](https://www.youtube.com/watch?v=EIXiSQ0z1ZY)
+
+> *"Build me a Flappy Bird clone in Unity"*
+>
+> 48 minutes later: a working game. No code written by hand, no manual editor clicks —
+> Claude drove every Unity action through Mosaic Bridge tools.
+>
+> **▶ [Watch the full build on YouTube](https://www.youtube.com/watch?v=EIXiSQ0z1ZY)**
+
 ```text
   You:     "Create a 3D tic-tac-toe board with warm wood styling and
             glowing cyan X pieces"

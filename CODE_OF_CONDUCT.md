@@ -37,7 +37,7 @@ Examples of unacceptable behavior:
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainers at **conduct@mosaicxr.ai** (pending —
-until then use m.soutari@gmail.com).
+until then use hello@mosaicxr.ai).
 
 All complaints will be reviewed and investigated promptly and fairly.
 

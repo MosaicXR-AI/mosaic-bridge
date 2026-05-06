@@ -5,7 +5,7 @@
 If you discover a security vulnerability in Mosaic Bridge, please report it
 privately — **do not open a public GitHub issue**.
 
-Email: **security@mosaicxr.ai** (pending — until then, use m.soutari@gmail.com)
+Email: **security@mosaicxr.ai** (pending — until then, use hello@mosaicxr.ai)
 
 Please include:
 

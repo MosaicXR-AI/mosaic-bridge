@@ -1,96 +1,88 @@
-# Flappy Bird in Unity — Built by Claude in 48 Minutes
+Build a complete, polished Flappy Bird clone as a Unity project. Use the MosaicXR MCP bridge (`mcp-mosaic-bridge`) to scaffold the project, drive the editor, and verify the build visually via `mosaic_camera_screenshot` after each major milestone. Deliver a runnable Unity project that opens cleanly in the Unity Editor and builds to WebGL/Standalone without errors.
 
-> **Watch the build:** [youtube.com/watch?v=EIXiSQ0z1ZY](https://www.youtube.com/watch?v=EIXiSQ0z1ZY)
-> **Repo:** [MosaicXR-AI/mosaic-bridge](https://github.com/MosaicXR-AI/mosaic-bridge)
-> **Reproduce locally:** `npx @mosaicxr-ai/create-bridge`
+# Project setup (via Mosaic MCP)
+- Unity version: 2022.3 LTS or newer (use whatever the Mosaic bridge currently exposes — confirm via MCP before scaffolding).
+- Render pipeline: Universal Render Pipeline (URP) 2D — required for 2D lights, post-processing, and shader graph.
+- Project template: 2D (URP). Aspect ratio locked to 9:16 portrait (mobile-friendly), with a Pixel Perfect Camera component for crisp scaling.
+- Use Mosaic MCP to: create the project, add packages, create scenes, create prefabs, attach scripts/components, and capture screenshots after each step for verification.
 
-This page documents how Claude (Sonnet 4.6) built a working Flappy Bird clone in Unity through Mosaic Bridge — start to finish, no manual code, no manual editor clicks. Every action is a Mosaic Bridge tool call.
+# Required Unity packages (all free, official)
+Install via Package Manager through the Mosaic bridge:
+- **Input System** (com.unity.inputsystem) — REQUIRED. Disable the legacy Input Manager in Project Settings → Player → Active Input Handling = "Input System Package (New)".
+- **Cinemachine** — for smooth camera follow / screen shake via Impulse Source.
+- **TextMeshPro** — all UI text.
+- **Universal RP** + **2D Renderer** — lighting and post-FX.
+- **Post Processing** (via URP Volume) — bloom, vignette, chromatic aberration, color grading.
+- **Shader Graph** — for the parallax sky gradient and pipe highlight shader.
+- **2D Animation** + **2D Sprite** — bird wing-flap rig.
+- **2D Sprite Shape** — for organic ground/cloud silhouettes.
+- **DOTween (HOTween v2)** — free from Asset Store; use for score pulse, fade transitions, game-over UI animations.
+- **Burst** + **Mathematics** — for cheap particle math if needed.
 
-## What this demo proves
-
-- **AI can drive Unity end-to-end.** Not a code-completion assist — Claude composed the prompt, sequenced the calls, and adapted when something didn't work.
-- **48 minutes is the actual elapsed time**, not edited footage. The on-screen clock in the video is real-time.
-- **Reproducible.** Run the same starter prompt against your own Unity project and you'll get a working game. The exact moment-to-moment sequence will vary because Claude makes its own decisions, but the result converges.
-
-## Environment
-
-| | |
-|---|---|
-| **Unity version** | 6000.0 (Unity 6) |
-| **Render pipeline** | URP |
-| **Color property** | `_BaseColor` |
-| **Input system** | New Input System (`com.unity.inputsystem`) |
-| **Active scene** | Empty SampleScene |
-| **Mosaic Bridge** | `1.0.0-beta.5` |
-| **MCP server** | `@mosaicxr-ai/mcp-server@1.0.0-beta.6` |
-| **Client** | Claude Code |
-
-These were resolved automatically by `project/preflight` at the start of the session — Claude never assumes pipeline or input system, it always reads them first.
-
-## The opening prompt
-
-The whole build started from a single user message:
-
-> *"Build me a Flappy Bird clone in Unity. Working game, with score, game over, and restart."*
-
-Everything below is what Claude did with that prompt. No follow-up clarifications were given until the player reported runtime errors — Claude resolved those itself in the same session.
-
-## Build phases
-
-| # | Phase | Approx. video time | Primary tools |
-|---|-------|-------------------|---------------|
-| 1 | Preflight & scope | 00:00–00:30 | `project/preflight` |
-| 2 | The bird (player) | 00:30–04:00 | `gameobject/create`, `material/create`, `physics/add-rigidbody`, `physics/add-collider`, `script/create` |
-| 3 | Jump input (new Input System) | 04:00–08:00 | `script/create`, `script/edit` |
-| 4 | Pipe prefab | 08:00–14:00 | `gameobject/create`, `physics/add-collider`, `material/create`, `prefab/create` |
-| 5 | Pipe spawner | 14:00–22:00 | `script/create`, `gameobject/create`, `component/add` |
-| 6 | Scrolling ground & background | 22:00–28:00 | `gameobject/create`, `material/create`, `script/create` |
-| 7 | Score & UI | 28:00–35:00 | `ui/create-canvas`, `ui/create-text`, `script/create`, `physics/add-trigger` |
-| 8 | Game over + restart | 35:00–42:00 | `script/edit`, `scene/load`, `ui/create-button` |
-| 9 | Polish (camera, colors, scaling) | 42:00–48:00 | `material/set-property`, `gameobject/set-transform`, `camera/set-projection` |
-
-## Notable moments
-
-### Phase 2 — Why the bird is a sphere
-Claude chose a primitive sphere with a colored URP material rather than searching for a bird model in the Asset Store. Reason logged in the session: "Faster iteration; matches the original Flappy Bird's abstract aesthetic." Materials use `_BaseColor` (URP) — not `_Color` — because `project/preflight` returned `RenderPipeline: URP` first.
-
-### Phase 3 — New Input System
-Per the workflow rules baked into `CLAUDE.md`, Claude generated input handling using `PlayerInput` + an `InputAction` asset, not `Input.GetKeyDown`. The script attaches an `OnJump(InputValue)` callback, not a polled `Update()` check.
-
-### Phase 4 — Prefab-first pipe creation
-The pipe was built **once** at the origin, saved via `prefab/create`, and every spawned pipe in Phase 5 is an `asset/instantiate-prefab` call. Zero geometry duplication. This is the "Prefab-First Object Creation" rule from the instruction template — followed automatically.
-
-### Phase 5 — Pipe spawner script
-The spawner C# class was generated, written to `Assets/Scripts/PipeSpawner.cs`, and attached to a new empty GameObject. The script uses `Random.Range` for vertical pipe gap position and a coroutine for spawn timing. No manual editing of the script in Unity.
-
-### Phase 7 — Score detection
-A trigger collider sits in the gap between top and bottom pipes. When the bird passes through, `OnTriggerEnter2D` increments a static score counter, which the UI Text component reads each frame.
-
-### Phase 8 — One real bug, one real fix
-The first runtime test crashed because `SceneManager.LoadScene` was called on a scene name that wasn't in the build settings. Claude added the scene to build settings via `build/add-scene-to-settings` and re-tested. This is in the video at ~38:00 — a real fix, not edited out.
-
-## Full prompt transcript
-
-A full prompt-by-prompt + tool-call log (extracted from the Claude Code session JSONL) will be appended to this page. For now, the YouTube video is the source of truth for the exact call sequence — every tool name appears as a lower-third overlay when it fires.
-
-If you want the raw conversation export, [open an issue](https://github.com/MosaicXR-AI/mosaic-bridge/issues/new/choose) — happy to share the JSONL on request while I clean it up for general publication.
-
-## Reproduce it yourself
-
-```bash
-# 1. Install
-npx @mosaicxr-ai/create-bridge
-
-# 2. Open your Unity project (any empty Unity 6 / Unity 2022 LTS project works)
-
-# 3. In Claude Code (or any MCP client):
-"Build me a Flappy Bird clone in Unity. Working game, with score, game over, and restart."
+# Project structure
+```
+Assets/
+  Art/            (sprites generated procedurally or simple placeholders)
+  Audio/          (procedurally generated AudioClips at runtime via AudioSource + AudioClip.Create)
+  Prefabs/        (Bird, Pipe, GroundTile, ParticleBurst, Cloud)
+  Scenes/         (MainMenu, Game)
+  Scripts/
+    Core/         (GameManager, GameState enum, ScoreManager, AudioManager)
+    Gameplay/     (BirdController, PipeSpawner, Pipe, ParallaxLayer, GroundScroller)
+    Input/        (PlayerInputActions.inputactions + generated C# wrapper)
+    UI/           (HUDController, MainMenuController, GameOverPanel)
+    FX/           (CameraShake, FeatherBurst, ScorePopup, DayNightCycle)
+  Settings/       (URP asset, Input Actions asset, Volume profile)
 ```
 
-The exact sequence Claude takes will differ run-to-run — that's the whole point. The result converges.
+# Input System (NEW — not legacy)
+- Create `PlayerInputActions.inputactions` with one Action Map "Gameplay":
+  - `Jump` (Button): bindings for `<Keyboard>/space`, `<Keyboard>/upArrow`, `<Mouse>/leftButton`, `<Touchscreen>/primaryTouch/tap`, `<Gamepad>/buttonSouth`.
+  - `Pause` (Button): `<Keyboard>/escape`, `<Gamepad>/start`.
+- Generate the C# wrapper class (Auto-Generate C# Class checkbox).
+- `BirdController` consumes input via the generated class (`_actions.Gameplay.Jump.performed += OnJump`) — never via `Input.GetKey`.
+- Enable/disable action maps based on game state.
 
-## See also
+# Game mechanics (deterministic, bug-free)
+- Physics in `FixedUpdate`. Gravity ~-30 (Unity units/s²), jump impulse sets velocity.y = +9. Tune until feel matches original.
+- Bird uses Rigidbody2D (Dynamic, gravity scale ~3) + CircleCollider2D (radius slightly smaller than sprite for forgiving hits).
+- Pipes: pooled (object pool, no Instantiate/Destroy during play). Spawn every ~1.4s. Gap Y randomized within safe bounds; gap size ~3 units.
+- Score: trigger collider on pipe center; OnTriggerEnter2D with "ScoreZone" tag. Each pipe scores once (boolean flag).
+- Bird tilt: lerp Z rotation based on Rigidbody2D.velocity.y, clamped between -90° and +30°.
+- Game states: `Menu`, `Ready`, `Playing`, `Dying`, `GameOver`. State machine in GameManager.
+- High score persisted via PlayerPrefs.
 
-- [README — See it work](../../README.md#see-it-work)
-- [Mosaic Bridge tools list](../../README.md#tool-categories) — every tool used here is in the catalogue
-- [Knowledge base](../../packages/com.mosaic.bridge/Editor/Knowledge/) — the data Claude consulted for material albedo, physics constants, etc.
+# High-end graphics
+- **URP 2D Lights**: global light + a soft point light following the bird (subtle glow).
+- **Post-processing Volume** (Global): Bloom (intensity ~0.6), Vignette (mild), Chromatic Aberration (kicks up briefly on collision via DOTween), Color Adjustments for day/night tint.
+- **Parallax**: 3 layers (far sky gradient via Shader Graph, mid clouds via Sprite Shape, near ground tiles). `ParallaxLayer` script multiplies camera delta by layer factor.
+- **Day/night cycle**: DayNightCycle script lerps the global light color + Volume color-grading temperature over a ~30s loop.
+- **Bird animation**: 3-frame flap via 2D Animation package, time-driven (not event-driven).
+- **Particles**: feather burst (Particle System) on death; sparkle on score.
+- **Camera shake**: Cinemachine Impulse Source fires on collision; CinemachineImpulseListener on the vcam.
+- **Score UI**: TextMeshPro with outlined font asset; DOTween scale-punch on increment.
+- **Pipe shader**: Shader Graph adds a vertical highlight gradient + soft drop shadow (not flat green).
+- **Transitions**: DOTween fade for state changes.
+
+# Audio (procedural via AudioClip.Create)
+- AudioManager generates clips at runtime: jump (rising sine blip), score (two-note ding), hit (noise burst + low thud), die (descending tone).
+- Mute toggle button in HUD; state in PlayerPrefs.
+- AudioMixer with Master/SFX groups so mute is one line.
+
+# Polish & QA
+- No errors or warnings in the Console after Play.
+- Use Mosaic's `mosaic_camera_screenshot` to capture: (1) Main Menu, (2) mid-gameplay with pipes + particles, (3) Game Over screen — attach all three to the final summary.
+- Verify Play Mode launches cleanly and a full play-die-restart loop works.
+- WebGL build completes without errors (run the build via MCP and capture the build log).
+- Tab focus / app pause: pause game on `Application.focusChanged == false` (Time.timeScale = 0), resume on focus.
+- Touch (mobile), mouse, keyboard, and gamepad all jump correctly through the same Input Action.
+- All tunable constants exposed as `[SerializeField]` on a `GameTuning` ScriptableObject so designers can rebalance without code changes.
+
+# Deliverable
+1. Full Unity project at the path Mosaic creates.
+2. `README.md` at project root: how to open, how to play, package list with versions, tuning guide.
+3. Three Mosaic screenshots embedded in the README.
+4. WebGL build output in `Builds/WebGL/`.
+5. A 5–8 bullet architecture summary + the list of `GameTuning` constants and their default values.
+
+Work iteratively: scaffold → confirm scene loads via screenshot → add bird + input → screenshot → add pipes + scoring → screenshot → add FX/audio/UI → final screenshots + WebGL build. Do not batch everything into one step — verify visually at each milestone using the Mosaic camera tool.

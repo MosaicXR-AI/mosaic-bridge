@@ -13,6 +13,10 @@
     "create-bridge": "./bin/create-bridge.js",
     "mosaic-bridge-setup": "./bin/create-bridge.js"
   },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "files": [
     "bin/**/*.js",
     "src/**/*.js",
@@ -53,5 +57,8 @@
     "commander": "^14.0.0",
     "picocolors": "^1.1.0",
     "smol-toml": "^1.6.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.0"
   }
 }

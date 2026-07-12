@@ -2,6 +2,27 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.8] — 2026-07-12
+
+### Fixed
+
+- **Incomplete published tarball** — the `files` allowlist excluded `plugin/agents`,
+  `plugin/commands`, and the `.claude-plugin/plugin.json` manifest, so the Zara/Ray/Max
+  specialist agents and slash commands never shipped to users. The full `plugin/**` tree
+  is now published.
+- **Workflows never installed** — `plugin/workflows` shipped in the package but the
+  installer only copied `plugin/skills`. Setup now also copies workflows (preflight,
+  scene-plan, shader-guide, session-handoff) into the project's `.claude/workflows`.
+- **`--version` reported the wrong number** — the CLI hardcoded `1.0.0-beta.4`; it now
+  reads the real version from `package.json` at runtime.
+
+### Added
+
+- **Test harness** — `vitest` suite for the installer (tarball contents, version, and an
+  end-to-end skills+workflows install run).
+
+---
+
 ## [1.0.0-beta.7] — 2026-05-05
 
 ### Changed

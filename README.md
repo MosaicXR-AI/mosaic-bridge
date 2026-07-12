@@ -397,6 +397,10 @@ project's `manifest.json`:
 - Cross-LLM specialist agents via bmad-method SKILL.md format (beta.3):
   Zara, Ray, Max installed to `.claude/skills/` + `.agents/skills/`
 - Unity project asset resources in MCP (`@Unity Prefabs`, `@Unity Materials`, etc.) (beta.3)
+- Workflow rules exposed as MCP prompts — `preflight`, `scene-interview`,
+  `session-handoff`, `shader-guide` — so every client receives them (beta.7)
+- `mosaic-mcp doctor` — one-command connection diagnostics (discovery file,
+  live editor, port, HMAC handshake, clock skew) (beta.7)
 - Apache 2.0 license with patent grant
 
 ### v1.0 stable

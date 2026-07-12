@@ -1,9 +1,13 @@
 import { Command } from 'commander';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { runInteractive } from './flow.js';
 
-const VERSION = '1.0.0-beta.4';
+const pkgPath = path.resolve(fileURLToPath(import.meta.url), '../../package.json');
+export const VERSION = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
 
 export async function run(argv) {
   const program = new Command()

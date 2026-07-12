@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { readDiscovery, type DiscoveryOptions } from './discovery.js';
 import { BridgeClient } from './bridge-client.js';
 import { createMosaicServer } from './server.js';
+import { getVersion } from './version.js';
 
 /**
  * Parses CLI arguments. Supports:
@@ -84,8 +85,7 @@ async function main() {
     process.exit(0);
   }
   if (opts.version) {
-    // Emit a simple version line. The real version is in package.json.
-    process.stdout.write('mosaic-mcp (see package.json for version)\n');
+    process.stdout.write(`mosaic-mcp ${getVersion()}\n`);
     process.exit(0);
   }
 
@@ -118,6 +118,7 @@ async function main() {
     client,
     discovery,
     initialTools: tools,
+    version: getVersion(),
   });
 
   // 5. Start serving over stdio.

@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { BridgeTool, BridgeToolResult, HealthResponse, KbEntry, KbReadResult, DiscoveryData } from './types.js';
 import { DomainReloadError } from './bridge-client.js';
+import { getVersion } from './version.js';
 
 // Story 3.4: Map bridge error codes to JSON-RPC error codes
 const ERROR_CODE_MAP: Record<string, number> = {
@@ -42,6 +43,8 @@ export interface CreateServerOptions {
   client: IBridgeClient;
   discovery: Pick<DiscoveryData, 'port' | 'unity_version' | 'unity_project_path'>;
   initialTools: BridgeTool[];
+  /** Server version advertised in the MCP handshake. Defaults to the package version. */
+  version?: string;
 }
 
 /**
@@ -53,7 +56,7 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
   let tools: BridgeTool[] = opts.initialTools;
 
   const server = new Server(
-    { name: 'mosaic-bridge', version: '1.0.0' },
+    { name: 'mosaic-bridge', version: opts.version ?? getVersion() },
     {
       capabilities: {
         tools: {},

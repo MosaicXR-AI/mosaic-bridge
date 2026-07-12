@@ -12,7 +12,7 @@
 
 Mosaic Bridge connects MCP-compliant AI clients — Claude Code, Claude Desktop,
 Cursor, Gemini CLI, and any other Model Context Protocol client — to a running
-Unity Editor. It exposes ~250 tools covering GameObject and scene operations,
+Unity Editor. It exposes 290 tools covering GameObject and scene operations,
 procedural generation, physics simulation, pathfinding, rendering, animation,
 and more.
 
@@ -139,6 +139,17 @@ convention — written to both `.claude/skills/` (Claude Code slash commands) an
 | Ray — Shader Expert | `/mosaic-shader` | `@mosaic-shader` | `$mosaic-shader` | ShaderGraph creation, node wiring, debugging |
 | Max — Scene Builder | `/mosaic-scene` | `@mosaic-scene` | `$mosaic-scene` | Full scene construction, particles, physics |
 
+The installer also copies four **workflows** into `.claude/workflows/`
+(`preflight`, `scene-plan`, `shader-guide`, `session-handoff`).
+
+### Workflow prompts (any MCP client)
+
+Beyond the instruction files, the MCP server exposes the same protocol rules as
+**MCP prompts**, so every client — not just ones with a `CLAUDE.md` — can pull
+them on demand: `preflight`, `scene-interview`, `session-handoff`, and
+`shader-guide`. In Claude Code they show up in the prompt picker; other clients
+list them via `prompts/list`.
+
 To skip writing instruction files:
 
 ```bash
@@ -180,7 +191,7 @@ Then point your MCP client at:
 
 ## What's inside
 
-~250 tools across 60+ categories. A sample:
+290 tools across 64 categories. A sample:
 
 | Category | Tools | Notable |
 |---|---|---|
@@ -290,6 +301,7 @@ registry:
 
 ```
 mosaic-mcp [options]
+mosaic-mcp doctor [options]  Diagnose the bridge connection and exit
 
   --project-path <path>     Unity project root (recommended)
   --project-hash <hash>     16-hex-char project hash
@@ -298,6 +310,43 @@ mosaic-mcp [options]
   -h, --help                Show help
   -v, --version             Show version
 ```
+
+---
+
+## Troubleshooting
+
+**Tools don't appear, or the client says the connection closed?** Run the
+built-in doctor — it checks every link in the chain and tells you exactly which
+one is broken:
+
+```bash
+npx @mosaicxr-ai/mcp-server doctor --project-path /path/to/UnityProject
+```
+
+A healthy bridge reports all green:
+
+```
+  ✓ Discovery file: Found and signed (…/bridge-discovery.json), Unity 6000.3.10f1, port 8282.
+  ✓ Live editor: 1 running Unity Editor (pid 56258, port 8282).
+  ✓ Port reachable: 127.0.0.1:8282 accepted a connection.
+  ✓ Health + HMAC: Bridge healthy — 265 tools, state Running.
+  ✓ Clock skew: System clock within tolerance of the bridge host.
+
+  Result: OK — the bridge is reachable.
+```
+
+Common failures and fixes:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `✗ Discovery file: No live Unity Editor detected` | Unity isn't open, or the project's bridge hasn't started | Open the project in the Editor, wait for compile, and check the Console for `Mosaic Bridge bootstrap complete` |
+| `✗ Discovery file: Not found at …/<hash>/` | Wrong `--project-path` (relative paths resolve against your shell's current dir) | Pass an **absolute** project path, or omit `--project-path` to auto-detect the single running Editor |
+| `✗ Health + HMAC: … 401` | The bridge rotated its secret on a domain reload | Restart your MCP client so it re-reads the discovery file |
+| `⚠ Live editor: N running editors` | Multiple Editors are open | Pass `--project-path` so the server targets the right one |
+| `⚠ Clock skew` | System clock differs from the bridge host | Sync the clock — large skew trips the HMAC timestamp window |
+
+With no `--project-path` and exactly one Editor open, `doctor` (and the server
+itself) auto-detects it — the simplest way to avoid path mistakes.
 
 ---
 
@@ -367,7 +416,7 @@ Monorepo layout:
 ```
 packages/
 ├── com.mosaic.bridge/       Unity UPM package (Editor + Runtime + Tests)
-│   ├── Editor/              ~250 tools + core infrastructure
+│   ├── Editor/              290 tools + core infrastructure
 │   ├── Runtime/             Runtime-compatible tool subset
 │   ├── Tests/               NUnit + Unity Test Runner
 │   └── Samples~/            Custom-tool authoring sample
@@ -388,7 +437,7 @@ project's `manifest.json`:
 ## Roadmap
 
 ### v1.0 beta (current)
-- Core bridge, MCP server, ~250 tools across 60+ categories
+- Core bridge, MCP server, 290 tools across 64 categories
 - Per-project runtime isolation
 - Auto `.mcp.json` for Claude Code + auto-config for Claude Desktop, Cursor,
   Gemini CLI, and OpenAI Codex CLI via `npx @mosaicxr-ai/create-bridge`

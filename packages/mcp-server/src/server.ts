@@ -4,12 +4,15 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { BridgeTool, BridgeToolResult, HealthResponse, KbEntry, KbReadResult, DiscoveryData } from './types.js';
 import { DomainReloadError } from './bridge-client.js';
 import { getVersion } from './version.js';
+import { MOSAIC_PROMPTS } from './prompts.js';
 
 // Story 3.4: Map bridge error codes to JSON-RPC error codes
 const ERROR_CODE_MAP: Record<string, number> = {
@@ -61,6 +64,7 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
       capabilities: {
         tools: {},
         resources: {},
+        prompts: {},
       },
     }
   );
@@ -341,6 +345,29 @@ export function createMosaicServer(opts: CreateServerOptions): Server {
     }
 
     throw new McpError(ErrorCode.InvalidRequest, `Unknown resource: ${uri}`);
+  });
+
+  // Handle prompts/list — the Mosaic Bridge workflow rules as MCP prompts.
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: MOSAIC_PROMPTS.map(p => ({
+      name: p.name,
+      description: p.description,
+      arguments: p.arguments ?? [],
+    })),
+  }));
+
+  // Handle prompts/get — render a single prompt as a user message.
+  server.setRequestHandler(GetPromptRequestSchema, async (req) => {
+    const def = MOSAIC_PROMPTS.find(p => p.name === req.params.name);
+    if (!def) {
+      throw new McpError(ErrorCode.InvalidRequest, `Unknown prompt: ${req.params.name}`);
+    }
+    return {
+      messages: [{
+        role: 'user' as const,
+        content: { type: 'text' as const, text: def.build(req.params.arguments ?? {}) },
+      }],
+    };
   });
 
   return server;

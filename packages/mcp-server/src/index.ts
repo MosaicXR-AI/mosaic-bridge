@@ -4,6 +4,7 @@ import { readDiscovery, type DiscoveryOptions } from './discovery.js';
 import { BridgeClient } from './bridge-client.js';
 import { createMosaicServer } from './server.js';
 import { getVersion } from './version.js';
+import { runDoctor, formatDoctorReport } from './doctor.js';
 
 /**
  * Parses CLI arguments. Supports:
@@ -13,11 +14,15 @@ import { getVersion } from './version.js';
  *   --help                  Show usage and exit
  *   --version               Show version and exit
  */
-function parseArgs(argv: string[]): DiscoveryOptions & { help?: boolean; version?: boolean } {
-  const opts: DiscoveryOptions & { help?: boolean; version?: boolean } = {};
+function parseArgs(argv: string[]): DiscoveryOptions & { help?: boolean; version?: boolean; doctor?: boolean } {
+  const opts: DiscoveryOptions & { help?: boolean; version?: boolean; doctor?: boolean } = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
+      case 'doctor':             // Subcommand: run connection diagnostics and exit
+      case '--doctor':
+        opts.doctor = true;
+        break;
       case '--project-path':
         opts.projectPath = argv[++i];
         break;
@@ -50,6 +55,7 @@ function printUsage(): void {
     '',
     'Usage:',
     '  mosaic-mcp [options]',
+    '  mosaic-mcp doctor [options]   Diagnose the connection to the Unity bridge and exit.',
     '',
     'Options:',
     '  --project-path <path>   Path to Unity project root or its Assets directory.',
@@ -87,6 +93,16 @@ async function main() {
   if (opts.version) {
     process.stdout.write(`mosaic-mcp ${getVersion()}\n`);
     process.exit(0);
+  }
+  if (opts.doctor) {
+    const report = await runDoctor({
+      projectPath: opts.projectPath,
+      projectHash: opts.projectHash,
+      runtimeDir: opts.runtimeDir,
+      discoveryFile: opts.discoveryFile,
+    });
+    process.stdout.write(formatDoctorReport(report));
+    process.exit(report.ok ? 0 : 1);
   }
 
   // 1. Read discovery file (with project-aware routing).

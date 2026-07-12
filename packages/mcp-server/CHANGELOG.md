@@ -2,6 +2,28 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.7] — 2026-07-12
+
+### Added
+
+- **`doctor` command** — `mosaic-mcp doctor [--project-path <path>]` runs connection
+  diagnostics and prints a copy-pasteable report: discovery file (found/parsed/signed),
+  live Unity Editor detection, TCP port reachability, a signed health + HMAC handshake,
+  and clock-skew detection. Exits non-zero when any check fails. Replaces the opaque
+  "Connection closed" failure that gave users nothing to act on.
+- **MCP prompts capability** — the Mosaic Bridge workflow rules are now exposed over the
+  protocol via `prompts/list` and `prompts/get`: `preflight`, `scene-interview`,
+  `session-handoff`, and `shader-guide`. Every MCP client receives them, not just clients
+  whose installer wrote a `CLAUDE.md`/`GEMINI.md`/`AGENTS.md`.
+
+### Fixed
+
+- **Version reporting** — `--version` now prints the real package version (was a
+  placeholder string), and the MCP handshake advertises the real version instead of a
+  hardcoded `1.0.0`. Both read from `package.json` at runtime.
+
+---
+
 ## [1.0.0-beta.6] — 2026-04-29
 
 ### Added

@@ -201,6 +201,24 @@ At the end of every session (or when context is running low), write a handoff:
 - Include: pipeline, color property, assets created, errors encountered, remaining work
 - Recovery prompt: "Load session notes from docs/Sessions/{username}/SESSION_NOTES.md and continue where we left off."
 
+## Connection Troubleshooting
+
+If tool calls fail or the bridge seems unreachable, run the doctor from a terminal:
+
+\`\`\`bash
+npx @mosaicxr-ai/mcp-server doctor --project-path <this Unity project>
+\`\`\`
+
+It checks the discovery file, live editor, port, HMAC handshake, and clock skew, and prints
+exactly which link is broken. The usual cause: the Unity Editor isn't open, or it's still compiling.
+With one Editor open you can omit \`--project-path\` — it auto-detects.
+
+## Workflow Prompts (MCP)
+
+This bridge also exposes its protocols as MCP prompts — \`preflight\`, \`scene-interview\`,
+\`session-handoff\`, and \`shader-guide\`. Invoke them from your client's prompt menu (in Claude Code,
+the prompt picker) when you want the full protocol text on demand.
+
 ## When in Doubt
 
 Ask a clarifying question rather than guessing. A 2-minute interview prevents a 20-minute rebuild.

@@ -9,6 +9,7 @@ import { CLAUDE_MD_CONTENT } from './templates.js';
 import { copyDirSync } from './utils.js';
 
 const SKILLS_SRC = path.resolve(fileURLToPath(import.meta.url), '../../plugin/skills');
+const WORKFLOWS_SRC = path.resolve(fileURLToPath(import.meta.url), '../../plugin/workflows');
 
 const BRIDGE_PACKAGE_NAME = 'com.mosaic.bridge';
 const BRIDGE_GIT_URL =
@@ -107,7 +108,12 @@ export async function runInteractive(opts) {
     const agentsSkillsDst = path.join(projectInfo.projectPath, '.agents', 'skills');
     copyDirSync(SKILLS_SRC, claudeSkillsDst);
     copyDirSync(SKILLS_SRC, agentsSkillsDst);
-    p.log.success(pc.green('✓ Mosaic Bridge skills installed (.claude/skills + .agents/skills)'));
+    // Workflows (preflight, scene-plan, shader-guide, session-handoff) ship in the
+    // package but were never installed — copy them alongside the skills so
+    // Claude Code can run them from the project.
+    const workflowsDst = path.join(projectInfo.projectPath, '.claude', 'workflows');
+    copyDirSync(WORKFLOWS_SRC, workflowsDst);
+    p.log.success(pc.green('✓ Mosaic Bridge skills + workflows installed (.claude + .agents/skills)'));
     results.push({ kind: 'skills', ok: true });
   } catch (err) {
     p.log.warn(pc.yellow(`⚠ Skills install skipped: ${err.message}`));

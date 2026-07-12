@@ -1,6 +1,6 @@
 {
   "name": "@mosaicxr-ai/create-bridge",
-  "version": "1.0.0-beta.7",
+  "version": "1.0.0-beta.8",
   "description": "Interactive installer for Mosaic Bridge — sets up the Unity package and configures MCP for Claude Code, Claude Desktop, Cursor, and Gemini CLI.",
   "license": "Apache-2.0",
   "author": {
@@ -13,12 +13,15 @@
     "create-bridge": "./bin/create-bridge.js",
     "mosaic-bridge-setup": "./bin/create-bridge.js"
   },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "files": [
     "bin/**/*.js",
     "src/**/*.js",
-    "plugin/skills/**",
-    "plugin/workflows/**",
-    "plugin/config.yaml",
+    "plugin/**",
+    "plugin/.claude-plugin/**",
     "README.md",
     "LICENSE"
   ],
@@ -53,5 +56,8 @@
     "commander": "^14.0.0",
     "picocolors": "^1.1.0",
     "smol-toml": "^1.6.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.0"
   }
 }

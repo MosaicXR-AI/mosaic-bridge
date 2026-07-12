@@ -49,7 +49,7 @@ namespace Mosaic.Bridge.UI
                 if (string.IsNullOrEmpty(customPath))
                 {
                     EditorGUILayout.HelpBox(
-                        "No custom path set. MCP server will spawn via npx when @mosaic/mcp-server is installed.",
+                        "No custom path set. MCP server will spawn via npx when @mosaicxr-ai/mcp-server is installed.",
                         MessageType.Info);
                 }
 

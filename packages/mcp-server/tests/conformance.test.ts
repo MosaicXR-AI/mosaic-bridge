@@ -15,6 +15,7 @@ import {
   type TestHarness,
 } from './helpers.js';
 import type { BridgeToolResult } from '../src/types.js';
+import { getVersion } from '../src/version.js';
 
 // ==========================================================================
 // 1. Protocol Handshake
@@ -31,7 +32,9 @@ describe('Protocol Handshake', () => {
     const info = h.client.getServerVersion();
     expect(info).toBeDefined();
     expect(info?.name).toBe('mosaic-bridge');
-    expect(info?.version).toBe('1.0.0');
+    // The harness passes no explicit version, so the server defaults to the
+    // real package version — assert it reports that, not the old hardcoded string.
+    expect(info?.version).toBe(getVersion());
   });
 
   it('server declares tools capability', () => {

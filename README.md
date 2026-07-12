@@ -353,8 +353,13 @@ npm install
 npm run build
 npm test
 
+# Installer CLI
+cd ../create-bridge
+npm install
+npm test
+
 # Unity package — install via file: reference in a test project's manifest.json
-# See TESTING.md (coming soon) for setup details.
+# See TESTING.md for the full test workflow (all three suites).
 ```
 
 Monorepo layout:

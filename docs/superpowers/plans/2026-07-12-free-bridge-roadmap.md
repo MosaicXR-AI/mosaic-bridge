@@ -640,6 +640,35 @@ product defects worth their own fixes:
   `rendering/tonemapping`) tool that builds a global Volume + VolumeProfile with ACES tonemapping and
   enables `renderPostProcessing` on the target camera. *(P2-class; also unblocks polished demo imagery.)*
 
+## Next session (turnkey): `graphics/post-process-create` tool
+
+Motivated by the tonemapping finding above; also finishes the procgen demo image.
+
+**Enabler (do first):** temporarily point the demo Unity project at the local package so new tools load
+and can be verified live. In `/Users/mousasoutari/Projects/Unity/TestMosaic-2/Packages/manifest.json`,
+change `com.mosaic.bridge` from the git URL to
+`"file:/Users/mousasoutari/Projects/mosaic-bridge/packages/com.mosaic.bridge"`, let Unity re-resolve,
+then run `doctor`. Revert to the git URL when done.
+
+**Files (follow the 3-file pattern of `GraphicsSetPostProcessing*`):**
+- Create `Editor/Tools/Graphics/GraphicsPostProcessCreateParams.cs` — `[Required]`-free params:
+  `tonemappingMode` (None|Neutral|ACES, default ACES), `bloomIntensity` (default 0.5),
+  `bloomThreshold` (0.9), `postExposure` (0), `contrast` (0), `saturation` (0),
+  `volumeName` (default "Global Volume"), `cameraName` (optional — enable post on this camera),
+  `profileSavePath` (default "Assets/PostFX.asset").
+- Create `Editor/Tools/Graphics/GraphicsPostProcessCreateResult.cs` — `ProfilePath`, `VolumeInstanceId`,
+  `CameraPostEnabled` (bool).
+- Create `Editor/Tools/Graphics/GraphicsPostProcessCreateTool.cs` — `[MosaicTool("graphics/post-process-create", …)]`
+  static class. Build a `VolumeProfile`, `profile.Add<Tonemapping>()` / `Bloom` / `ColorAdjustments`
+  with overrideState=true, `AssetDatabase.CreateAsset`, create/find the global `Volume` GameObject,
+  assign `sharedProfile`, and if `cameraName` set, `cam.GetUniversalAdditionalCameraData().renderPostProcessing = true`.
+  Guard URP-only (return a clear error if the pipeline isn't URP/HDRP — read from `project/preflight` logic).
+- Test `Tests/Unit/Tools/Graphics/GraphicsToolTests.cs` — add happy-path + non-URP error-path cases.
+- Fixture `Tests/Regression/Fixtures/graphics_post_process_create_smoke.json`.
+
+**Verify:** Unity console clean → EditMode tests green → run it via the bridge on the saved demo scene,
+re-screenshot → confirm the sky no longer clips. Then finish the README gallery.
+
 ## Self-Review
 
 **Spec coverage:** all 17 roadmap items mapped — Wave 0: version fix (Task 2), plugin/tarball (Task 3), MCP prompts (Task 4), doctor (Task 5); Wave 1: KB tools (1.1), execute-plan (1.2), optimize (1.3), play-mode (1.4), docs (1.5), audio (1.6); Wave 2: terrain (2.1), KB expansion (2.2), API migration (2.3), procgen goldens (2.4), network (2.5), ml (2.6), HTTP/TLS (2.7). Task 1 (test harness) is enabling scaffolding folded into Wave 0. ✅

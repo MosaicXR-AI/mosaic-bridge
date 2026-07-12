@@ -20,9 +20,8 @@
   "files": [
     "bin/**/*.js",
     "src/**/*.js",
-    "plugin/skills/**",
-    "plugin/workflows/**",
-    "plugin/config.yaml",
+    "plugin/**",
+    "plugin/.claude-plugin/**",
     "README.md",
     "LICENSE"
   ],

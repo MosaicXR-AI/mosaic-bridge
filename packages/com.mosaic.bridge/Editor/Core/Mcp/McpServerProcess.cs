@@ -91,12 +91,12 @@ namespace Mosaic.Bridge.Core.Mcp
                 }
                 else if (System.IO.File.Exists(System.IO.Path.Combine(
                     System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath) ?? "",
-                    "node_modules", "@mosaic", "mcp-server", "dist", "index.js")))
+                    "node_modules", "@mosaicxr-ai", "mcp-server", "dist", "index.js")))
                 {
                     // Local npm install found
                     var localPath = System.IO.Path.Combine(
                         System.IO.Path.GetDirectoryName(UnityEngine.Application.dataPath),
-                        "node_modules", "@mosaic", "mcp-server", "dist", "index.js");
+                        "node_modules", "@mosaicxr-ai", "mcp-server", "dist", "index.js");
                     psi.FileName = "node";
                     psi.Arguments = $"\"{localPath}\" --discovery \"{discoveryFilePath}\"";
                     _logger.Info("MCP server using local install", ("path", (object)localPath));
@@ -104,7 +104,7 @@ namespace Mosaic.Bridge.Core.Mcp
                 else if (_launcher is SystemProcessLauncher)
                 {
                     // Production path: npm package not available — skip spawn silently
-                    _logger.Debug("MCP server not spawned: @mosaic/mcp-server not installed. " +
+                    _logger.Debug("MCP server not spawned: @mosaicxr-ai/mcp-server not installed. " +
                         "Set Mosaic.Bridge.McpServerPath in EditorPrefs or install the npm package.");
                     return 0;
                 }
@@ -112,7 +112,7 @@ namespace Mosaic.Bridge.Core.Mcp
                 {
                     // Test/custom launcher path: use npx as fallback
                     psi.FileName = "npx";
-                    psi.Arguments = $"@mosaic/mcp-server --discovery \"{discoveryFilePath}\"";
+                    psi.Arguments = $"@mosaicxr-ai/mcp-server --discovery \"{discoveryFilePath}\"";
                 }
 
                 psi.UseShellExecute = false;

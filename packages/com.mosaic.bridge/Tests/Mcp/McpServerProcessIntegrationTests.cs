@@ -10,9 +10,9 @@ namespace Mosaic.Bridge.Tests.Mcp
         public void SpawnAndShutdown_NodeProcess()
         {
             // Integration test placeholder:
-            // Requires Node.js installed and @mosaic/mcp-server package available.
+            // Requires Node.js installed and @mosaicxr-ai/mcp-server package available.
             // Will be implemented when the MCP server package is published.
-            Assert.Ignore("Integration test -- requires Node.js and @mosaic/mcp-server");
+            Assert.Ignore("Integration test -- requires Node.js and @mosaicxr-ai/mcp-server");
         }
     }
 }

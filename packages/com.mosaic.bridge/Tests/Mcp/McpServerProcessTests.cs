@@ -42,7 +42,8 @@ namespace Mosaic.Bridge.Tests.Mcp
 
             var psi = _launcher.StartCalls[0];
             Assert.AreEqual("npx", psi.FileName);
-            Assert.That(psi.Arguments, Does.Contain("@mosaic/mcp-server"));
+            Assert.That(psi.Arguments, Does.Contain("@mosaicxr-ai/mcp-server"));
+            Assert.That(psi.Arguments, Does.Not.Contain("@mosaic/mcp-server"));
             Assert.That(psi.Arguments, Does.Contain("--discovery"));
             Assert.That(psi.Arguments, Does.Contain("/tmp/discovery.json"));
             Assert.IsFalse(psi.UseShellExecute);

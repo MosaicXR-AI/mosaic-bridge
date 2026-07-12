@@ -622,6 +622,24 @@ Spec-level; each gets a sub-plan at kickoff. Ordered by leverage.
 
 ---
 
+## Findings from live-bridge testing (2026-07-12)
+
+Discovered while building the procgen demo scene against a live Unity 6000.3 bridge. Both are real
+product defects worth their own fixes:
+
+- **`editor/run-block` fixed ~22s job timeout is too short.** On any project where compile +
+  domain-reload exceeds ~22s, the submitted block compiles (reaches `pending`) but its post-reload
+  execution never completes inside the server-side job budget, so it always returns `timed out`. There
+  is no way to extend it. This makes scripted editor automation (e.g. creating a post-processing
+  volume, bulk asset ops) unusable on non-trivial projects. **Fix:** make the timeout configurable /
+  much larger, or poll indefinitely with a heartbeat rather than a hard job deadline. *(P1-class.)*
+- **Atmospheric skybox shaders clip without tonemapping.** `rendering/atmosphere-create` emits HDR sky
+  values that clip to mustard (Preetham) or white (Bruneton) unless a URP tonemapping volume is present
+  — and there is no tool to create a post-processing/tonemapping volume, so an AI agent cannot produce a
+  good-looking atmospheric sky unaided. **Fix:** add a `graphics/post-process-create` (or
+  `rendering/tonemapping`) tool that builds a global Volume + VolumeProfile with ACES tonemapping and
+  enables `renderPostProcessing` on the target camera. *(P2-class; also unblocks polished demo imagery.)*
+
 ## Self-Review
 
 **Spec coverage:** all 17 roadmap items mapped — Wave 0: version fix (Task 2), plugin/tarball (Task 3), MCP prompts (Task 4), doctor (Task 5); Wave 1: KB tools (1.1), execute-plan (1.2), optimize (1.3), play-mode (1.4), docs (1.5), audio (1.6); Wave 2: terrain (2.1), KB expansion (2.2), API migration (2.3), procgen goldens (2.4), network (2.5), ml (2.6), HTTP/TLS (2.7). Task 1 (test harness) is enabling scaffolding folded into Wave 0. ✅

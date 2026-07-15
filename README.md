@@ -12,7 +12,7 @@
 
 Mosaic Bridge connects MCP-compliant AI clients — Claude Code, Claude Desktop,
 Cursor, Gemini CLI, and any other Model Context Protocol client — to a running
-Unity Editor. It exposes 290 tools covering GameObject and scene operations,
+Unity Editor. It exposes ~290 tools covering GameObject and scene operations,
 procedural generation, physics simulation, pathfinding, rendering, animation,
 and more.
 
@@ -191,7 +191,7 @@ Then point your MCP client at:
 
 ## What's inside
 
-290 tools across 64 categories. A sample:
+~290 tools across 64 categories. A sample:
 
 | Category | Tools | Notable |
 |---|---|---|
@@ -416,7 +416,7 @@ Monorepo layout:
 ```
 packages/
 ├── com.mosaic.bridge/       Unity UPM package (Editor + Runtime + Tests)
-│   ├── Editor/              290 tools + core infrastructure
+│   ├── Editor/              ~290 tools + core infrastructure
 │   ├── Runtime/             Runtime-compatible tool subset
 │   ├── Tests/               NUnit + Unity Test Runner
 │   └── Samples~/            Custom-tool authoring sample
@@ -437,7 +437,7 @@ project's `manifest.json`:
 ## Roadmap
 
 ### v1.0 beta (current)
-- Core bridge, MCP server, 290 tools across 64 categories
+- Core bridge, MCP server, ~290 tools across 64 categories
 - Per-project runtime isolation
 - Auto `.mcp.json` for Claude Code + auto-config for Claude Desktop, Cursor,
   Gemini CLI, and OpenAI Codex CLI via `npx @mosaicxr-ai/create-bridge`

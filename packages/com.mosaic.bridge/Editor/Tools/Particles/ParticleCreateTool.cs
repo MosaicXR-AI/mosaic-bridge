@@ -4,6 +4,8 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Tools.Shared;
 
 namespace Mosaic.Bridge.Tools.Particles
 {
@@ -41,7 +43,7 @@ namespace Mosaic.Bridge.Tools.Particles
 
                 return ToolResult<ParticleCreateResult>.Ok(new ParticleCreateResult
                 {
-                    InstanceId      = go.GetInstanceID(),
+                    InstanceId      = UnityIds.Of(go),
                     Name            = go.name,
                     HierarchyPath   = ParticleToolHelpers.GetHierarchyPath(go.transform),
                     Preset          = p.Preset,
@@ -74,7 +76,7 @@ namespace Mosaic.Bridge.Tools.Particles
                     string cachedPkg = FindCachedPackById(preferredSource);
                     if (cachedPkg != null)
                     {
-                        AssetDatabase.ImportPackage(cachedPkg, false);
+                        AssetDatabaseHelper.ImportPackage(cachedPkg, false);
                         AssetDatabase.Refresh();
                         foundPath = FindInSpecificPack(presetKey, preferredSource);
                         if (foundPath != null)
@@ -100,7 +102,7 @@ namespace Mosaic.Bridge.Tools.Particles
                     string cachedPkg = FindCachedParticlePack();
                     if (cachedPkg != null)
                     {
-                        AssetDatabase.ImportPackage(cachedPkg, false);
+                        AssetDatabaseHelper.ImportPackage(cachedPkg, false);
                         AssetDatabase.Refresh();
                         foundPath = FindParticlePrefabInProject(presetKey);
                         if (foundPath != null)
@@ -123,7 +125,7 @@ namespace Mosaic.Bridge.Tools.Particles
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Instantiate Particle Prefab");
             return ToolResult<ParticleCreateResult>.Ok(new ParticleCreateResult
             {
-                InstanceId       = go.GetInstanceID(),
+                InstanceId       = UnityIds.Of(go),
                 Name             = go.name,
                 HierarchyPath    = ParticleToolHelpers.GetHierarchyPath(go.transform),
                 Preset           = presetKey,
@@ -142,7 +144,7 @@ namespace Mosaic.Bridge.Tools.Particles
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Create ParticleSystem");
             return ToolResult<ParticleCreateResult>.Ok(new ParticleCreateResult
             {
-                InstanceId    = go.GetInstanceID(),
+                InstanceId    = UnityIds.Of(go),
                 Name          = go.name,
                 HierarchyPath = ParticleToolHelpers.GetHierarchyPath(go.transform),
                 Preset        = presetKey,

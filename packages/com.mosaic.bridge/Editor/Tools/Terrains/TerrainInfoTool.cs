@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -23,7 +24,7 @@ namespace Mosaic.Bridge.Tools.Terrains
 
             return ToolResult<TerrainInfoResult>.Ok(new TerrainInfoResult
             {
-                InstanceId          = terrain.gameObject.GetInstanceID(),
+                InstanceId          = UnityIds.Of(terrain.gameObject),
                 Name                = terrain.gameObject.name,
                 Width               = data.size.x,
                 Length              = data.size.z,

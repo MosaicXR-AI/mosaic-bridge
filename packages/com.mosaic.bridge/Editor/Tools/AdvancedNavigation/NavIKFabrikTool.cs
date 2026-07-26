@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedNavigation
 {
@@ -22,7 +23,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
             // Find root bone
             GameObject root = null;
             if (p.RootInstanceId.HasValue && p.RootInstanceId.Value != 0)
-                root = UnityEngine.Resources.EntityIdToObject(p.RootInstanceId.Value) as GameObject;
+                root = UnityIds.Resolve(p.RootInstanceId.Value) as GameObject;
             if (root == null && !string.IsNullOrEmpty(p.RootName))
                 root = GameObject.Find(p.RootName);
             if (root == null)
@@ -182,7 +183,7 @@ public class FABRIKSolver : MonoBehaviour
             {
                 SolverScriptPath = scriptPath,
                 ChainLength      = chainLength,
-                RootInstanceId   = root.GetInstanceID(),
+                RootInstanceId   = UnityIds.Of(root),
                 TargetPosition   = p.TargetPosition
             });
         }

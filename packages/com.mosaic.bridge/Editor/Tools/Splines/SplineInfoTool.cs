@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.Splines;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Splines
 {
@@ -15,7 +16,7 @@ namespace Mosaic.Bridge.Tools.Splines
                     category: "spline")]
         public static ToolResult<SplineInfoResult> Execute(SplineInfoParams p)
         {
-            var allContainers = Object.FindObjectsByType<SplineContainer>(FindObjectsSortMode.None);
+            var allContainers = UnityIds.FindAll<SplineContainer>();
             var infos = new List<SplineContainerInfo>();
 
             foreach (var container in allContainers)
@@ -42,7 +43,7 @@ namespace Mosaic.Bridge.Tools.Splines
 
                 infos.Add(new SplineContainerInfo
                 {
-                    InstanceId = container.gameObject.GetInstanceID(),
+                    InstanceId = UnityIds.Of(container.gameObject),
                     Name = container.gameObject.name,
                     HierarchyPath = SplineToolHelpers.GetHierarchyPath(container.transform),
                     KnotCount = spline.Count,

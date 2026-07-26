@@ -1,7 +1,7 @@
 # Mosaic Bridge
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Unity 2022 LTS+](https://img.shields.io/badge/Unity-2022%20LTS%2B-000?logo=unity)](https://unity.com)
+[![Unity 6000.3+](https://img.shields.io/badge/Unity-6000.3%2B-000?logo=unity)](https://unity.com)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-4A90E2.svg)](https://modelcontextprotocol.io/)
 [![Release](https://img.shields.io/github/v/release/MosaicXR-AI/mosaic-bridge?include_prereleases&label=release)](https://github.com/MosaicXR-AI/mosaic-bridge/releases)
 [![npm — installer](https://img.shields.io/npm/v/%40mosaicxr-ai%2Fcreate-bridge?label=create-bridge)](https://www.npmjs.com/package/@mosaicxr-ai/create-bridge)
@@ -55,9 +55,10 @@ your machine.
   physics constants, Unity's PhysicallyBased material data. Responses include
   citations. No hallucinated numbers.
 
-- **Multi-Unity-version.** Works on Unity 2022 LTS and Unity 6. Each Editor
-  runs in its own per-project runtime directory, so multiple Editors on
-  different projects can run concurrently without fighting for ports or files.
+- **Multi-Unity-version.** Works across Unity 6 (see [Requirements](#requirements)
+  for the tested matrix). Each Editor runs in its own per-project runtime
+  directory, so multiple Editors on different projects can run concurrently
+  without fighting for ports or files.
 
 - **Privacy-first.** Loopback-only HTTP listener bound to 127.0.0.1,
   HMAC-SHA256 authenticated, telemetry off by default. Ephemeral ports,
@@ -70,9 +71,27 @@ your machine.
 
 ## Requirements
 
-- Unity 2022 LTS or newer (Unity 6 fully supported)
+- **Unity 6000.3 or newer** (see the matrix below)
 - Node.js 18+ (for the MCP server)
 - macOS, Windows, or Linux
+
+### Unity version support
+
+| Unity | Status |
+|-------|--------|
+| 6000.3 | ✅ Verified — full Editor test suite |
+| 6000.4 | ⚠️ Compiles and runs, but emits deprecation warnings |
+| 6000.5 | ✅ Verified — full Editor test suite |
+| 6000.6.0a2 | ✅ Verified — full Editor test suite |
+| 6000.6.0b5+ | ❌ Not supported yet — see below |
+| 6000.0 – 6000.2 | ❌ Not supported (no `UnityEngine.EntityId`) |
+
+Unity 6.5 replaced the 32-bit instance ID with the 64-bit `EntityId`. The bridge
+adapts to this automatically and keeps `InstanceId` a 32-bit `int` on the MCP wire,
+so tool schemas are unchanged. Unity 6000.6.0b5 changed the `EntityId` bit layout
+again such that a 32-bit id can no longer identify an object, and Unity exposes no
+supported conversion — supporting b5+ requires widening the id across the wire.
+Tracked as a known limitation in the [CHANGELOG](packages/com.mosaic.bridge/CHANGELOG.md).
 
 ---
 
@@ -87,7 +106,7 @@ npx @mosaicxr-ai/create-bridge
 The installer:
 
 1. Asks for your Unity project path (create one in Unity Hub first if you
-   haven't — any empty Unity 2022 LTS+ or Unity 6 project works)
+   haven't — any empty Unity 6000.3+ project works)
 2. Asks which MCP client(s) to configure — Claude Code, Claude Desktop,
    Cursor, Gemini CLI, or OpenAI Codex (any combination)
 3. Adds `com.mosaic.bridge` to the project's `Packages/manifest.json`
@@ -455,6 +474,10 @@ project's `manifest.json`:
   `session-handoff`, `shader-guide` — so every client receives them (beta.7)
 - `mosaic-mcp doctor` — one-command connection diagnostics (discovery file,
   live editor, port, HMAC handshake, clock skew) (beta.7)
+- Unity 6.5 `EntityId` migration — object identity routed through a single
+  version-guarded shim, so the package builds warning-free on Unity 6000.3,
+  6000.5 and 6000.6.0a2 while keeping `InstanceId` a 32-bit `int` on the MCP
+  wire (beta.6)
 - Apache 2.0 license with patent grant
 
 ### v1.0 stable
@@ -465,7 +488,10 @@ project's `manifest.json`:
 - `kb/watch` background drift detector for Unity-docs updates
 
 ### v1.1+
-- Migrate deprecated Unity API usage to modern equivalents
+- Widen `InstanceId` to a 64-bit id on the MCP wire, unblocking Unity 6000.6.0b5+
+  (see [Requirements](#requirements)) — a breaking schema change, so it needs a
+  major or a compatibility window
+- Migrate remaining deprecated Unity API usage to modern equivalents
 - Expand knowledge base (animation, audio, level design, lighting presets)
 - Runtime (compiled build) tool support for more categories
 - Performance profiler integration

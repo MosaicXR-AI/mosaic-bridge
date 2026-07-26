@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Tools.Lighting;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Lighting
 {
@@ -127,7 +128,7 @@ namespace Mosaic.Bridge.Tests.Lighting
 
         private static GameObject FindCreated(int instanceId)
         {
-            return UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
+            return UnityIds.Resolve(instanceId) as GameObject;
         }
     }
 }

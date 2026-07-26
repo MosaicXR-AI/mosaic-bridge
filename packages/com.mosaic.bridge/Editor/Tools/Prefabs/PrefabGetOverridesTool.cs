@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Prefabs
 {
@@ -19,7 +20,7 @@ namespace Mosaic.Bridge.Tools.Prefabs
 
             if (p.InstanceId.HasValue)
             {
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
                 if (go == null)
                     return ToolResult<PrefabGetOverridesResult>.Fail(
                         $"No GameObject found with instanceId {p.InstanceId.Value}",

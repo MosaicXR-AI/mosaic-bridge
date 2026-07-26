@@ -8,6 +8,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -154,7 +155,7 @@ namespace Mosaic.Bridge.Tools.Physics
 
             if (sourceGO != null)
             {
-                instanceId = sourceGO.GetInstanceID();
+                instanceId = UnityIds.Of(sourceGO);
                 var scriptType = FindTypeByName(className);
                 if (scriptType != null)
                 {

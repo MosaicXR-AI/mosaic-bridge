@@ -7,7 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-beta.6] — 2026-07-26
+
 ### Fixed
+
+- **Unity 6.5 (6000.5) compatibility — the package no longer compiles.** Unity 6.5
+  replaced the 32-bit instance ID with the 64-bit `UnityEngine.EntityId` and made the
+  old entry points obsolete-**as-error** (CS0619), which broke `Mosaic.Bridge.Tools`
+  with 315 errors across 93 files: `Object.GetInstanceID()` (312 sites) and
+  `SerializedProperty.objectReferenceInstanceIDValue` (3 sites). Because every
+  optional integration assembly (`…Tools.Addressables`, `.Splines`, `.URP`, `.HDRP`,
+  `.ProBuilder`, `.Cinemachine`, `.TextMeshPro`, `.VisualScripting`) and
+  `Mosaic.Bridge.Tests` reference `Mosaic.Bridge.Tools`, none of them were emitted
+  either — which is what produced the secondary
+  `Mono.Cecil.AssemblyResolutionException: Failed to resolve assembly
+  'Mosaic.Bridge.Tools.Addressables'` from the Burst entry-point scanner. That error
+  was a symptom, not a separate bug; it clears once compilation succeeds.
+
+  All object-identity calls now route through the new
+  `Mosaic.Bridge.Contracts.Compat.UnityIds` shim, which version-guards the engine
+  API in one place and keeps `InstanceId` a 32-bit `int` on the MCP wire, so tool
+  schemas and clients are unchanged. Also removed the now-deprecated
+  `FindObjectsByType<T>(FindObjectsSortMode.None)` (27 sites) and
+  `Object.FindObjectOfType<T>()` (5 sites), and version-guarded the
+  `FindObjectsByType` call inside the MonoBehaviour that
+  `simulation/spherical-gravity` generates.
+
+  `UnityIds.Resolve` rebuilds the 64-bit `EntityId` from the 32-bit id rather than
+  using the `int`→`EntityId` implicit operator (a warning on 6.5, a hard **error** on
+  6.6), since Unity exposes no public replacement — `EntityId.Parse` and
+  `EntityId.From(int)` are both `internal`. Every `EntityId` in a session shares the
+  same high 32 bits, so those are read once off a throwaway `ScriptableObject` and
+  recombined with the id via the supported `EntityId.ToULong` / `FromULong`. Measured
+  on 6000.5.5f1 and 6000.6.0a2: 602 objects spanning scene GameObjects, Components
+  and assets all shared one high word and every one round-tripped.
+  `UnityIdsTests.EntityId_HighBitsAreSharedAcrossObjectKinds` pins that invariant so
+  it fails loudly on the first Unity that changes the layout — the point at which the
+  wire format genuinely has to widen (note the raw 64-bit id is ~63× above
+  JavaScript's safe-integer limit, so it could not travel as a JSON number anyway).
+
+- **Unity 6.6 `AssetDatabase.ImportPackage` deprecation.** `particle/create` routed
+  its two `.unitypackage` imports through the new
+  `AssetDatabaseHelper.ImportPackage`, which suppresses the 6.6 deprecation warning in
+  one documented place. The suggested replacement, `UnityEditor.AssetPackage.Package`,
+  does not exist in 6000.6.0a2 (it landed partway through the 6.6 cycle) and Unity
+  emits no define granular enough to branch on, so suppressing a still-working API
+  beats guessing a version boundary.
+
+  Verified by full EditMode runs on Unity 6000.3.10f1, 6000.5.5f1 and 6000.6.0a2 —
+  each with zero compile errors and zero warnings from this package, all 13 assemblies
+  emitted, and no test regressions against the pre-fix baseline. The `Integration` and
+  `Regression` categories were additionally run against a live bridge on 6000.3 and
+  6000.5, exercising the ids over real HMAC-signed HTTP: all 6 `BridgeIntegrationTests`
+  pass on both, along with the `*_smoke.json` fixtures (65 on 6000.5), including the
+  id-heavy `scene_get_hierarchy`, `search_by_name`, `search_by_component`,
+  `selection_smoke`, `taglayer_smoke` and `terrain_smoke` paths.
+
+  **Not supported: Unity 6000.6.0b5 and later.** It compiles cleanly, but 65 tests fail
+  because b5 changed the `EntityId` bit layout: the per-version constant in the high 32
+  bits is gone, and those bits now vary per object (measured across 602 objects — 601 at
+  `0x0000010000000000`, one at `0x0000070000000000`). A 32-bit id therefore no longer
+  identifies an object, and Unity exposes no supported int-to-`EntityId` conversion
+  (`EntityId.From(int)` / `Parse` are `internal`; `MarshalFromInstanceId` is a private
+  marshalling helper). Every id-based lookup returns null on b5.
+  `UnityIdsTests.EntityId_HighBitsAreSharedAcrossObjectKinds` is the test that caught
+  this and it fails on b5 by design. Supporting b5+ requires widening the id to 64 bits
+  across the MCP wire — and as a *string*, since the raw value is ~63x above
+  JavaScript's safe-integer limit.
+
+  Known limitation: Unity **6000.4** is not covered. It compiles and behaves correctly,
+  but 6.4 already deprecates `GetInstanceID` (as a warning), and the guards here switch
+  at `UNITY_6000_5_OR_NEWER`, so 6.4 builds emit CS0618 warnings. Lowering the guards to
+  `UNITY_6000_4_OR_NEWER` looks right on paper — the 6000.4 docs list `EntityId.ToULong`
+  / `FromULong` and `objectReferenceEntityIdValue` — but the parameterless
+  `FindObjectsByType<T>()` is not documented there, and that was not verified against a
+  real 6000.4 install, so the guards were left where they are rather than risk turning
+  warnings into a compile failure.
+
+- **`Mosaic.Bridge.Tools.HDRP` asmdef was missing `Unity.RenderPipelines.Core.Runtime`.**
+  `HdrpVolumeTool` uses `VolumeComponent` and `VolumeProfile`, which live in that
+  assembly; the URP asmdef already referenced it but HDRP did not, so the assembly
+  failed with CS0246 for any user who had HDRP installed — cascading to every
+  dependent assembly exactly like the 6.5 breakage above. Found only because
+  verifying this release was the first time the HDRP tool code had ever been compiled.
+
+### Known issues (all pre-existing, not introduced here)
+
+- **HDRP tools still do not compile.** With the asmdef reference fixed,
+  `HdrpLightTool` fails against HDRP 17.5 with 6 errors: `LightType.Area` is
+  obsolete-as-error (use `LightType.Rectangle`) and
+  `HDAdditionalLightData.SetAreaLightShape` no longer exists. This needs a real HDRP
+  light-API migration, and one that stays valid for HDRP 17.0 — which the asmdef's
+  `versionDefines` still admit. Left for a focused change.
+- **TextMeshPro tools are dormant and do not compile.** `MOSAIC_HAS_TMP` is gated on
+  `com.unity.textmeshpro >= 3.0.0`, but Unity 6 marks that package deprecated with
+  `removeOnProjectUpgrade` — TMP now ships inside `com.unity.ugui`. The define can
+  therefore never be satisfied on any supported editor. Forcing it on reveals a second
+  bug: `TmpCreateTool.cs:143` calls `AddComponent<TextMeshPro>()` from inside
+  `namespace Mosaic.Bridge.Tools.TextMeshPro`, so the namespace shadows
+  `TMPro.TextMeshPro` (CS0118). Re-gating on `com.unity.ugui` requires fixing that too.
+- **`SplineCreateTool` has no minimum-knot validation**, but
+  `SplinesToolTests.Create_TooFewKnots_ReturnsFail` asserts that it does, so that test
+  fails. Either the check is missing or the expectation is wrong.
+
+### Changed
+
+- **`package.json` minimum Unity raised from `6000.0` to `6000.3`** — the oldest editor
+  actually verified. The previous claim could not have held: 6000.0–6000.2 have no
+  `UnityEngine.EntityId` and no `Resources.EntityIdToObject`, both of which this package
+  already depended on unconditionally.
 
 - **MCP server auto-spawn used the wrong package name.** `McpServerProcess` and
   `McpServerPanel` referenced `@mosaic/mcp-server` (which is not the published

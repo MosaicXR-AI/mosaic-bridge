@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.GameObjects
 {
@@ -29,7 +30,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
 
             return ToolResult<GameObjectGetInfoResult>.Ok(new GameObjectGetInfoResult
             {
-                InstanceId        = go.GetInstanceID(),
+                InstanceId        = UnityIds.Of(go),
                 Name              = go.name,
                 HierarchyPath     = GameObjectToolHelpers.GetHierarchyPath(go.transform),
                 ActiveSelf        = go.activeSelf,

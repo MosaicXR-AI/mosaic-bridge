@@ -5,6 +5,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Components
 {
@@ -24,7 +25,7 @@ namespace Mosaic.Bridge.Tools.Components
             if (p.InstanceId.HasValue)
             {
 #pragma warning disable CS0618
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
 
@@ -46,7 +47,7 @@ namespace Mosaic.Bridge.Tools.Components
                 {
                     TypeName           = t.Name,
                     FullTypeName       = t.FullName,
-                    ComponentInstanceId = c.GetInstanceID()
+                    ComponentInstanceId = UnityIds.Of(c)
                 });
             }
 
@@ -57,7 +58,7 @@ namespace Mosaic.Bridge.Tools.Components
             return ToolResult<ComponentListResult>.Ok(new ComponentListResult
             {
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 Components     = page,
                 TotalCount     = totalCount,
                 NextPageToken  = nextToken

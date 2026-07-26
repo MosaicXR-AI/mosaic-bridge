@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Cameras;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Camera
 {
@@ -57,14 +58,14 @@ namespace Mosaic.Bridge.Tests.Camera
             var cam = _cameraGo.GetComponent<UnityEngine.Camera>();
             var p = new CameraScreenshotGameParams
             {
-                CameraInstanceId = cam.gameObject.GetInstanceID(),
+                CameraInstanceId = UnityIds.Of(cam.gameObject),
                 IncludeBase64 = true
             };
 
             var result = CameraScreenshotGameTool.Execute(p);
 
             Assert.IsTrue(result.Success, result.Error);
-            Assert.AreEqual(cam.GetInstanceID(), result.Data.CameraInstanceId);
+            Assert.AreEqual(UnityIds.Of(cam), result.Data.CameraInstanceId);
             Assert.IsNotNull(result.Data.FilePath);
             AssertPngHeader(result.Data.Base64Png);
         }

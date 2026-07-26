@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedNavigation
 {
@@ -193,7 +194,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
                 endMarker.GetComponent<Renderer>().sharedMaterial = CreateTempMaterial(Color.red);
                 endMarker.name = "End";
 
-                visId = parent.GetInstanceID();
+                visId = UnityIds.Of(parent);
             }
 
             return ToolResult<NavPathfindAStarResult>.Ok(new NavPathfindAStarResult

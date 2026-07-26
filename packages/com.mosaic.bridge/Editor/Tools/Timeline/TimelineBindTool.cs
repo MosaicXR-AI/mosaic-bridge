@@ -7,6 +7,7 @@ using UnityEngine.Timeline;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Timeline
 {
@@ -18,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Timeline
         public static ToolResult<TimelineBindResult> Bind(TimelineBindParams p)
         {
             // Resolve the director
-            var directorObj = UnityEngine.Resources.EntityIdToObject(p.DirectorInstanceId) as GameObject;
+            var directorObj = UnityIds.Resolve(p.DirectorInstanceId) as GameObject;
             if (directorObj == null)
                 return ToolResult<TimelineBindResult>.Fail(
                     $"GameObject with InstanceId {p.DirectorInstanceId} not found",
@@ -46,7 +47,7 @@ namespace Mosaic.Bridge.Tools.Timeline
             var track = tracks[p.TrackIndex];
 
             // Resolve the target
-            var target = UnityEngine.Resources.EntityIdToObject(p.TargetInstanceId);
+            var target = UnityIds.Resolve(p.TargetInstanceId);
             if (target == null)
                 return ToolResult<TimelineBindResult>.Fail(
                     $"Target object with InstanceId {p.TargetInstanceId} not found",

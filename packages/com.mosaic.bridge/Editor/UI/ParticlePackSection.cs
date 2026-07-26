@@ -194,7 +194,14 @@ namespace Mosaic.Bridge.UI
                             string cachePath = FindCachePath(pack);
                             if (GUILayout.Button("Import from Cache  →  Project", GUILayout.Height(22)))
                             {
+                                // Deprecated on Unity 6.6, but the replacement
+                                // (UnityEditor.AssetPackage.Package) does not exist in
+                                // 6000.6.0a2 and no define distinguishes it. See
+                                // AssetDatabaseHelper.ImportPackage — inlined here because
+                                // Editor/UI has no asmdef and so cannot reference it.
+#pragma warning disable 618
                                 AssetDatabase.ImportPackage(cachePath, false);
+#pragma warning restore 618
                                 AssetDatabase.Refresh();
                             }
                         }

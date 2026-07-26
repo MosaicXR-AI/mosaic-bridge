@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedMesh
 {
@@ -107,7 +108,7 @@ namespace Mosaic.Bridge.Tools.AdvancedMesh
                 mf.sharedMesh = mesh;
                 go.AddComponent<MeshRenderer>();
                 Undo.RegisterCreatedObjectUndo(go, "Create Triangulated Mesh");
-                goId = go.GetInstanceID();
+                goId = UnityIds.Of(go);
             }
 
             return ToolResult<MeshTriangulateResult>.Ok(new MeshTriangulateResult

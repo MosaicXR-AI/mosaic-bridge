@@ -4,6 +4,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Search
 {
@@ -28,7 +29,7 @@ namespace Mosaic.Bridge.Tools.Search
                 {
                     allMatches.Add(new SearchResult
                     {
-                        InstanceId    = go.GetInstanceID(),
+                        InstanceId    = UnityIds.Of(go),
                         Name          = go.name,
                         HierarchyPath = GetHierarchyPath(go.transform)
                     });

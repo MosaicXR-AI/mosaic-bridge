@@ -6,6 +6,24 @@ namespace Mosaic.Bridge.Tools.Shared
     public static class AssetDatabaseHelper
     {
         /// <summary>
+        /// Imports a .unitypackage.
+        ///
+        /// Unity 6.6 deprecated <c>AssetDatabase.ImportPackage</c> in favour of
+        /// <c>UnityEditor.AssetPackage.Package.Import</c>, but that type does not exist in
+        /// 6000.6.0a2 — it landed partway through the 6.6 cycle, and Unity emits no define
+        /// granular enough to tell a2 from b5. Since the deprecation is only a warning
+        /// (the call still works), suppress it here rather than guess a version boundary.
+        /// Switch to the new API once it is available across all supported 6.6 builds, or
+        /// when Unity promotes this to an error.
+        /// </summary>
+        public static void ImportPackage(string packagePath, bool interactive)
+        {
+#pragma warning disable 618
+            AssetDatabase.ImportPackage(packagePath, interactive);
+#pragma warning restore 618
+        }
+
+        /// <summary>
         /// Ensures the given asset folder path exists in both the filesystem and AssetDatabase.
         /// Creates all intermediate folders as needed (equivalent to mkdir -p but AssetDatabase-aware).
         /// </summary>

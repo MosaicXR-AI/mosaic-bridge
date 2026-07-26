@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Lighting
 {
@@ -82,7 +83,7 @@ namespace Mosaic.Bridge.Tools.Lighting
 
             return ToolResult<LightingSetPropertiesResult>.Ok(new LightingSetPropertiesResult
             {
-                InstanceId        = light.gameObject.GetInstanceID(),
+                InstanceId        = UnityIds.Of(light.gameObject),
                 Name              = light.gameObject.name,
                 LightType         = light.type.ToString(),
                 Intensity         = light.intensity,

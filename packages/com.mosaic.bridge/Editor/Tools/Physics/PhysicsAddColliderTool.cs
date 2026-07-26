@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -87,7 +88,7 @@ namespace Mosaic.Bridge.Tools.Physics
             var result = new PhysicsAddColliderResult
             {
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 ColliderType   = normalizedType,
                 IsTrigger      = collider.isTrigger,
                 Center         = PhysicsToolHelpers.ToFloatArray(collider.bounds.center - go.transform.position),

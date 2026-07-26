@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -39,7 +40,7 @@ namespace Mosaic.Bridge.Tools.Terrains
                 return ToolResult<TerrainGetRegionsResult>.Ok(new TerrainGetRegionsResult
                 {
                     TerrainName = terrain.name,
-                    InstanceId  = terrain.gameObject.GetInstanceID(),
+                    InstanceId  = UnityIds.Of(terrain.gameObject),
                     LayerCount  = 0,
                     Regions     = new TerrainRegion[0]
                 });
@@ -130,7 +131,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainGetRegionsResult>.Ok(new TerrainGetRegionsResult
             {
                 TerrainName = terrain.name,
-                InstanceId  = terrain.gameObject.GetInstanceID(),
+                InstanceId  = UnityIds.Of(terrain.gameObject),
                 LayerCount  = layerCount,
                 Regions     = regions.ToArray()
             });

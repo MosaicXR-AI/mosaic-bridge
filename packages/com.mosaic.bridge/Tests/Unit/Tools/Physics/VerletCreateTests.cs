@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Physics;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 {
@@ -60,7 +61,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             var fullPath = Path.Combine(projectRoot, result.Data.ScriptPath);
             Assert.IsTrue(File.Exists(fullPath), $"Script file does not exist at {fullPath}");
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -82,7 +83,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             var fullPath = Path.Combine(projectRoot, result.Data.ScriptPath);
             Assert.IsTrue(File.Exists(fullPath));
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -104,7 +105,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             var fullPath = Path.Combine(projectRoot, result.Data.ScriptPath);
             Assert.IsTrue(File.Exists(fullPath));
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -133,7 +134,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             Assert.IsTrue(result.Success, result.Error);
             Assert.AreEqual(2, result.Data.PointCount);
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -150,7 +151,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             Assert.IsTrue(result.Data.ScriptPath.StartsWith("Assets/Generated/Physics/"));
             Assert.IsTrue(result.Data.ScriptPath.EndsWith("VerletSystem_PathCheck.cs"));
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
     }
 }

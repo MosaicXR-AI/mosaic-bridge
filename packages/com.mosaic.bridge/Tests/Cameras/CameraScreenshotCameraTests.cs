@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Cameras;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Camera
 {
@@ -30,7 +31,7 @@ namespace Mosaic.Bridge.Tests.Camera
         {
             var p = new CameraScreenshotCameraParams
             {
-                InstanceId = _cameraGo.GetInstanceID(),
+                InstanceId = UnityIds.Of(_cameraGo),
                 IncludeBase64 = true
             };
 
@@ -48,7 +49,7 @@ namespace Mosaic.Bridge.Tests.Camera
         {
             var p = new CameraScreenshotCameraParams
             {
-                InstanceId = _cameraGo.GetInstanceID(),
+                InstanceId = UnityIds.Of(_cameraGo),
                 Width = 256,
                 Height = 256
             };
@@ -79,7 +80,7 @@ namespace Mosaic.Bridge.Tests.Camera
 
             try
             {
-                var p = new CameraScreenshotCameraParams { InstanceId = cube.GetInstanceID() };
+                var p = new CameraScreenshotCameraParams { InstanceId = UnityIds.Of(cube) };
 
                 var result = CameraScreenshotCameraTool.Execute(p);
 
@@ -99,7 +100,7 @@ namespace Mosaic.Bridge.Tests.Camera
         {
             var p = new CameraScreenshotCameraParams
             {
-                InstanceId = _cameraGo.GetInstanceID()
+                InstanceId = UnityIds.Of(_cameraGo)
             };
 
             var result = CameraScreenshotCameraTool.Execute(p);

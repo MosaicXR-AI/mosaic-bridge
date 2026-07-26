@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Tools.Particles;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
 {
@@ -173,7 +174,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
 
         private static GameObject FindByInstanceId(int instanceId)
         {
-            return UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
+            return UnityIds.Resolve(instanceId) as GameObject;
         }
     }
 }

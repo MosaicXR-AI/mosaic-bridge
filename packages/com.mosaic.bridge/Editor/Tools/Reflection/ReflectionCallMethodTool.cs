@@ -9,6 +9,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Reflection
 {
@@ -181,7 +182,7 @@ namespace Mosaic.Bridge.Tools.Reflection
             // Unity objects: return summary to prevent serialization explosions
             if (value is UnityEngine.Object unityObj)
             {
-                return new { InstanceId = unityObj.GetInstanceID(), Name = unityObj.name, Type = unityObj.GetType().Name };
+                return new { InstanceId = UnityIds.Of(unityObj), Name = unityObj.name, Type = unityObj.GetType().Name };
             }
 
             if (value is Vector3 v3)

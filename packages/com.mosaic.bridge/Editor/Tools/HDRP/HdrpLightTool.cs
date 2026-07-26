@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.HDRP
 {
@@ -89,7 +90,7 @@ namespace Mosaic.Bridge.Tools.HDRP
 
             return ToolResult<HdrpLightResult>.Ok(new HdrpLightResult
             {
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 Name = go.name,
                 HierarchyPath = HdrpToolHelpers.GetHierarchyPath(go.transform),
                 LightType = light.type.ToString(),

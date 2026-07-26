@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.UI
 {
@@ -50,7 +51,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             return ToolResult<UISetRectTransformResult>.Ok(new UISetRectTransformResult
             {
-                InstanceId       = go.GetInstanceID(),
+                InstanceId       = UnityIds.Of(go),
                 Name             = go.name,
                 AnchorMin        = new[] { rect.anchorMin.x, rect.anchorMin.y },
                 AnchorMax        = new[] { rect.anchorMax.x, rect.anchorMax.y },

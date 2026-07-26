@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.GameObjects
 {
@@ -70,7 +71,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
 
             return ToolResult<GameObjectCreateResult>.Ok(new GameObjectCreateResult
             {
-                InstanceId    = dupe.GetInstanceID(),
+                InstanceId    = UnityIds.Of(dupe),
                 Name          = dupe.name,
                 HierarchyPath = GameObjectToolHelpers.GetHierarchyPath(dupe.transform)
             });

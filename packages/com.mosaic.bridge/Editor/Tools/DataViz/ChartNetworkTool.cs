@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.DataViz
 {
@@ -143,7 +144,7 @@ namespace Mosaic.Bridge.Tools.DataViz
             return ToolResult<ChartNetworkResult>.Ok(new ChartNetworkResult
             {
                 GameObjectName = parent.name,
-                InstanceId     = parent.GetInstanceID(),
+                InstanceId     = UnityIds.Of(parent),
                 NodeCount      = p.Nodes.Count,
                 EdgeCount      = edges.Count
             });

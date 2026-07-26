@@ -8,6 +8,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -114,7 +115,7 @@ namespace Mosaic.Bridge.Tools.Physics
             {
                 ScriptPath     = scriptAssetPath,
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 BodyCount      = p.Bodies.Count,
                 Integrator     = integrator,
                 Theta          = theta

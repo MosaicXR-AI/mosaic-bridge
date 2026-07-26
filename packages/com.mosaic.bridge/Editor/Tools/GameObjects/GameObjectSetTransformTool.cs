@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.GameObjects
 {
@@ -15,7 +16,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
         {
             GameObject go = null;
             if (p.InstanceId.HasValue && p.InstanceId.Value != 0)
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
             if (go == null && !string.IsNullOrEmpty(p.Name))
                 go = GameObject.Find(p.Name);
             if (go == null)

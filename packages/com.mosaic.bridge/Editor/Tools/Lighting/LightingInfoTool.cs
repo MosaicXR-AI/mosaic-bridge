@@ -3,6 +3,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Lighting
 {
@@ -29,7 +30,7 @@ namespace Mosaic.Bridge.Tools.Lighting
             else
             {
                 // All lights in scene
-                var allLights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+                var allLights = UnityIds.FindAll<Light>();
                 foreach (var light in allLights)
                     lightInfos.Add(BuildLightInfo(light));
             }
@@ -60,7 +61,7 @@ namespace Mosaic.Bridge.Tools.Lighting
             var c = light.color;
             return new LightInfo
             {
-                InstanceId       = light.gameObject.GetInstanceID(),
+                InstanceId       = UnityIds.Of(light.gameObject),
                 Name             = light.gameObject.name,
                 HierarchyPath    = LightingToolHelpers.GetHierarchyPath(light.transform),
                 LightType        = light.type.ToString(),

@@ -2,6 +2,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cameras
 {
@@ -14,7 +15,7 @@ namespace Mosaic.Bridge.Tools.Cameras
                     isReadOnly: true, Context = ToolContext.Both)]
         public static ToolResult<CameraScreenshotCameraResult> Execute(CameraScreenshotCameraParams p)
         {
-            var obj = UnityEngine.Resources.EntityIdToObject(p.InstanceId);
+            var obj = UnityIds.Resolve(p.InstanceId);
             if (obj == null)
                 return ToolResult<CameraScreenshotCameraResult>.Fail(
                     $"No object found with InstanceId {p.InstanceId}",
@@ -47,7 +48,7 @@ namespace Mosaic.Bridge.Tools.Cameras
                 ByteSize         = capture.ByteSize,
                 Width            = w,
                 Height           = h,
-                CameraInstanceId = camera.GetInstanceID(),
+                CameraInstanceId = UnityIds.Of(camera),
                 CameraName       = camera.gameObject.name
             });
         }

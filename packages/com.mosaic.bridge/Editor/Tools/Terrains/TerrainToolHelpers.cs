@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -18,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             // Prefer InstanceId lookup
             if (instanceId != 0)
             {
-                var obj = UnityEngine.Resources.EntityIdToObject(instanceId) as GameObject;
+                var obj = UnityIds.Resolve(instanceId) as GameObject;
                 if (obj == null)
                 {
                     error = $"No GameObject found with InstanceId {instanceId}";

@@ -7,6 +7,7 @@ using Unity.Mathematics;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cinemachine
 {
@@ -81,7 +82,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
             return ToolResult<CinemachineCreateDollyResult>.Ok(new CinemachineCreateDollyResult
             {
-                TrackInstanceId = trackGo.GetInstanceID(),
+                TrackInstanceId = UnityIds.Of(trackGo),
                 TrackName = trackGo.name,
                 WaypointCount = waypointCount,
                 AutoDollyEnabled = p.AutoDolly,

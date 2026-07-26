@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Tools.Lighting;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Lighting
 {
@@ -36,7 +37,7 @@ namespace Mosaic.Bridge.Tests.Lighting
         {
             var result = LightingInfoTool.Execute(new LightingInfoParams
             {
-                InstanceId = _testLight.GetInstanceID()
+                InstanceId = UnityIds.Of(_testLight)
             });
 
             Assert.IsTrue(result.Success, result.Error);

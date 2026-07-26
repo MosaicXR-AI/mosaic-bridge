@@ -6,7 +6,8 @@
         "Mosaic.Bridge.Core",
         "Mosaic.Bridge.Tools",
         "Unity.RenderPipelines.HighDefinition.Runtime",
-        "Unity.RenderPipelines.HighDefinition.Editor"
+        "Unity.RenderPipelines.HighDefinition.Editor",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [
         "Editor"

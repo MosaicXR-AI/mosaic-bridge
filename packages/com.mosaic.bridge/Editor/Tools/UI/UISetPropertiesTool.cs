@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.UI
 {
@@ -158,7 +159,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             return ToolResult<UISetPropertiesResult>.Ok(new UISetPropertiesResult
             {
-                InstanceId            = go.GetInstanceID(),
+                InstanceId            = UnityIds.Of(go),
                 Name                  = go.name,
                 ModifiedProperties    = modified.ToArray(),
                 DetectedComponentType = detectedType

@@ -2,6 +2,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -44,7 +45,7 @@ namespace Mosaic.Bridge.Tools.Physics
                 Distance             = hit.distance,
                 ColliderName         = hit.collider.name,
                 GameObjectName       = hit.collider.gameObject.name,
-                GameObjectInstanceId = hit.collider.gameObject.GetInstanceID()
+                GameObjectInstanceId = UnityIds.Of(hit.collider.gameObject)
             });
         }
     }

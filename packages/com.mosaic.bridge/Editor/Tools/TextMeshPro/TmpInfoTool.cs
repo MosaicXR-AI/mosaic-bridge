@@ -5,6 +5,7 @@ using TMPro;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.TextMeshPro
 {
@@ -36,11 +37,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
             else
             {
                 // Find all TMP_Text components in the scene
-#if UNITY_2023_1_OR_NEWER
-                var all = Object.FindObjectsByType<TMP_Text>(FindObjectsSortMode.None);
-#else
-                var all = Object.FindObjectsOfType<TMP_Text>();
-#endif
+                var all = UnityIds.FindAll<TMP_Text>();
                 foreach (var tmp in all)
                     infos.Add(BuildInfo(tmp));
             }
@@ -59,7 +56,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
             return new TmpComponentInfo
             {
                 GameObjectName = tmp.gameObject.name,
-                InstanceId     = tmp.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(tmp.gameObject),
                 HierarchyPath  = TmpToolHelpers.GetHierarchyPath(tmp.transform),
                 ComponentType  = componentType,
                 Text           = tmp.text,

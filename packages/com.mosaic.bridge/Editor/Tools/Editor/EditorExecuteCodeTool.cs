@@ -6,6 +6,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.EditorOps
 {
@@ -138,7 +139,7 @@ namespace Mosaic.Bridge.Tools.EditorOps
                 if (result is UnityEngine.Object unityObj && !(result is System.Type))
                 {
                     // Return a safe summary instead of the raw object
-                    safeResult = new { InstanceId = unityObj.GetInstanceID(), Name = unityObj.name, Type = unityObj.GetType().Name };
+                    safeResult = new { InstanceId = UnityIds.Of(unityObj), Name = unityObj.name, Type = unityObj.GetType().Name };
                 }
                 else if (result is Vector3 v3)
                 {

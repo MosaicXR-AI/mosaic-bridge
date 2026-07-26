@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Terrains;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Terrains
 {
@@ -36,7 +37,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             });
             Assert.IsTrue(createResult.Success, createResult.Error);
 
-            _createdGo = Resources.EntityIdToObject(createResult.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(createResult.Data.InstanceId) as GameObject;
             _createdAssetPath = createResult.Data.TerrainDataAssetPath;
 
             // Query info
@@ -69,7 +70,7 @@ namespace Mosaic.Bridge.Tests.Terrains
             });
             Assert.IsTrue(createResult.Success, createResult.Error);
 
-            _createdGo = Resources.EntityIdToObject(createResult.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(createResult.Data.InstanceId) as GameObject;
             _createdAssetPath = createResult.Data.TerrainDataAssetPath;
 
             var infoResult = TerrainInfoTool.Execute(new TerrainInfoParams

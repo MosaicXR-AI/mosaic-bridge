@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -16,7 +17,7 @@ namespace Mosaic.Bridge.Tools.Physics
             if (instanceId.HasValue && instanceId.Value != 0)
             {
 #pragma warning disable CS0618
-                go = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
+                go = UnityIds.Resolve(instanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
 

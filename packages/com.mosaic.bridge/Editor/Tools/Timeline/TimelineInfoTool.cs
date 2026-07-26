@@ -8,6 +8,7 @@ using UnityEngine.Timeline;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Timeline
 {
@@ -31,7 +32,7 @@ namespace Mosaic.Bridge.Tools.Timeline
             // Try to get from director instance
             if (timeline == null && p.DirectorInstanceId != 0)
             {
-                var go = UnityEngine.Resources.EntityIdToObject(p.DirectorInstanceId) as GameObject;
+                var go = UnityIds.Resolve(p.DirectorInstanceId) as GameObject;
                 if (go != null)
                 {
                     director = go.GetComponent<PlayableDirector>();

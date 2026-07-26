@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedNavigation
 {
@@ -31,7 +32,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
             GameObject origin = null;
             if (p.OriginInstanceId.HasValue && p.OriginInstanceId.Value != 0)
             {
-                origin = UnityEngine.Resources.EntityIdToObject(p.OriginInstanceId.Value) as GameObject;
+                origin = UnityIds.Resolve(p.OriginInstanceId.Value) as GameObject;
             }
             if (origin == null && !string.IsNullOrEmpty(p.OriginName))
             {
@@ -73,7 +74,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
             }
 
             int meshVertCount = 0;
-            int fovGoId = origin.GetInstanceID();
+            int fovGoId = UnityIds.Of(origin);
 
             if (p.CreateMesh)
             {
@@ -121,7 +122,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
                 mr.material = mat;
 
                 Undo.RegisterCreatedObjectUndo(fovGo, "FOV Visualization");
-                fovGoId = fovGo.GetInstanceID();
+                fovGoId = UnityIds.Of(fovGo);
             }
 
             return ToolResult<NavFOVVisualizeResult>.Ok(new NavFOVVisualizeResult

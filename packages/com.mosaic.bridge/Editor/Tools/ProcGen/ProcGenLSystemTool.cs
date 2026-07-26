@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.ProcGen
 {
@@ -219,7 +220,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
                 GeneratedString = truncatedStr,
                 StringLength    = expanded.Length,
                 GameObjectName  = go.name,
-                InstanceId      = go.GetInstanceID(),
+                InstanceId      = UnityIds.Of(go),
                 VertexCount     = meshData.Vertices.Count,
                 BranchCount     = meshData.BranchCount,
                 Iterations      = iterations,

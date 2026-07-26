@@ -102,7 +102,11 @@ public class GravityBody : MonoBehaviour
 
     void FindNearestAttractor()
     {
+#if UNITY_6000_5_OR_NEWER
+        var attractors = FindObjectsByType<GravityAttractor>();
+#else
         var attractors = FindObjectsByType<GravityAttractor>(FindObjectsSortMode.None);
+#endif
         float closest = float.MaxValue;
 
         foreach (var attractor in attractors)

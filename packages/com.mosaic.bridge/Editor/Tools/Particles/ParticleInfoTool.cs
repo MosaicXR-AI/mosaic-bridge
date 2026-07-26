@@ -3,6 +3,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Particles
 {
@@ -28,7 +29,7 @@ namespace Mosaic.Bridge.Tools.Particles
             else
             {
                 // Query all particle systems in the scene
-                var all = Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None);
+                var all = UnityIds.FindAll<ParticleSystem>();
                 foreach (var ps in all)
                     entries.Add(BuildEntry(ps));
             }
@@ -48,7 +49,7 @@ namespace Mosaic.Bridge.Tools.Particles
 
             return new ParticleInfoEntry
             {
-                InstanceId        = ps.gameObject.GetInstanceID(),
+                InstanceId        = UnityIds.Of(ps.gameObject),
                 Name              = ps.gameObject.name,
                 HierarchyPath     = ParticleToolHelpers.GetHierarchyPath(ps.transform),
                 IsPlaying         = ps.isPlaying,

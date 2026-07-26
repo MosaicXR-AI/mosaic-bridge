@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.UI
 {
@@ -101,7 +102,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             return ToolResult<UIAddElementResult>.Ok(new UIAddElementResult
             {
-                InstanceId    = elementGo.GetInstanceID(),
+                InstanceId    = UnityIds.Of(elementGo),
                 Name          = elementGo.name,
                 HierarchyPath = UIToolHelpers.GetHierarchyPath(elementGo.transform),
                 ElementType   = p.ElementType,

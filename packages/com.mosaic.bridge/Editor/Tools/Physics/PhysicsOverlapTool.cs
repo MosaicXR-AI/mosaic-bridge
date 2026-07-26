@@ -4,6 +4,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Physics
 {
@@ -65,7 +66,7 @@ namespace Mosaic.Bridge.Tools.Physics
             {
                 ColliderName         = c.name,
                 GameObjectName       = c.gameObject.name,
-                GameObjectInstanceId = c.gameObject.GetInstanceID()
+                GameObjectInstanceId = UnityIds.Of(c.gameObject)
             }).ToArray();
 
             return ToolResult<PhysicsOverlapResult>.Ok(new PhysicsOverlapResult

@@ -4,6 +4,7 @@ using UnityEditor.SceneManagement;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Scenes
 {
@@ -44,7 +45,7 @@ namespace Mosaic.Bridge.Tools.Scenes
             var node = new HierarchyNode
             {
                 Name = go.name,
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 ActiveSelf = go.activeSelf,
                 Children = new List<HierarchyNode>()
             };

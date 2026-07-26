@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEditor;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.UI
 {
@@ -27,18 +28,14 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             _created.Clear();
 
             // Clean up any EventSystems we may have created
-#if UNITY_2023_1_OR_NEWER
-            var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsSortMode.None);
-#else
-            var eventSystems = Object.FindObjectsOfType<EventSystem>();
-#endif
+            var eventSystems = UnityIds.FindAll<EventSystem>();
             foreach (var es in eventSystems)
                 Object.DestroyImmediate(es.gameObject);
         }
 
         private void Track(int instanceId)
         {
-            var go = Resources.EntityIdToObject(instanceId) as GameObject;
+            var go = UnityIds.Resolve(instanceId) as GameObject;
             if (go != null)
                 _created.Add(go);
         }
@@ -109,7 +106,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(result.Success, result.Error);
             Track(result.Data.InstanceId);
 
-            var go = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            var go = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(go);
             Assert.IsNotNull(go.GetComponent<Canvas>());
             Assert.IsNotNull(go.GetComponent<CanvasScaler>());
@@ -140,7 +137,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Track(result.Data.InstanceId);
 
             // Verify text child exists
-            var buttonGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            var buttonGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(buttonGo);
             Assert.IsTrue(buttonGo.transform.childCount > 0, "Button should have a Text child");
         }
@@ -213,7 +210,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(result.Success, result.Error);
             Track(result.Data.InstanceId);
 
-            var go = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            var go = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
             var rect = go.GetComponent<RectTransform>();
             Assert.AreEqual(50f, rect.anchoredPosition.x, 0.01f);
             Assert.AreEqual(100f, rect.anchoredPosition.y, 0.01f);

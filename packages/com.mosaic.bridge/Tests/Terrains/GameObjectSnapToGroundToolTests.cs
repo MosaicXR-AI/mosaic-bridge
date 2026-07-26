@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Terrains;
 using Mosaic.Bridge.Tools.GameObjects;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Terrains
 {
@@ -26,7 +27,7 @@ namespace Mosaic.Bridge.Tests.Terrains
                 HeightmapResolution = 129
             });
             Assert.IsTrue(r.Success, r.Error);
-            _terrainGo = Resources.EntityIdToObject(r.Data.InstanceId) as GameObject;
+            _terrainGo = UnityIds.Resolve(r.Data.InstanceId) as GameObject;
             _assetPath = r.Data.TerrainDataAssetPath;
 
             _testObj = new GameObject("SnapTestObject");
@@ -65,7 +66,7 @@ namespace Mosaic.Bridge.Tests.Terrains
         public void SnapToGround_ByInstanceId_Works()
         {
             _testObj.transform.position = new Vector3(200f, 500f, 200f);
-            int id = _testObj.GetInstanceID();
+            int id = UnityIds.Of(_testObj);
 
             var result = GameObjectSnapToGroundTool.Execute(new GameObjectSnapToGroundParams
             {

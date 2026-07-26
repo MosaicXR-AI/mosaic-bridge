@@ -5,6 +5,7 @@ using UnityEngine.AI;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Navigation
 {
@@ -20,8 +21,8 @@ namespace Mosaic.Bridge.Tools.Navigation
             bool hasBaked = triangulation.vertices != null && triangulation.vertices.Length > 0;
 
             // Count agents and obstacles in the scene
-            var agents = Object.FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
-            var obstacles = Object.FindObjectsByType<NavMeshObstacle>(FindObjectsSortMode.None);
+            var agents = UnityIds.FindAll<NavMeshAgent>();
+            var obstacles = UnityIds.FindAll<NavMeshObstacle>();
 
             // Collect named NavMesh areas
             string[] areaNames = NavMesh.GetAreaNames();

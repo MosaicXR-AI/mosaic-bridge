@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Particles
 {
@@ -19,7 +20,7 @@ namespace Mosaic.Bridge.Tools.Particles
             if (instanceId.HasValue)
             {
 #pragma warning disable CS0618
-                var obj = UnityEngine.Resources.EntityIdToObject(instanceId.Value);
+                var obj = UnityIds.Resolve(instanceId.Value);
 #pragma warning restore CS0618
 
                 if (obj is ParticleSystem direct)

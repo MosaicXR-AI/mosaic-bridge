@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Audio
 {
@@ -23,10 +24,10 @@ namespace Mosaic.Bridge.Tools.Audio
             if (sceneWide)
             {
                 // Scan entire scene
-                foreach (var source in Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None))
+                foreach (var source in UnityIds.FindAll<AudioSource>())
                     sources.Add(MapSource(source));
 
-                foreach (var listener in Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None))
+                foreach (var listener in UnityIds.FindAll<AudioListener>())
                     listeners.Add(MapListener(listener));
             }
             else
@@ -37,7 +38,7 @@ namespace Mosaic.Bridge.Tools.Audio
                 if (p.InstanceId.HasValue)
                 {
 #pragma warning disable CS0618
-                    go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                    go = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
                 }
 
@@ -60,7 +61,7 @@ namespace Mosaic.Bridge.Tools.Audio
             // Generate scene-wide listener warnings (always check full scene)
             var sceneListenerCount = sceneWide
                 ? listeners.Count
-                : Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length;
+                : UnityIds.FindAll<AudioListener>().Length;
 
             if (sceneListenerCount == 0)
                 warnings.Add("No AudioListener found in scene. Audio will not be heard during playback.");
@@ -86,7 +87,7 @@ namespace Mosaic.Bridge.Tools.Audio
         {
             return new AudioSourceInfo
             {
-                InstanceId    = source.gameObject.GetInstanceID(),
+                InstanceId    = UnityIds.Of(source.gameObject),
                 GameObjectName = source.gameObject.name,
                 HierarchyPath = AudioToolHelpers.GetHierarchyPath(source.transform),
                 ClipName      = source.clip != null ? source.clip.name : null,
@@ -108,7 +109,7 @@ namespace Mosaic.Bridge.Tools.Audio
         {
             return new AudioListenerInfo
             {
-                InstanceId     = listener.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(listener.gameObject),
                 GameObjectName = listener.gameObject.name,
                 HierarchyPath  = AudioToolHelpers.GetHierarchyPath(listener.transform),
                 Enabled        = listener.enabled

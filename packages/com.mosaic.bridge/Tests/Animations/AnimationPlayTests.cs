@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Animations;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Animations
 {
@@ -157,7 +158,7 @@ namespace Mosaic.Bridge.Tests.Animations
             var result = AnimationPlayTool.Execute(new AnimationPlayParams
             {
                 Action     = "play",
-                InstanceId = _testGo.GetInstanceID(),
+                InstanceId = UnityIds.Of(_testGo),
                 StateName  = "Idle"
             });
 

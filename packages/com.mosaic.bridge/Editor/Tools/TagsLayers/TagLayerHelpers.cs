@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.TagsLayers
 {
@@ -16,7 +17,7 @@ namespace Mosaic.Bridge.Tools.TagsLayers
         {
             if (instanceId.HasValue)
             {
-                var obj = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
+                var obj = UnityIds.Resolve(instanceId.Value) as GameObject;
                 if (obj != null) return obj;
             }
 

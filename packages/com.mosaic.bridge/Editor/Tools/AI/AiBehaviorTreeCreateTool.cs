@@ -8,6 +8,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AI
 {
@@ -350,7 +351,7 @@ namespace Mosaic.Bridge.Tools.AI
                 // We cannot AddComponent for a script that hasn't compiled yet,
                 // so we record the intent; the component will be added after domain reload.
                 goName = go.name;
-                instanceId = go.GetInstanceID();
+                instanceId = UnityIds.Of(go);
 
                 // Try to add if the type is already available (unlikely on first create)
                 var scriptType = FindTypeByName($"{p.Name}BehaviorTree");
@@ -358,7 +359,7 @@ namespace Mosaic.Bridge.Tools.AI
                 {
                     Undo.RegisterCompleteObjectUndo(go, $"Add {p.Name}BehaviorTree");
                     go.AddComponent(scriptType);
-                    instanceId = go.GetInstanceID();
+                    instanceId = UnityIds.Of(go);
                 }
             }
 

@@ -8,6 +8,7 @@ using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 using Mosaic.Bridge.Core.Bootstrap;
 using Mosaic.Bridge.Core.Authentication;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Integration
 {
@@ -31,7 +32,7 @@ namespace Mosaic.Bridge.Tests.Integration
             _http?.Dispose();
             if (_createdInstanceId != 0)
             {
-                var go = UnityEngine.Resources.EntityIdToObject(_createdInstanceId)
+                var go = UnityIds.Resolve(_createdInstanceId)
                          as UnityEngine.GameObject;
                 if (go != null)
                     UnityEngine.Object.DestroyImmediate(go);

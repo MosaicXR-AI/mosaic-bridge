@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.DataViz;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.DataViz
 {
@@ -23,7 +24,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.DataViz
 
         private GameObject ResolveGO(int id)
         {
-            return Resources.EntityIdToObject(id) as GameObject;
+            return UnityIds.Resolve(id) as GameObject;
         }
 
         private GameObject Track(int id)

@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Lighting
 {
@@ -51,7 +52,7 @@ namespace Mosaic.Bridge.Tools.Lighting
 
             return ToolResult<LightingCreateResult>.Ok(new LightingCreateResult
             {
-                InstanceId    = go.GetInstanceID(),
+                InstanceId    = UnityIds.Of(go),
                 Name          = go.name,
                 HierarchyPath = LightingToolHelpers.GetHierarchyPath(go.transform),
                 LightType     = lightType.ToString(),

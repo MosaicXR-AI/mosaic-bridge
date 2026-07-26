@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.AdvancedMesh;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Mesh
 {
@@ -66,7 +67,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Mesh
                 Assert.IsTrue(res.Success, $"Expected success but got error: {res.Error}");
                 Assert.IsNotNull(res.Data);
                 if (!string.IsNullOrEmpty(res.Data.MeshPath)) _createdAssets.Add(res.Data.MeshPath);
-                var go = Resources.EntityIdToObject(res.Data.InstanceId) as GameObject;
+                var go = UnityIds.Resolve(res.Data.InstanceId) as GameObject;
                 if (go != null) _spawned.Add(go);
                 return res.Data;
             }
@@ -220,7 +221,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Mesh
                 GenerateCollider = true,
             });
 
-            var go = Resources.EntityIdToObject(data.InstanceId) as GameObject;
+            var go = UnityIds.Resolve(data.InstanceId) as GameObject;
             Assert.IsNotNull(go);
             Assert.IsNotNull(go.GetComponent<MeshCollider>());
         }

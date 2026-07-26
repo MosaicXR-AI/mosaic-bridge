@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedRendering
 {
@@ -262,7 +263,7 @@ public class VolumetricFogPass_{name} : ScriptableRenderPass
 
         var cmd = CommandBufferPool.Get(""VolumetricFog_{name}"");
 
-        var light = RenderSettings.sun != null ? RenderSettings.sun : UnityEngine.Object.FindObjectOfType<Light>();
+        var light = RenderSettings.sun != null ? RenderSettings.sun : UnityEngine.Object.FindAnyObjectByType<Light>();
         Vector3 lightDir = light != null ? light.transform.forward : Vector3.down;
         Color   lightCol = light != null ? light.color * light.intensity : Color.white;
 

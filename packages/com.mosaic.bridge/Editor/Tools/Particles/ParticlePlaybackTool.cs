@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Particles
 {
@@ -49,7 +50,7 @@ namespace Mosaic.Bridge.Tools.Particles
 
             return ToolResult<ParticlePlaybackResult>.Ok(new ParticlePlaybackResult
             {
-                InstanceId    = ps.gameObject.GetInstanceID(),
+                InstanceId    = UnityIds.Of(ps.gameObject),
                 Name          = ps.gameObject.name,
                 Action        = action,
                 IsPlaying     = ps.isPlaying,

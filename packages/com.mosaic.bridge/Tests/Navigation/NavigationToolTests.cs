@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Navigation;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Navigation
 {
@@ -275,7 +276,7 @@ namespace Mosaic.Bridge.Tests.Navigation
         [Test]
         public void ResolveGameObject_ByInstanceId_Finds()
         {
-            var go = NavigationToolHelpers.ResolveGameObject(_testGo.GetInstanceID(), null);
+            var go = NavigationToolHelpers.ResolveGameObject(UnityIds.Of(_testGo), null);
             Assert.IsNotNull(go);
             Assert.AreEqual(_testGo, go);
         }

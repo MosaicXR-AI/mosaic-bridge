@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Terrains;
 using Mosaic.Bridge.Tools.Scene;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Scene
 {
@@ -23,7 +24,7 @@ namespace Mosaic.Bridge.Tests.Scene
                 HeightmapResolution = 129
             });
             Assert.IsTrue(r.Success, r.Error);
-            _terrainGo = Resources.EntityIdToObject(r.Data.InstanceId) as GameObject;
+            _terrainGo = UnityIds.Resolve(r.Data.InstanceId) as GameObject;
             _assetPath = r.Data.TerrainDataAssetPath;
         }
 

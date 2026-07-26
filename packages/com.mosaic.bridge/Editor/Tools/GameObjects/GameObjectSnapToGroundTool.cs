@@ -4,6 +4,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Terrains;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.GameObjects
 {
@@ -21,7 +22,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
             GameObject go;
             if (p.InstanceId != 0)
             {
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId) as GameObject;
                 if (go == null)
                     return ToolResult<GameObjectSnapToGroundResult>.Fail(
                         $"No GameObject found with InstanceId {p.InstanceId}", ErrorCodes.NOT_FOUND);

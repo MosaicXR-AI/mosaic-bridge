@@ -7,6 +7,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Animations
 {
@@ -64,7 +65,7 @@ namespace Mosaic.Bridge.Tools.Animations
             {
                 ScriptPath = scriptPath,
                 GameObjectName = go.name,
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 Solver = solver,
                 ChainLength = p.ChainBones.Length
             });

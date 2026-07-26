@@ -5,6 +5,7 @@ using Unity.VisualScripting;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.VisualScripting
 {
@@ -78,7 +79,7 @@ namespace Mosaic.Bridge.Tools.VisualScripting
                 machine.nest.macro = graphAsset;
 
                 result.AttachedTo = go.name;
-                result.AttachedInstanceId = go.GetInstanceID();
+                result.AttachedInstanceId = UnityIds.Of(go);
             }
 
             return ToolResult<VisualScriptingCreateGraphResult>.Ok(result);

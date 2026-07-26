@@ -4,6 +4,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Selection
 {
@@ -32,7 +33,7 @@ namespace Mosaic.Bridge.Tools.Selection
                 foreach (var id in p.InstanceIds)
                 {
 #pragma warning disable CS0618
-                    var obj = UnityEngine.Resources.EntityIdToObject(id);
+                    var obj = UnityIds.Resolve(id);
 #pragma warning restore CS0618
                     if (obj == null)
                         warnings.Add($"Instance ID {id} could not be resolved and was skipped");
@@ -61,7 +62,7 @@ namespace Mosaic.Bridge.Tools.Selection
                 if (hasNames) namesToFind.AddRange(p.Names);
 
                 // Fetch once per call — avoid O(n^2) scans when multiple names are supplied.
-                var allGameObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+                var allGameObjects = UnityIds.FindAll<GameObject>();
                 foreach (var name in namesToFind)
                 {
                     if (string.IsNullOrEmpty(name)) continue;

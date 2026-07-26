@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Constraints
 {
@@ -71,7 +72,7 @@ namespace Mosaic.Bridge.Tools.Constraints
             if (instanceId.HasValue && instanceId.Value != 0)
             {
 #pragma warning disable CS0618
-                go = UnityEngine.Resources.EntityIdToObject(instanceId.Value) as GameObject;
+                go = UnityIds.Resolve(instanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
             if (go == null && !string.IsNullOrEmpty(name))

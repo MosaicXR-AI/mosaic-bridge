@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Assets
 {
@@ -46,7 +47,7 @@ namespace Mosaic.Bridge.Tools.Assets
             return ToolResult<AssetInstantiatePrefabResult>.Ok(new AssetInstantiatePrefabResult
             {
                 Name       = instance.name,
-                InstanceId = instance.GetInstanceID(),
+                InstanceId = UnityIds.Of(instance),
                 PrefabPath = p.PrefabPath,
                 Position   = new float[] { position.x, position.y, position.z }
             });

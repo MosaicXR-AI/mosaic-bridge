@@ -7,6 +7,7 @@ using TMPro;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.TextMeshPro
 {
@@ -57,7 +58,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
 
             return ToolResult<TmpCreateResult>.Ok(new TmpCreateResult
             {
-                InstanceId   = go.GetInstanceID(),
+                InstanceId   = UnityIds.Of(go),
                 Name         = go.name,
                 HierarchyPath = TmpToolHelpers.GetHierarchyPath(go.transform),
                 ContextType  = context
@@ -84,7 +85,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
 #if UNITY_2023_1_OR_NEWER
                 canvas = Object.FindAnyObjectByType<Canvas>();
 #else
-                canvas = Object.FindObjectOfType<Canvas>();
+                canvas = UnityEngine.Object.FindAnyObjectByType<Canvas>();
 #endif
                 if (canvas == null)
                 {
@@ -99,7 +100,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
 #if UNITY_2023_1_OR_NEWER
                     if (Object.FindAnyObjectByType<EventSystem>() == null)
 #else
-                    if (Object.FindObjectOfType<EventSystem>() == null)
+                    if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() == null)
 #endif
                     {
                         var esGo = new GameObject("EventSystem");

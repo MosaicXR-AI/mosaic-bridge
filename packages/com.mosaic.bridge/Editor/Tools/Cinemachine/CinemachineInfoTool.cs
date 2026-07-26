@@ -4,6 +4,7 @@ using UnityEngine;
 using Unity.Cinemachine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cinemachine
 {
@@ -15,11 +16,11 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public static ToolResult<CinemachineInfoResult> Execute(CinemachineInfoParams p)
         {
             // Gather all virtual cameras
-            var allVCams = Object.FindObjectsByType<CinemachineCamera>(FindObjectsSortMode.None);
+            var allVCams = UnityIds.FindAll<CinemachineCamera>();
             var vcamInfos = new List<CinemachineVCamInfo>();
 
             // Gather all brains to check live status
-            var allBrains = Object.FindObjectsByType<CinemachineBrain>(FindObjectsSortMode.None);
+            var allBrains = UnityIds.FindAll<CinemachineBrain>();
 
             // Build a set of live cameras
             var liveCamNames = new HashSet<string>();
@@ -54,7 +55,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
                 vcamInfos.Add(new CinemachineVCamInfo
                 {
-                    InstanceId = vcam.gameObject.GetInstanceID(),
+                    InstanceId = UnityIds.Of(vcam.gameObject),
                     Name = vcam.gameObject.name,
                     Priority = (int)vcam.Priority.Value,
                     FollowTarget = vcam.Follow != null ? vcam.Follow.name : null,
@@ -73,7 +74,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
             {
                 brainInfos.Add(new CinemachineBrainInfo
                 {
-                    InstanceId = brain.gameObject.GetInstanceID(),
+                    InstanceId = UnityIds.Of(brain.gameObject),
                     CameraName = brain.gameObject.name,
                     DefaultBlendTime = brain.DefaultBlend.Time,
                     DefaultBlendStyle = brain.DefaultBlend.Style.ToString()

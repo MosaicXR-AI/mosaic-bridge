@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Physics;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 {
@@ -69,7 +70,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             var fullPath = Path.Combine(projectRoot, result.Data.ScriptPath);
             Assert.IsTrue(File.Exists(fullPath), $"Script file does not exist at {fullPath}");
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -96,7 +97,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             var fullPath = Path.Combine(projectRoot, result.Data.ScriptPath);
             Assert.IsTrue(File.Exists(fullPath));
 
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -195,7 +196,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             Assert.LessOrEqual(highTheta.Data.Theta, 2f);
             Assert.GreaterOrEqual(highTheta.Data.Theta, 0f);
 
-            var go1 = Resources.EntityIdToObject(highTheta.Data.InstanceId) as GameObject;
+            var go1 = UnityIds.Resolve(highTheta.Data.InstanceId) as GameObject;
             if (go1 != null) Object.DestroyImmediate(go1);
 
             var negTheta = PhysicsNBodyTool.Execute(new PhysicsNBodyParams
@@ -213,7 +214,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             Assert.GreaterOrEqual(negTheta.Data.Theta, 0f);
             Assert.LessOrEqual(negTheta.Data.Theta, 2f);
 
-            _createdGo = Resources.EntityIdToObject(negTheta.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(negTheta.Data.InstanceId) as GameObject;
         }
     }
 }

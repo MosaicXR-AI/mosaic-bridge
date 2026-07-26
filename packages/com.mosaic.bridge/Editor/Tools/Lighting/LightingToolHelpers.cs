@@ -1,4 +1,5 @@
 using UnityEngine;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Lighting
 {
@@ -12,7 +13,7 @@ namespace Mosaic.Bridge.Tools.Lighting
         {
             if (instanceId != 0)
             {
-                var obj = UnityEngine.Resources.EntityIdToObject(instanceId);
+                var obj = UnityIds.Resolve(instanceId);
                 if (obj is GameObject go)
                     return go.GetComponent<Light>();
                 if (obj is Light light)

@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.UI
 {
@@ -50,11 +51,7 @@ namespace Mosaic.Bridge.Tools.UI
             else
             {
                 // Return all canvases in the scene
-#if UNITY_2023_1_OR_NEWER
-                var allCanvases = UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
-#else
-                var allCanvases = UnityEngine.Object.FindObjectsOfType<Canvas>();
-#endif
+                var allCanvases = UnityIds.FindAll<Canvas>();
                 foreach (var canvas in allCanvases)
                 {
                     // Only root canvases (not nested canvases)
@@ -93,7 +90,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             return new UICanvasInfo
             {
-                InstanceId = canvas.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(canvas.gameObject),
                 Name       = canvas.gameObject.name,
                 RenderMode = renderModeLabel,
                 Children   = children.ToArray()
@@ -117,7 +114,7 @@ namespace Mosaic.Bridge.Tools.UI
 
                 var info = new UIElementInfo
                 {
-                    InstanceId       = child.gameObject.GetInstanceID(),
+                    InstanceId       = UnityIds.Of(child.gameObject),
                     Name             = child.name,
                     HierarchyPath    = UIToolHelpers.GetHierarchyPath(child),
                     Components       = componentNames.ToArray(),

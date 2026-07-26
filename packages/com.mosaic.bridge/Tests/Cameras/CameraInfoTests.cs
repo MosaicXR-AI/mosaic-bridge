@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Cameras;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Camera
 {
@@ -79,7 +80,7 @@ namespace Mosaic.Bridge.Tests.Camera
         public void Execute_ByInstanceId_ReturnsSingleCamera()
         {
             var cam = _cameraGo.GetComponent<UnityEngine.Camera>();
-            var p = new CameraInfoParams { InstanceId = cam.gameObject.GetInstanceID() };
+            var p = new CameraInfoParams { InstanceId = UnityIds.Of(cam.gameObject) };
 
             var result = CameraInfoTool.Execute(p);
 
@@ -107,7 +108,7 @@ namespace Mosaic.Bridge.Tests.Camera
 
             try
             {
-                var p = new CameraInfoParams { InstanceId = cube.GetInstanceID() };
+                var p = new CameraInfoParams { InstanceId = UnityIds.Of(cube) };
 
                 var result = CameraInfoTool.Execute(p);
 
@@ -130,7 +131,7 @@ namespace Mosaic.Bridge.Tests.Camera
             try
             {
                 var cam = _cameraGo.GetComponent<UnityEngine.Camera>();
-                var p = new CameraInfoParams { InstanceId = cam.gameObject.GetInstanceID() };
+                var p = new CameraInfoParams { InstanceId = UnityIds.Of(cam.gameObject) };
 
                 var result = CameraInfoTool.Execute(p);
 

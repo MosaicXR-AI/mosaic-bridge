@@ -5,6 +5,7 @@ using Unity.Cinemachine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cinemachine
 {
@@ -72,7 +73,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
             return ToolResult<CinemachineCreateBrainResult>.Ok(new CinemachineCreateBrainResult
             {
-                InstanceId = cam.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(cam.gameObject),
                 CameraName = cam.gameObject.name,
                 DefaultBlend = p.DefaultBlend,
                 BlendType = blendStyle.ToString(),

@@ -5,6 +5,7 @@ using Unity.Cinemachine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cinemachine
 {
@@ -87,7 +88,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
             return ToolResult<CinemachineCreateVCamResult>.Ok(new CinemachineCreateVCamResult
             {
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 Name = go.name,
                 HierarchyPath = CinemachineToolHelpers.GetHierarchyPath(go.transform),
                 BodyType = bodyAdded,

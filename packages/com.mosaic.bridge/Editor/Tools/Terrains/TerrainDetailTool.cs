@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -86,7 +87,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
             {
                 Action         = "add-prototype",
-                InstanceId     = terrain.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(terrain.gameObject),
                 Name           = terrain.gameObject.name,
                 PrototypeCount = data.detailPrototypes.Length,
                 Message        = $"Added detail prototype (index {data.detailPrototypes.Length - 1})"
@@ -141,7 +142,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
             {
                 Action         = "paint",
-                InstanceId     = terrain.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(terrain.gameObject),
                 Name           = terrain.gameObject.name,
                 PrototypeCount = data.detailPrototypes.Length,
                 Message        = $"Painted detail {p.PrototypeIndex} at ({p.X:F2}, {p.Y:F2}) with radius {radius}"
@@ -181,7 +182,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
             {
                 Action         = "scatter",
-                InstanceId     = terrain.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(terrain.gameObject),
                 Name           = terrain.gameObject.name,
                 PrototypeCount = data.detailPrototypes.Length,
                 Message        = $"Scattered detail {p.PrototypeIndex} across terrain with seed {p.Seed}"
@@ -216,7 +217,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
             {
                 Action         = "clear",
-                InstanceId     = terrain.gameObject.GetInstanceID(),
+                InstanceId     = UnityIds.Of(terrain.gameObject),
                 Name           = terrain.gameObject.name,
                 PrototypeCount = data.detailPrototypes.Length,
                 Message        = startLayer + 1 == endLayer

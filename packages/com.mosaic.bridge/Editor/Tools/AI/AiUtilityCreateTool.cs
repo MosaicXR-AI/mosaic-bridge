@@ -8,6 +8,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AI
 {
@@ -294,7 +295,7 @@ namespace Mosaic.Bridge.Tools.AI
                         $"GameObject '{p.AttachTo}' not found", ErrorCodes.NOT_FOUND);
 
                 goName = go.name;
-                instanceId = go.GetInstanceID();
+                instanceId = UnityIds.Of(go);
 
                 // Try to add if the type is already compiled
                 var scriptType = FindTypeByName(className);
@@ -302,7 +303,7 @@ namespace Mosaic.Bridge.Tools.AI
                 {
                     Undo.RegisterCompleteObjectUndo(go, $"Add {className}");
                     go.AddComponent(scriptType);
-                    instanceId = go.GetInstanceID();
+                    instanceId = UnityIds.Of(go);
                 }
             }
 

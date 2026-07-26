@@ -3,6 +3,7 @@ using UnityEngine;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Cameras
 {
@@ -15,7 +16,7 @@ namespace Mosaic.Bridge.Tools.Cameras
         {
             if (p.InstanceId.HasValue)
             {
-                var obj = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value);
+                var obj = UnityIds.Resolve(p.InstanceId.Value);
                 if (obj == null)
                     return ToolResult<CameraInfoResult>.Fail(
                         $"No object found with InstanceId {p.InstanceId.Value}",
@@ -68,7 +69,7 @@ namespace Mosaic.Bridge.Tools.Cameras
 
             return new CameraInfoEntry
             {
-                InstanceId      = camera.GetInstanceID(),
+                InstanceId      = UnityIds.Of(camera),
                 Name            = camera.gameObject.name,
                 HierarchyPath   = GetHierarchyPath(t),
                 FieldOfView     = camera.fieldOfView,

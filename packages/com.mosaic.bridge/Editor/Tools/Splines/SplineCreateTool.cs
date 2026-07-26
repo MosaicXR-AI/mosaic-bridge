@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Splines
 {
@@ -58,7 +59,7 @@ namespace Mosaic.Bridge.Tools.Splines
 
             return ToolResult<SplineCreateResult>.Ok(new SplineCreateResult
             {
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 Name = go.name,
                 HierarchyPath = SplineToolHelpers.GetHierarchyPath(go.transform),
                 KnotCount = spline.Count,

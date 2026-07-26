@@ -5,6 +5,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Core.Dispatcher;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Search
 {
@@ -38,7 +39,7 @@ namespace Mosaic.Bridge.Tools.Search
                     {
                         if (prop.propertyType == SerializedPropertyType.ObjectReference
                             && prop.objectReferenceValue == null
-                            && prop.objectReferenceInstanceIDValue != 0)
+                            && UnityIds.ObjectReferenceId(prop) != 0)
                         {
                             allIssues.Add(new MissingRefResult
                             {

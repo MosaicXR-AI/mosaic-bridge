@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.TagsLayers;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.TagsLayers
 {
@@ -64,7 +65,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.TagsLayers
                 var result = TagLayerTagTool.Execute(new TagLayerTagParams
                 {
                     Action = "set",
-                    InstanceId = go.GetInstanceID(),
+                    InstanceId = UnityIds.Of(go),
                     TagName = "MainCamera"
                 });
 

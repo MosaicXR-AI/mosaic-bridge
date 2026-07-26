@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Audio
 {
@@ -25,7 +26,7 @@ namespace Mosaic.Bridge.Tools.Audio
             if (p.InstanceId.HasValue)
             {
 #pragma warning disable CS0618
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
             }
 
@@ -72,7 +73,7 @@ namespace Mosaic.Bridge.Tools.Audio
 #if UNITY_2023_1_OR_NEWER
             bool hasListener = UnityEngine.Object.FindAnyObjectByType<AudioListener>() != null;
 #else
-            bool hasListener = UnityEngine.Object.FindObjectOfType<AudioListener>() != null;
+            bool hasListener = UnityEngine.Object.FindAnyObjectByType<AudioListener>() != null;
 #endif
             string listenerWarning = hasListener
                 ? null
@@ -80,7 +81,7 @@ namespace Mosaic.Bridge.Tools.Audio
 
             return ToolResult<AudioSetSpatialResult>.Ok(new AudioSetSpatialResult
             {
-                InstanceId             = go.GetInstanceID(),
+                InstanceId             = UnityIds.Of(go),
                 GameObjectName         = go.name,
                 MinDistance            = source.minDistance,
                 MaxDistance            = source.maxDistance,

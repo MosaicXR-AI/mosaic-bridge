@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Navigation
 {
@@ -54,7 +55,7 @@ namespace Mosaic.Bridge.Tools.Navigation
             var sz = obstacle.size;
             return ToolResult<NavigationAddObstacleResult>.Ok(new NavigationAddObstacleResult
             {
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 GameObjectName = go.name,
                 Shape          = shape.ToString(),
                 Size           = new[] { sz.x, sz.y, sz.z },

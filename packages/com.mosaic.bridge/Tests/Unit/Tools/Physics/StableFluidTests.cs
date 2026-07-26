@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Physics;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 {
@@ -65,7 +66,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 
             Assert.IsTrue(result.Success, result.Error);
             AssertValidScript(result.Data, "smoke", 64);
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -79,7 +80,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 
             Assert.IsTrue(result.Success, result.Error);
             AssertValidScript(result.Data, "liquid", 64);
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -93,7 +94,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 
             Assert.IsTrue(result.Success, result.Error);
             AssertValidScript(result.Data, "fire", 64);
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         // ---------------------------------------------------------------------
@@ -125,7 +126,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 
             Assert.IsTrue(result.Success, result.Error);
             Assert.AreEqual(8, result.Data.Resolution);
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -140,7 +141,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
 
             Assert.IsTrue(result.Success, result.Error);
             Assert.AreEqual(128, result.Data.Resolution);
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
 
         [Test]
@@ -169,7 +170,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Physics
             Assert.IsTrue(result.Success, result.Error);
             Assert.IsTrue(result.Data.ScriptPath.StartsWith("Assets/Generated/Physics/"));
             Assert.IsTrue(result.Data.ScriptPath.EndsWith("StableFluid_PathCheck.cs"));
-            _createdGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _createdGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
         }
     }
 }

@@ -103,6 +103,30 @@ tool category must have at least one fixture, and every fixture must reference a
 real registered tool.** Adding a new tool category therefore requires adding a
 matching `*_smoke.json` fixture, or this test fails.
 
+#### Running them from the command line — omit `-batchmode`
+
+`BridgeBootstrap` deliberately refuses to start whenever
+`Application.isBatchMode` is true, because Unity spawns helper subprocesses
+(`AssetImportWorker`, `-adb2`, batchmode builds) that also fire
+`[InitializeOnLoad]`; if they ran the bootstrap they would fight for the bridge
+port and delete the shared discovery file on exit. See `IsHelperSubprocess()` in
+`Editor/Core/Bootstrap/BridgeBootstrap.cs`.
+
+The practical consequence: **`Integration` and `Regression` tests can never pass
+under `-batchmode`.** They fail with `Expected: Running, But was: Uninitialized`,
+which looks like a broken bridge but is the guard doing its job. Run them with a
+real Editor instead — `-runTests` works without `-batchmode`, and Unity quits on
+its own when finished:
+
+```bash
+"/Applications/Unity/Hub/Editor/<version>/Unity.app/Contents/MacOS/Unity" \
+  -projectPath /path/to/TestProject \
+  -runTests -testPlatform EditMode -testCategory Integration \
+  -testResults results.xml -logFile run.log
+```
+
+Use `-batchmode` only for the `Unit` category, which has no bridge dependency.
+
 ### Conventions
 
 - Test method naming: `MethodUnderTest_Condition_ExpectedResult`

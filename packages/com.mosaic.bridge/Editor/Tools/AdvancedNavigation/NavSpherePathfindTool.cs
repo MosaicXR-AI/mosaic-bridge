@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedNavigation
 {
@@ -190,7 +191,7 @@ namespace Mosaic.Bridge.Tools.AdvancedNavigation
                     lr.SetPosition(i, LatLonToWorld(lat, lon, radius * 1.01f));
                 }
 
-                visId = parent.GetInstanceID();
+                visId = UnityIds.Of(parent);
             }
 
             return ToolResult<NavSpherePathfindResult>.Ok(new NavSpherePathfindResult

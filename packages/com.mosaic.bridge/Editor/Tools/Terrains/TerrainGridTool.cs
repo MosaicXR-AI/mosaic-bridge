@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -56,7 +57,7 @@ namespace Mosaic.Bridge.Tools.Terrains
                     Undo.RegisterCreatedObjectUndo(go, "Mosaic: Create Terrain Grid");
 
                     terrains[row, col] = go.GetComponent<UnityEngine.Terrain>();
-                    instanceIds.Add(go.GetInstanceID());
+                    instanceIds.Add(UnityIds.Of(go));
                     names.Add(tileName);
                 }
             }

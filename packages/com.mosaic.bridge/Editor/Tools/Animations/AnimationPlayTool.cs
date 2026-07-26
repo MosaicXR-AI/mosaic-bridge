@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Animations
 {
@@ -51,7 +52,7 @@ namespace Mosaic.Bridge.Tools.Animations
             {
                 Action         = "play",
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 StateName      = p.StateName,
                 LayerIndex     = p.LayerIndex,
                 NormalizedTime = 0f,
@@ -79,7 +80,7 @@ namespace Mosaic.Bridge.Tools.Animations
             {
                 Action         = "stop",
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 Message        = $"Stopped animation on '{go.name}' and reset to bind pose"
             });
         }
@@ -108,7 +109,7 @@ namespace Mosaic.Bridge.Tools.Animations
                 {
                     Action         = "sample",
                     GameObjectName = go.name,
-                    InstanceId     = go.GetInstanceID(),
+                    InstanceId     = UnityIds.Of(go),
                     NormalizedTime = normalizedTime,
                     Message        = $"Sampled clip '{clip.name}' at t={sampleTime:F3}s (normalized={normalizedTime:F3})"
                 });
@@ -133,7 +134,7 @@ namespace Mosaic.Bridge.Tools.Animations
             {
                 Action         = "sample",
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 StateName      = stateName,
                 LayerIndex     = p.LayerIndex,
                 NormalizedTime = normalizedTime,
@@ -146,7 +147,7 @@ namespace Mosaic.Bridge.Tools.Animations
             if (p.InstanceId.HasValue)
             {
 #pragma warning disable CS0618
-                var obj = UnityEngine.Resources.EntityIdToObject(p.InstanceId.Value) as GameObject;
+                var obj = UnityIds.Resolve(p.InstanceId.Value) as GameObject;
 #pragma warning restore CS0618
                 return obj;
             }

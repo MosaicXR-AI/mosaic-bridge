@@ -6,6 +6,7 @@ using UnityEngine.ProBuilder;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -36,7 +37,7 @@ namespace Mosaic.Bridge.Tools.ProBuilder
             }
 
             // Return all ProBuilder meshes in the scene
-            var allMeshes = Object.FindObjectsByType<ProBuilderMesh>(FindObjectsSortMode.None);
+            var allMeshes = UnityIds.FindAll<ProBuilderMesh>();
             if (allMeshes.Length == 0)
                 return ToolResult<ProBuilderInfoResult>.Ok(new ProBuilderInfoResult
                 {
@@ -68,7 +69,7 @@ namespace Mosaic.Bridge.Tools.ProBuilder
             return new ProBuilderMeshInfo
             {
                 Name = pb.gameObject.name,
-                InstanceId = pb.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(pb.gameObject),
                 VertexCount = pb.vertexCount,
                 FaceCount = pb.faceCount,
                 EdgeCount = edges.Count,

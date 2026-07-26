@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Terrains;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Terrains
 {
@@ -24,7 +25,7 @@ namespace Mosaic.Bridge.Tests.Terrains
                 HeightmapResolution = 129
             });
             Assert.IsTrue(r.Success, r.Error);
-            _terrainGo   = Resources.EntityIdToObject(r.Data.InstanceId) as GameObject;
+            _terrainGo   = UnityIds.Resolve(r.Data.InstanceId) as GameObject;
             _assetPath   = r.Data.TerrainDataAssetPath;
         }
 
@@ -83,7 +84,7 @@ namespace Mosaic.Bridge.Tests.Terrains
         [Test]
         public void SampleHeight_ByInstanceId_Works()
         {
-            int id = _terrainGo.GetInstanceID();
+            int id = UnityIds.Of(_terrainGo);
             var result = TerrainSampleHeightTool.Execute(new TerrainSampleHeightParams
             {
                 WorldX = 50f,

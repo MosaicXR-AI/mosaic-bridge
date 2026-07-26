@@ -7,6 +7,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AdvancedMesh
 {
@@ -148,7 +149,7 @@ namespace Mosaic.Bridge.Tools.AdvancedMesh
             {
                 MeshPath = assetPath,
                 GameObjectName = outGo.name,
-                InstanceId = outGo.GetInstanceID(),
+                InstanceId = UnityIds.Of(outGo),
                 Operation = op,
                 VertexCount = mesh.vertexCount,
                 TriangleCount = mesh.triangles.Length / 3,

@@ -4,6 +4,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Terrains
 {
@@ -86,7 +87,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
             {
                 Action     = "add-layer",
-                InstanceId = terrain.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(terrain.gameObject),
                 Name       = terrain.gameObject.name,
                 LayerCount = data.terrainLayers.Length,
                 Message    = $"Added terrain layer from '{p.TexturePath}' (index {data.terrainLayers.Length - 1})"
@@ -108,7 +109,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
             {
                 Action     = "remove-layer",
-                InstanceId = terrain.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(terrain.gameObject),
                 Name       = terrain.gameObject.name,
                 LayerCount = data.terrainLayers.Length,
                 Message    = $"Removed terrain layer at index {p.LayerIndex}"
@@ -182,7 +183,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
             {
                 Action     = "paint-layer",
-                InstanceId = terrain.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(terrain.gameObject),
                 Name       = terrain.gameObject.name,
                 LayerCount = layerCount,
                 Message    = $"Painted layer {p.LayerIndex} at ({p.X:F2}, {p.Y:F2}) with radius {radius}"
@@ -214,7 +215,7 @@ namespace Mosaic.Bridge.Tools.Terrains
             return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
             {
                 Action     = "fill-layer",
-                InstanceId = terrain.gameObject.GetInstanceID(),
+                InstanceId = UnityIds.Of(terrain.gameObject),
                 Name       = terrain.gameObject.name,
                 LayerCount = layerCount,
                 Message    = $"Filled entire terrain with layer {p.LayerIndex}"

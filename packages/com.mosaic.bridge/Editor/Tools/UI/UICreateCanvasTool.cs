@@ -6,6 +6,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.UI
 {
@@ -69,7 +70,7 @@ namespace Mosaic.Bridge.Tools.UI
 #if UNITY_2023_1_OR_NEWER
             var existingEventSystem = UnityEngine.Object.FindAnyObjectByType<EventSystem>();
 #else
-            var existingEventSystem = UnityEngine.Object.FindObjectOfType<EventSystem>();
+            var existingEventSystem = UnityEngine.Object.FindAnyObjectByType<EventSystem>();
 #endif
             if (existingEventSystem == null)
             {
@@ -85,7 +86,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             return ToolResult<UICreateCanvasResult>.Ok(new UICreateCanvasResult
             {
-                InstanceId         = canvasGo.GetInstanceID(),
+                InstanceId         = UnityIds.Of(canvasGo),
                 Name               = canvasGo.name,
                 HierarchyPath      = UIToolHelpers.GetHierarchyPath(canvasGo.transform),
                 RenderMode         = renderModeLabel,

@@ -2,6 +2,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.TagsLayers;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.TagsLayers
 {
@@ -47,7 +48,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.TagsLayers
                 var result = TagLayerStaticTool.Execute(new TagLayerStaticParams
                 {
                     Action = "get",
-                    InstanceId = go.GetInstanceID()
+                    InstanceId = UnityIds.Of(go)
                 });
 
                 Assert.IsTrue(result.Success);

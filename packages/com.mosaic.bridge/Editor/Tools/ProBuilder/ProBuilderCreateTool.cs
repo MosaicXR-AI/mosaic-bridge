@@ -6,6 +6,7 @@ using UnityEngine.ProBuilder.MeshOperations;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -252,7 +253,7 @@ namespace Mosaic.Bridge.Tools.ProBuilder
             return ToolResult<ProBuilderCreateResult>.Ok(new ProBuilderCreateResult
             {
                 Name        = mesh.gameObject.name,
-                InstanceId  = mesh.gameObject.GetInstanceID(),
+                InstanceId  = UnityIds.Of(mesh.gameObject),
                 VertexCount = mesh.vertexCount,
                 FaceCount   = mesh.faceCount
             });

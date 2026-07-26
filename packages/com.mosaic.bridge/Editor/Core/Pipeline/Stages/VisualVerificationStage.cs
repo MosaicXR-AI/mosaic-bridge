@@ -5,6 +5,7 @@ using Mosaic.Bridge.Core.Pipeline.Capture;
 using Mosaic.Bridge.Core.Server;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Core.Pipeline.Stages
 {
@@ -111,7 +112,7 @@ namespace Mosaic.Bridge.Core.Pipeline.Stages
 
                 if (instanceId.HasValue && instanceId.Value != 0)
                 {
-                    var obj = UnityEditor.EditorUtility.EntityIdToObject(instanceId.Value) as GameObject;
+                    var obj = UnityIds.ResolveAny(instanceId.Value) as GameObject;
                     if (obj != null) return obj;
                 }
 

@@ -9,6 +9,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Tools.Shared;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.AI
 {
@@ -94,7 +95,7 @@ namespace Mosaic.Bridge.Tools.AI
             return ToolResult<AiSteeringAddResult>.Ok(new AiSteeringAddResult
             {
                 GameObjectName = go.name,
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 BehaviorCount  = p.Behaviors.Count,
                 MaxSpeed       = maxSpeed,
                 Behaviors      = behaviorTypes.ToArray(),

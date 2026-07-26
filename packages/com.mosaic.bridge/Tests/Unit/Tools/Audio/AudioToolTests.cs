@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Tools.Audio;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
 {
@@ -34,7 +35,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
             Assert.AreEqual("AudioSource", result.Data.GameObjectName);
 
             // Clean up the created GO
-            _testGo = Resources.EntityIdToObject(result.Data.InstanceId) as GameObject;
+            _testGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
             Assert.IsNotNull(_testGo);
 
             var source = _testGo.GetComponent<AudioSource>();
@@ -139,7 +140,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
         public void Info_NoListener_WarnsAboutMissingListener()
         {
             // Remove all listeners for this test
-            var existingListeners = Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
+            var existingListeners = UnityIds.FindAll<AudioListener>();
             foreach (var l in existingListeners)
                 l.enabled = false;
 

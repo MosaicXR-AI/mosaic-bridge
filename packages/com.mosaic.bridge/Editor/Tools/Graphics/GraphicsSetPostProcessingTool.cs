@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Graphics
 {
@@ -18,7 +19,7 @@ namespace Mosaic.Bridge.Tools.Graphics
         {
             GameObject go = null;
             if (p.InstanceId != 0)
-                go = UnityEngine.Resources.EntityIdToObject(p.InstanceId) as GameObject;
+                go = UnityIds.Resolve(p.InstanceId) as GameObject;
             if (go == null && !string.IsNullOrEmpty(p.Name))
                 go = GameObject.Find(p.Name);
             if (go == null)
@@ -65,7 +66,7 @@ namespace Mosaic.Bridge.Tools.Graphics
 
             return ToolResult<GraphicsSetPostProcessingResult>.Ok(new GraphicsSetPostProcessingResult
             {
-                InstanceId = go.GetInstanceID(),
+                InstanceId = UnityIds.Of(go),
                 GameObjectName = go.name,
                 IsGlobal = p.IsGlobal,
                 Weight = Mathf.Clamp01(p.Weight),

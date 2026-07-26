@@ -3,6 +3,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Particles
 {
@@ -44,7 +45,7 @@ namespace Mosaic.Bridge.Tools.Particles
 
             return ToolResult<ParticleSetEmissionResult>.Ok(new ParticleSetEmissionResult
             {
-                InstanceId   = ps.gameObject.GetInstanceID(),
+                InstanceId   = UnityIds.Of(ps.gameObject),
                 Name         = ps.gameObject.name,
                 RateOverTime = emission.rateOverTime.constant,
                 BurstCount   = emission.burstCount

@@ -4,6 +4,7 @@ using UnityEngine.AI;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tools.Navigation
 {
@@ -49,7 +50,7 @@ namespace Mosaic.Bridge.Tools.Navigation
 
             return ToolResult<NavigationSetDestinationResult>.Ok(new NavigationSetDestinationResult
             {
-                InstanceId     = go.GetInstanceID(),
+                InstanceId     = UnityIds.Of(go),
                 GameObjectName = go.name,
                 Destination    = p.Destination,
                 PathPending    = agent.pathPending

@@ -2,6 +2,31 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.9] — 2026-07-26
+
+### Added
+
+- **`--update` / `-u` — upgrade an already-installed bridge.** Unity resolves a UPM
+  git dependency exactly once and records the commit in
+  `Packages/packages-lock.json`, then reuses it indefinitely. Combined with the
+  installer previously skipping any dependency that was already present, this meant
+  **there was no supported way to move an existing project to a newer bridge** — users
+  stayed pinned to whatever commit they first resolved, with nothing in the docs to
+  explain why. `--update` now rewrites the manifest entry and clears that lock entry
+  (leaving every other locked package untouched), so Unity re-resolves on next open.
+- **`--ref <commit|tag|branch>`** — pins the dependency by appending `#ref`, for when
+  you need to know exactly which commit a machine is running rather than "whatever
+  `main` was at resolve time". Implies `--update`, and replaces any existing `#ref`
+  rather than stacking fragments.
+
+### Changed
+
+- Documented commands are now **single-line**, so they work unchanged in `cmd`,
+  PowerShell, and bash. The previous examples used `\` continuations, which fail in
+  `cmd` and forced Windows users into Git Bash for no reason.
+- Without `--update`, the "already present" message now names the flag to use, instead
+  of leaving users to guess why nothing happened.
+
 ## [1.0.0-beta.8] — 2026-07-12
 
 ### Fixed

@@ -19,15 +19,32 @@ That's it. The installer will:
 
 Your existing MCP configs are preserved — we merge our server entry in, we don't overwrite anything else.
 
+## Updating an existing install
+
+Unity resolves a git dependency **once** and pins the commit in
+`Packages/packages-lock.json`, so a plain re-run won't upgrade an existing project —
+it will report `already present — skipped`. Use `--update`, which rewrites the
+manifest entry and clears that pin so Unity re-resolves on next open:
+
+```
+npx @mosaicxr-ai/create-bridge --project-path C:\Unity\MyProject --update --yes
+```
+
+To land on an exact commit, tag, or branch instead of "whatever `main` is now":
+
+```
+npx @mosaicxr-ai/create-bridge --project-path C:\Unity\MyProject --ref main --yes
+```
+
+`--ref` implies `--update`. Reopen the Unity project afterwards to trigger the fetch.
+
 ## Non-interactive mode
 
-Useful for CI or scripted setup:
+Useful for CI or scripted setup. Written on one line so it works in **cmd**,
+**PowerShell**, and **bash** alike:
 
-```bash
-npx @mosaicxr-ai/create-bridge \
-  --project-path /path/to/UnityProject \
-  --clients claude-code,cursor \
-  --yes
+```
+npx @mosaicxr-ai/create-bridge --project-path /path/to/UnityProject --clients claude-code,cursor --yes
 ```
 
 ## Flags

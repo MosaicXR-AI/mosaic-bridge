@@ -3,7 +3,7 @@ import pc from 'picocolors';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { validateUnityProject, injectBridgePackage } from './unity.js';
+import { validateUnityProject, injectBridgePackage, invalidatePackageLock } from './unity.js';
 import { getClientRegistry } from './clients/index.js';
 import { CLAUDE_MD_CONTENT } from './templates.js';
 import { copyDirSync } from './utils.js';
@@ -54,19 +54,43 @@ export async function runInteractive(opts) {
 
   if (!opts.skipUnity) {
     const unityStep = p.spinner();
-    unityStep.start(`Adding ${BRIDGE_PACKAGE_NAME} to Unity manifest.json`);
+    unityStep.start(
+      opts.update
+        ? `Updating ${BRIDGE_PACKAGE_NAME} in Unity manifest.json`
+        : `Adding ${BRIDGE_PACKAGE_NAME} to Unity manifest.json`
+    );
     try {
       const unityResult = injectBridgePackage(projectInfo.projectPath, {
         packageName: BRIDGE_PACKAGE_NAME,
         gitUrl: BRIDGE_GIT_URL,
         enableTestables: false,
+        update: !!opts.update,
+        ref: opts.ref || null,
       });
-      unityStep.stop(
-        unityResult.added
-          ? pc.green(`✓ Added ${BRIDGE_PACKAGE_NAME} to manifest.json`)
-          : pc.dim(`↩ ${BRIDGE_PACKAGE_NAME} already present — skipped`)
-      );
-      results.push({ kind: 'unity', ok: true, detail: unityResult });
+
+      // Unity pins a git dependency to the commit it first resolved, so the
+      // manifest edit alone changes nothing for an existing install. Clearing the
+      // lock entry is what actually makes Unity fetch the new commit.
+      let lockResult = { removed: false };
+      if (opts.update) {
+        lockResult = invalidatePackageLock(projectInfo.projectPath, BRIDGE_PACKAGE_NAME);
+      }
+
+      let message;
+      if (unityResult.added) {
+        message = pc.green(`✓ Added ${BRIDGE_PACKAGE_NAME} to manifest.json`);
+      } else if (opts.update) {
+        const pinned = lockResult.removed
+          ? ` (was pinned to ${String(lockResult.previousHash).slice(0, 12) || 'an earlier commit'})`
+          : '';
+        message = pc.green(`✓ Updated ${BRIDGE_PACKAGE_NAME}${pinned}`);
+      } else {
+        message = pc.dim(
+          `↩ ${BRIDGE_PACKAGE_NAME} already present — skipped (use --update to upgrade it)`
+        );
+      }
+      unityStep.stop(message);
+      results.push({ kind: 'unity', ok: true, detail: { ...unityResult, lock: lockResult } });
     } catch (err) {
       unityStep.stop(pc.red(`✗ Unity install failed: ${err.message}`));
       results.push({ kind: 'unity', ok: false, error: err });

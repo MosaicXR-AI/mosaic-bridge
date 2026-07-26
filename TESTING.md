@@ -118,11 +118,16 @@ which looks like a broken bridge but is the guard doing its job. Run them with a
 real Editor instead — `-runTests` works without `-batchmode`, and Unity quits on
 its own when finished:
 
+macOS / Linux:
+
 ```bash
-"/Applications/Unity/Hub/Editor/<version>/Unity.app/Contents/MacOS/Unity" \
-  -projectPath /path/to/TestProject \
-  -runTests -testPlatform EditMode -testCategory Integration \
-  -testResults results.xml -logFile run.log
+"/Applications/Unity/Hub/Editor/<version>/Unity.app/Contents/MacOS/Unity" -projectPath /path/to/TestProject -runTests -testPlatform EditMode -testCategory Integration -testResults results.xml -logFile run.log
+```
+
+Windows (`cmd`, no continuation characters needed):
+
+```
+"C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" -projectPath C:\Unity\TestProject -runTests -testPlatform EditMode -testCategory Integration -testResults results.xml -logFile run.log
 ```
 
 Use `-batchmode` only for the `Unit` category, which has no bridge dependency.

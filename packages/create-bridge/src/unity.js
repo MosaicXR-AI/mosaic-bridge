@@ -62,14 +62,20 @@ function readUnityVersion(settingsDir) {
 
 /**
  * Adds (or updates) a package entry in the project's Packages/manifest.json.
- * Returns { added: boolean, manifestPath }. `added: false` means the entry was
- * already present (we left it alone).
+ * Returns { added, updated, manifestPath, resolvedUrl }.
+ *
+ * By default an existing entry is left alone, so re-running the installer never
+ * disturbs a project someone has customised. Pass `update: true` to rewrite it —
+ * that is what makes upgrading possible, since a UPM git dependency is otherwise
+ * pinned forever by Packages/packages-lock.json (see invalidatePackageLock).
+ *
+ * `ref` pins the dependency to a git commit, tag, or branch by appending `#ref`.
  *
  * If `enableTestables` is true, ensures the packageName is also in the
  * `testables` array (development-only; users usually don't need this).
  */
 export function injectBridgePackage(projectPath, opts) {
-  const { packageName, gitUrl, enableTestables = false } = opts;
+  const { packageName, gitUrl, enableTestables = false, update = false, ref = null } = opts;
   const manifestPath = path.join(projectPath, 'Packages', 'manifest.json');
 
   let manifest = {};
@@ -86,8 +92,17 @@ export function injectBridgePackage(projectPath, opts) {
     packageName
   );
 
+  // Strip any existing #ref before appending our own, so repeated --ref calls
+  // don't accumulate fragments.
+  const targetUrl = ref ? `${gitUrl.split('#')[0]}#${ref}` : gitUrl;
+  const previousUrl = alreadyPresent ? manifest.dependencies[packageName] : null;
+
+  let updated = false;
   if (!alreadyPresent) {
-    manifest.dependencies[packageName] = gitUrl;
+    manifest.dependencies[packageName] = targetUrl;
+  } else if (update) {
+    manifest.dependencies[packageName] = targetUrl;
+    updated = previousUrl !== targetUrl;
   }
 
   if (enableTestables) {
@@ -102,7 +117,42 @@ export function injectBridgePackage(projectPath, opts) {
 
   return {
     added: !alreadyPresent,
+    updated,
+    previousUrl,
     manifestPath,
     resolvedUrl: manifest.dependencies[packageName],
   };
+}
+
+/**
+ * Drops a package's entry from Packages/packages-lock.json.
+ *
+ * Unity resolves a revision-less git dependency exactly once, records the commit
+ * it landed on, and reuses that commit forever. Removing the lock entry is what
+ * makes Unity re-resolve on next open — without it, pushing new commits never
+ * reaches an already-installed project.
+ *
+ * Returns { removed, lockPath, previousHash }. Missing file or entry is not an
+ * error: there is simply nothing pinned.
+ */
+export function invalidatePackageLock(projectPath, packageName) {
+  const lockPath = path.join(projectPath, 'Packages', 'packages-lock.json');
+
+  if (!fs.existsSync(lockPath)) {
+    return { removed: false, lockPath, previousHash: null };
+  }
+
+  const lock = readJson(lockPath);
+  if (!lock || !lock.dependencies || typeof lock.dependencies !== 'object') {
+    return { removed: false, lockPath, previousHash: null };
+  }
+  if (!Object.prototype.hasOwnProperty.call(lock.dependencies, packageName)) {
+    return { removed: false, lockPath, previousHash: null };
+  }
+
+  const previousHash = lock.dependencies[packageName]?.hash || null;
+  delete lock.dependencies[packageName];
+  atomicWriteJson(lockPath, lock);
+
+  return { removed: true, lockPath, previousHash };
 }

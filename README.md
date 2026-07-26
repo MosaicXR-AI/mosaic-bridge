@@ -115,13 +115,37 @@ The installer:
 Then open the Unity project, wait for compile, restart your MCP client, and
 start prompting.
 
+### Updating to a newer version
+
+Unity resolves a git dependency **once** and pins the resolved commit in
+`Packages/packages-lock.json`. It never re-checks, so simply re-running the
+installer reports `already present — skipped` and your project stays on the commit
+it first landed on. To actually upgrade:
+
+```
+npx @mosaicxr-ai/create-bridge --project-path <your-project> --update --yes
+```
+
+That rewrites the manifest entry and clears the pin, so Unity fetches the latest
+`main` the next time you open the project. To pin an exact commit, tag, or branch —
+useful when you need to know precisely what you're running:
+
+```
+npx @mosaicxr-ai/create-bridge --project-path <your-project> --ref main --yes
+```
+
+`--ref` implies `--update`. Reopen the Unity project afterwards and let it recompile.
+To confirm which commit you ended up on, check the folder name under
+`Library/PackageCache/com.mosaic.bridge@<commit>`, or the version shown in
+Window → Package Manager.
+
 ### Non-interactive (CI / scripted)
 
-```bash
-npx @mosaicxr-ai/create-bridge \
-  --project-path /path/to/UnityProject \
-  --clients claude-code,cursor \
-  --yes
+Commands are written on a single line so they work unchanged in **cmd**,
+**PowerShell**, and **bash** — no shell-specific line continuations:
+
+```
+npx @mosaicxr-ai/create-bridge --project-path /path/to/UnityProject --clients claude-code,cursor --yes
 ```
 
 See `npx @mosaicxr-ai/create-bridge --help` for all flags.

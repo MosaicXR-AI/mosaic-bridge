@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { validateUnityProject, injectBridgePackage, invalidatePackageLock } from './unity.js';
+import { checkUnityVersion, checkNodeVersion } from './requirements.js';
 import { getClientRegistry } from './clients/index.js';
 import { CLAUDE_MD_CONTENT } from './templates.js';
 import { copyDirSync } from './utils.js';
@@ -23,11 +24,17 @@ const BRIDGE_GIT_URL =
 export async function runInteractive(opts) {
   showIntro();
 
+  // 0. Node is what runs the MCP server, so fail before touching the project.
+  const node = checkNodeVersion();
+  if (node.level === 'error') {
+    throw new Error(node.message);
+  }
+
   // 1. Resolve Unity project path (prompt if not provided).
   const projectPath = await resolveProjectPath(opts);
 
   // 2. Validate the Unity project.
-  const projectInfo = await validateAndReport(projectPath);
+  const projectInfo = await validateAndReport(projectPath, opts);
 
   // 3. Decide which clients to configure.
   const clientKeys = await resolveClients(opts);
@@ -258,7 +265,7 @@ async function resolveProjectPath(opts) {
   return path.resolve(value);
 }
 
-async function validateAndReport(projectPath) {
+async function validateAndReport(projectPath, opts = {}) {
   const info = validateUnityProject(projectPath);
   if (!info.valid) {
     throw new Error(info.reason);
@@ -267,6 +274,23 @@ async function validateAndReport(projectPath) {
   p.log.success(
     `Unity project detected: ${pc.cyan(info.projectName)} ${pc.dim('(' + versionLabel + ')')}`
   );
+
+  // Catch an unsupported editor here rather than letting the user discover it as a
+  // wall of compile errors after Unity reimports the package.
+  const check = checkUnityVersion(info.unityVersion);
+  if (check.level === 'ok') return info;
+
+  if (check.level === 'error' && !opts.ignoreUnityVersion) {
+    throw new Error(
+      `${check.message}\n\nPass --ignore-unity-version to install anyway (not recommended).`
+    );
+  }
+
+  if (check.level === 'error') {
+    p.log.warn(pc.yellow(`${check.message} — continuing because --ignore-unity-version was passed.`));
+  } else {
+    p.log.warn(pc.yellow(check.message));
+  }
   return info;
 }
 

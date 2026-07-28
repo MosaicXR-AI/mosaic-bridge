@@ -42,7 +42,7 @@ describe('workflow installation', () => {
     mkdirSync(path.join(tmp, 'ProjectSettings'), { recursive: true });
     writeFileSync(
       path.join(tmp, 'ProjectSettings', 'ProjectVersion.txt'),
-      'm_EditorVersion: 2022.3.50f1\n'
+      'm_EditorVersion: 6000.5.5f1\n'
     );
 
     execFileSync(

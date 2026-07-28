@@ -51,6 +51,10 @@ export async function run(argv) {
       'Upgrade an already-installed bridge: rewrite the manifest entry and clear its Packages/packages-lock.json pin so Unity re-resolves it. Without this, an existing install stays on the commit it first resolved.'
     )
     .option(
+      '--ignore-unity-version',
+      'Install even if the project\'s Unity version is unsupported (not recommended)'
+    )
+    .option(
       '--ref <ref>',
       'Pin the bridge to a git commit, tag, or branch (e.g. --ref c644c3e or --ref main). Implies --update.'
     )
@@ -72,6 +76,7 @@ export async function run(argv) {
       // --ref only means anything if we are allowed to rewrite the entry.
       update: !!opts.update || !!opts.ref,
       ref: opts.ref || null,
+      ignoreUnityVersion: !!opts.ignoreUnityVersion,
     });
   } catch (err) {
     if (err && err.cancelled) {

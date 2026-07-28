@@ -77,14 +77,27 @@ your machine.
 
 ### Unity version support
 
-| Unity | Status |
-|-------|--------|
-| 6000.3 | ✅ Verified — full Editor test suite |
-| 6000.4 | ⚠️ Compiles and runs, but emits deprecation warnings |
-| 6000.5 | ✅ Verified — full Editor test suite |
-| 6000.6.0a2 | ✅ Verified — full Editor test suite |
-| 6000.6.0b5+ | ❌ Not supported yet — see below |
-| 6000.0 – 6000.2 | ❌ Not supported (no `UnityEngine.EntityId`) |
+**The installer checks this for you.** `npx @mosaicxr-ai/create-bridge` reads the
+project's `ProjectVersion.txt` and refuses to install into an editor the bridge
+cannot work on, rather than letting you discover it as compile errors after Unity
+reimports. Warnings don't block; errors do, and can be overridden with
+`--ignore-unity-version` if you know what you're doing.
+
+| Unity | Installer | Status |
+|-------|-----------|--------|
+| 6000.3 | ✅ installs | Verified — full Editor test suite |
+| 6000.4 | ⚠️ warns | Compiles and runs, but emits deprecation warnings |
+| 6000.5 | ✅ installs | Verified — full Editor test suite (recommended) |
+| 6000.6.0a2 | ⚠️ warns | Verified, but a prerelease |
+| 6000.6.0b1+ | ❌ blocks | Not supported yet — see below |
+| 6000.0 – 6000.2 | ❌ blocks | No `UnityEngine.EntityId` |
+| 2022 LTS and older | ❌ blocks | Not supported |
+
+Node 18+ is checked the same way, before the installer touches your project.
+
+All checks run identically on **macOS, Windows, and Linux** — the installer resolves
+paths per-platform and reads `ProjectVersion.txt` with either LF or CRLF line endings,
+so a project authored on Windows and one on macOS are treated the same.
 
 Unity 6.5 replaced the 32-bit instance ID with the 64-bit `EntityId`. The bridge
 adapts to this automatically and keeps `InstanceId` a 32-bit `int` on the MCP wire,

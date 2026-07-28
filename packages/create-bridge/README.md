@@ -27,16 +27,27 @@ it will report `already present — skipped`. Use `--update`, which rewrites the
 manifest entry and clears that pin so Unity re-resolves on next open:
 
 ```
-npx @mosaicxr-ai/create-bridge --project-path C:\Unity\MyProject --update --yes
+npx @mosaicxr-ai/create-bridge --project-path <your-project> --update --yes
 ```
 
 To land on an exact commit, tag, or branch instead of "whatever `main` is now":
 
 ```
-npx @mosaicxr-ai/create-bridge --project-path C:\Unity\MyProject --ref main --yes
+npx @mosaicxr-ai/create-bridge --project-path <your-project> --ref main --yes
 ```
 
 `--ref` implies `--update`. Reopen the Unity project afterwards to trigger the fetch.
+
+`<your-project>` is the Unity project root — the folder containing `Assets/`:
+
+| OS | Example |
+|----|---------|
+| Windows | `C:\Unity\MyProject` |
+| macOS | `~/Unity/MyProject` |
+| Linux | `~/Unity/MyProject` |
+
+On Windows this works in `cmd` and PowerShell as written — no Git Bash, and no
+quoting needed unless the path contains spaces (then wrap it: `"C:\My Projects\Game"`).
 
 ## Non-interactive mode
 

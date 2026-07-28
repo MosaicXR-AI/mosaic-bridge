@@ -19,6 +19,15 @@ All notable changes to this package will be documented in this file.
   `main` was at resolve time". Implies `--update`, and replaces any existing `#ref`
   rather than stacking fragments.
 
+- **Requirements are now enforced at setup, not discovered in Unity.** The installer
+  read the project's Unity version only to print it, so it would report success against
+  an editor the bridge cannot compile on — the user found out from a wall of CS0619
+  errors after Unity reimported the package. `create-bridge` now classifies the version
+  against the documented support matrix and refuses `error`-level editors (below
+  6000.3, and 6.6 betas where the EntityId layout changed), warns on 6000.4 and
+  prereleases, and explains what to do in each case. `--ignore-unity-version` overrides.
+  Node is checked against the `engines` floor before the project is touched at all.
+
 ### Changed
 
 - Documented commands are now **single-line**, so they work unchanged in `cmd`,

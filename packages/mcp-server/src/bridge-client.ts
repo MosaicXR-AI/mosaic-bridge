@@ -66,15 +66,25 @@ export class BridgeClient {
         throw new DomainReloadError('Bridge is reloading');
       }
 
-      // Secret changed after domain reload — re-read discovery file
+      // A 401 is NOT automatically a domain reload. The bridge reports one of nine distinct
+      // reasons in the body, and labelling them all "HMAC secret changed (domain reload)" hid the
+      // real cause: a session spent an hour chasing Editor focus while every education/* call
+      // failed for a reason the server was telling us and this client was discarding.
+      //
+      // Only a rotated secret is worth retrying. Retrying a replayed nonce or an oversized body
+      // re-sends the same rejected request and makes the loop self-sustaining.
       if (response.status === 401) {
-        try {
-          const discovery = readDiscovery();
-          this.port = discovery.port;
-          this.secretBase64 = discovery.secret_base64;
-          this.baseUrl = `http://127.0.0.1:${discovery.port}`;
-        } catch { /* discovery file may be temporarily absent */ }
-        throw new DomainReloadError('HMAC secret changed (domain reload)');
+        const reason = parseAuthFailure(text);
+        if (RETRYABLE_AUTH_FAILURES.has(reason)) {
+          try {
+            const discovery = readDiscovery();
+            this.port = discovery.port;
+            this.secretBase64 = discovery.secret_base64;
+            this.baseUrl = `http://127.0.0.1:${discovery.port}`;
+          } catch { /* discovery file may be temporarily absent */ }
+          throw new DomainReloadError(`bridge auth rejected (${reason}) — likely a domain reload`);
+        }
+        throw new AuthRejectedError(reason, method, path);
       }
 
       throw new Error(`Bridge returned ${response.status}: ${text}`);
@@ -161,6 +171,52 @@ export class BridgeClient {
       `Bridge did not reconnect within ${RETRY_TIMEOUT_MS / 1000}s after domain reload. ` +
       `Last error: ${lastError?.message ?? 'unknown'}`
     );
+  }
+}
+
+/**
+ * 401 reasons that genuinely mean "the secret rotated, try again". Everything else is a real
+ * rejection of THIS request and must surface, not spin.
+ */
+const RETRYABLE_AUTH_FAILURES = new Set(['signature_mismatch', 'unauthorized', 'unknown']);
+
+/** What each 401 reason means and what to do about it — the bridge only sends the token. */
+const AUTH_FAILURE_HELP: Record<string, string> = {
+  nonce_replayed:
+    'the same signed request was sent twice — a retry re-sent a slow call rather than a failed one. ' +
+    'Long-running tools (GIF capture, package export) hit this first.',
+  body_too_large: 'the request body exceeded the bridge limit.',
+  clock_skew: 'the client and Editor clocks disagree beyond the allowed window.',
+  invalid_timestamp: 'the request timestamp was unparseable.',
+  missing_timestamp: 'the request was sent without a timestamp header.',
+  missing_nonce: 'the request was sent without a nonce header.',
+  missing_signature: 'the request was sent unsigned.',
+  invalid_signature_format: 'the signature header was malformed.',
+  signature_mismatch: 'the signature did not match — usually the shared secret rotated.',
+};
+
+/** Pull the bridge's reason token out of {"error":"<reason>"}. */
+function parseAuthFailure(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: string };
+    if (parsed?.error) return parsed.error;
+  } catch { /* not JSON — fall through */ }
+  return body.trim() ? body.trim().slice(0, 80) : 'unknown';
+}
+
+/** A 401 that retrying cannot fix. Carries the bridge's own reason so it is actionable. */
+export class AuthRejectedError extends Error {
+  readonly reason: string;
+
+  constructor(reason: string, method: string, path: string) {
+    const help = AUTH_FAILURE_HELP[reason];
+    super(
+      `Bridge rejected ${method} ${path}: ${reason}` +
+      (help ? ` — ${help}` : '') +
+      ' (retrying will not help; this is not a domain reload)'
+    );
+    this.name = 'AuthRejectedError';
+    this.reason = reason;
   }
 }
 

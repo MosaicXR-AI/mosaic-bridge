@@ -2,6 +2,33 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.8] — 2026-07-28
+
+### Security
+
+- **Cleared every advisory reaching users.** `npm audit --omit=dev` reported 5
+  vulnerabilities in the published dependency tree (2 high, 3 moderate), all arriving
+  transitively through the package's single production dependency,
+  `@modelcontextprotocol/sdk`:
+  - `ip-address` — three separate SSRF / trust-boundary bypasses (leading-zero octets
+    decoded as decimal, CIDR suffixes suppressing special-use classification, and
+    misclassified IPv4-mapped/NAT64 addresses).
+  - `fast-uri` — host confusion via literal backslash authority and failed IDN
+    canonicalization.
+  - `@hono/node-server` — path traversal in `serve-static` on Windows via an encoded
+    backslash.
+
+  Shipping vulnerabilities are now **0**. The bridge listener binds loopback only and is
+  HMAC-authenticated, which limited real exposure, but these sat in the tree users
+  install. Build is clean and all 60 tests pass on the updated tree.
+
+### Fixed
+
+- **A 401 no longer always reports "domain reload".** Authentication failures were
+  labelled as an in-progress Unity domain reload regardless of cause, so a clock-skew or
+  bad-secret failure sent users chasing the wrong problem. The real reason is now
+  surfaced.
+
 ## [1.0.0-beta.7] — 2026-07-12
 
 ### Added

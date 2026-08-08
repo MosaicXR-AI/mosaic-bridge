@@ -1,0 +1,153 @@
+name: CI
+
+# The Unity 6.5 breakage reached a user before anyone noticed, and it took mosaic-pro
+# down with it — every Pro asmdef compiles against Mosaic.Bridge.Contracts/Core. This
+# workflow exists so an upstream Unity change is caught here rather than in someone's
+# Editor.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Unity ships new patch releases continuously; a weekly run catches a deprecation
+    # that lands without any change on our side.
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast, no secrets, no Unity licence. Catches the exact class of regression that
+  # caused the 6.5 outage: a deprecated identity API creeping back into the codebase.
+  api-guard:
+    name: Deprecated Unity API guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No deprecated object-identity APIs outside the compat shim
+        run: |
+          set -euo pipefail
+          # UnityIds owns every one of these; anywhere else they break Unity 6.5+.
+          PATTERN='GetInstanceID\(\)|objectReferenceInstanceIDValue|InstanceIDToObject|EntityIdToObject|FindObjectsSortMode|FindObjectOfType<'
+          # Exclusions, each deliberate:
+          #  UnityIds.cs / UnityIdsTests.cs  — the shim itself and the tests pinning it.
+          #  SimSphericalGravityTool.cs      — the match is inside a string literal holding a
+          #                                    MonoBehaviour we generate into the user's project.
+          #                                    That emitted code carries its own
+          #                                    #if UNITY_6000_5_OR_NEWER guard; grep cannot tell
+          #                                    code from generated-source literals.
+          if hits=$(grep -rnE "$PATTERN" packages/com.mosaic.bridge \
+                      --include='*.cs' \
+                    | grep -v 'Editor/Contracts/Compat/UnityIds.cs' \
+                    | grep -v 'Tests/Unit/Compat/UnityIdsTests.cs' \
+                    | grep -v 'Editor/Tools/Simulation/SimSphericalGravityTool.cs'); then
+            echo "::error::Deprecated Unity identity API used outside Mosaic.Bridge.Contracts.Compat.UnityIds."
+            echo "Route it through UnityIds.Of / Resolve / ResolveAny / FindAll / ObjectReferenceId instead."
+            echo "$hits"
+            exit 1
+          fi
+          echo "Clean — all object identity goes through UnityIds."
+
+      - name: Package manifest and changelog agree
+        run: |
+          set -euo pipefail
+          v=$(python3 -c "import json;print(json.load(open('packages/com.mosaic.bridge/package.json'))['version'])")
+          echo "com.mosaic.bridge version: $v"
+          grep -q "\[$v\]" packages/com.mosaic.bridge/CHANGELOG.md \
+            || { echo "::error::CHANGELOG.md has no entry for $v"; exit 1; }
+
+  node:
+    name: node — ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [mcp-server, create-bridge]
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Build
+        run: npm run build --if-present
+      - run: npm test
+      - name: No vulnerabilities in what we publish
+        # Dev-only advisories don't ship; production ones reach every user.
+        run: npm audit --omit=dev --audit-level=moderate
+
+  unity:
+    name: Unity ${{ matrix.unity }}
+    runs-on: ubuntu-latest
+    # Needs a Unity licence. Without the secret the job is skipped rather than failing
+    # every run red, which would train people to ignore CI.
+    if: ${{ github.repository_owner == 'MosaicXR-AI' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported editor and the current recommended one. 6000.6.0b5+ is
+        # deliberately absent — the EntityId layout changed there and it is unsupported.
+        unity: ['6000.3.10f1', '6000.5.5f1']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when no licence is configured
+        id: gate
+        run: |
+          if [ -z "${{ secrets.UNITY_LICENSE }}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::UNITY_LICENSE not set — skipping the Unity matrix. Add UNITY_LICENSE, UNITY_EMAIL and UNITY_PASSWORD to enable it."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/cache@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          path: TestProject/Library
+          key: Library-${{ matrix.unity }}-${{ hashFiles('packages/com.mosaic.bridge/**') }}
+          restore-keys: Library-${{ matrix.unity }}-
+
+      - name: Create a consuming project
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p TestProject/Assets TestProject/Packages TestProject/ProjectSettings
+          cat > TestProject/Packages/manifest.json <<'JSON'
+          {
+            "dependencies": {
+              "com.mosaic.bridge": "file:../../packages/com.mosaic.bridge",
+              "com.unity.nuget.newtonsoft-json": "3.2.1",
+              "com.unity.test-framework": "1.4.6",
+              "com.unity.ugui": "2.5.0"
+            },
+            "testables": ["com.mosaic.bridge"]
+          }
+          JSON
+          echo "m_EditorVersion: ${{ matrix.unity }}" > TestProject/ProjectSettings/ProjectVersion.txt
+
+      - name: EditMode tests
+        if: steps.gate.outputs.run == 'true'
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: TestProject
+          unityVersion: ${{ matrix.unity }}
+          testMode: EditMode
+          # Integration and Regression need a live bridge, and BridgeBootstrap refuses to
+          # start under -batchmode by design (see TESTING.md). Unit is the CI-safe set.
+          customParameters: -testCategory !Integration;!Regression
+          checkName: EditMode ${{ matrix.unity }}
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.run == 'true'
+        with:
+          name: test-results-${{ matrix.unity }}
+          path: artifacts

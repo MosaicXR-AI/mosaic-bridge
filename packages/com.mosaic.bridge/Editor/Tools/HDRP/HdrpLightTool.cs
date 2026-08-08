@@ -1,5 +1,6 @@
 #if MOSAIC_HAS_HDRP
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
@@ -40,21 +41,22 @@ namespace Mosaic.Bridge.Tools.HDRP
             string areaShape = null;
             if (!string.IsNullOrEmpty(p.AreaLightShape))
             {
+                // Unity 2023.2+ folded the area-light shapes into LightType itself:
+                // LightType.Area plus HDAdditionalLightData.SetAreaLightShape became
+                // LightType.Rectangle/Disc/Tube. The old pair is obsolete-as-error on 6.5
+                // and SetAreaLightShape no longer exists at all.
                 switch (p.AreaLightShape.ToLowerInvariant())
                 {
                     case "rectangle":
-                        light.type = LightType.Area;
-                        hdLight.SetAreaLightShape(AreaLightShape.Rectangle);
+                        light.type = LightType.Rectangle;
                         areaShape = "Rectangle";
                         break;
                     case "disc":
-                        light.type = LightType.Area;
-                        hdLight.SetAreaLightShape(AreaLightShape.Disc);
+                        light.type = LightType.Disc;
                         areaShape = "Disc";
                         break;
                     case "tube":
-                        light.type = LightType.Area;
-                        hdLight.SetAreaLightShape(AreaLightShape.Tube);
+                        light.type = LightType.Tube;
                         areaShape = "Tube";
                         break;
                     default:
@@ -64,9 +66,18 @@ namespace Mosaic.Bridge.Tools.HDRP
                 }
             }
 
-            // Intensity
+            // Intensity. HDAdditionalLightData.SetIntensity is deprecated in favour of
+            // converting explicitly and assigning Light.intensity. Reproduced exactly as
+            // SetIntensity did it internally — interpret the value in the light's configured
+            // unit, convert to the type's native unit — so behaviour is unchanged.
             if (p.Intensity.HasValue)
-                hdLight.SetIntensity(p.Intensity.Value);
+            {
+                light.intensity = LightUnitUtils.ConvertIntensity(
+                    light,
+                    p.Intensity.Value,
+                    light.lightUnit,
+                    LightUnitUtils.GetNativeLightUnit(light.type));
+            }
 
             // Color temperature
             if (p.ColorTemperature.HasValue)
@@ -95,7 +106,7 @@ namespace Mosaic.Bridge.Tools.HDRP
                 HierarchyPath = HdrpToolHelpers.GetHierarchyPath(go.transform),
                 LightType = light.type.ToString(),
                 AreaLightShape = areaShape ?? "N/A",
-                Intensity = hdLight.intensity,
+                Intensity = light.intensity,
                 ColorTemperature = light.colorTemperature,
                 VolumetricDimmer = hdLight.volumetricDimmer,
                 ShadowResolution = 0 // Resolution is stored internally

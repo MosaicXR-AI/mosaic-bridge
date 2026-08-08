@@ -5,7 +5,31 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0-beta.7] — 2026-08-08
+
+### Fixed
+
+- **HDRP tools now compile.** `HdrpLightTool` used `LightType.Area` with
+  `HDAdditionalLightData.SetAreaLightShape`, a pair Unity 2023.2 folded into `LightType`
+  itself — the old enum member is obsolete-as-error on 6.5 and `SetAreaLightShape` no
+  longer exists. Now sets `LightType.Rectangle` / `Disc` / `Tube` directly, verified
+  non-deprecated on 6000.3, 6000.5 and 6000.6.0b5, so no version guard is needed.
+  `SetIntensity` and `HDAdditionalLightData.intensity` are likewise deprecated; intensity
+  now goes through `LightUnitUtils.ConvertIntensity(light, value, light.lightUnit,
+  LightUnitUtils.GetNativeLightUnit(light.type))` — reproducing exactly what `SetIntensity`
+  did internally, read out of its IL, so the value is still interpreted in the light's
+  configured unit and behaviour is unchanged. With HDRP 17.5 installed the assembly builds
+  10 → 6 types with **zero errors and zero warnings**; previously it did not build at all
+  for any HDRP user, cascading to every dependent assembly.
+
+- **TextMeshPro tools were permanently dormant.** `MOSAIC_HAS_TMP` was gated on
+  `com.unity.textmeshpro >= 3.0.0`, but Unity 6 marks that package deprecated with
+  `removeOnProjectUpgrade` — TMP now ships inside `com.unity.ugui`, so the define could
+  never be satisfied on any supported editor and the whole category silently never
+  registered. Re-gated on `com.unity.ugui >= 2.0.0`. Enabling it exposed a second bug:
+  `TmpCreateTool` called `AddComponent<TextMeshPro>()` from inside
+  `namespace Mosaic.Bridge.Tools.TextMeshPro`, where the namespace shadows
+  `TMPro.TextMeshPro` (CS0118); now fully qualified. The assembly builds 10 types.
 
 ### Added
 

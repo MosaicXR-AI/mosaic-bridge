@@ -140,7 +140,7 @@ namespace Mosaic.Bridge.Tools.TextMeshPro
             if (parent != null)
                 go.transform.SetParent(parent, worldPositionStays: true);
 
-            var tmp = go.AddComponent<TextMeshPro>();
+            var tmp = go.AddComponent<TMPro.TextMeshPro>();
             tmp.text = p.Text;
             tmp.fontSize = p.FontSize;
             tmp.color = color;

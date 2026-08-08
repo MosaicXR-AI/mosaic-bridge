@@ -2,6 +2,26 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.10] — 2026-08-08
+
+### Changed
+
+- **Prereleases are refused outright, and the rule is now general.** The version check
+  carried 6.6-specific branches — 6000.6 alphas warned, 6.6 betas blocked — so a future
+  `6000.7.0a1` would have fallen through to a soft "unverified" warning and installed
+  anyway. Any alpha or beta is now treated as unsupported regardless of version.
+
+  This is a deliberate scope decision, not caution for its own sake: Unity changes engine
+  internals mid-cycle. The `EntityId` bit layout shifted between 6000.6.0a2 and
+  6000.6.0b5, which silently breaks every object lookup by `InstanceId` — verified by
+  measurement, not inference. Chasing prereleases means re-verifying against a moving
+  target; testing stable releases and refusing the rest is honest about what is actually
+  covered. `--ignore-unity-version` still overrides.
+
+- Dev-only `postcss` advisory cleared (8.5.17 → 8.5.26). The package now reports 0
+  vulnerabilities including dev dependencies; it never shipped, since the published
+  allowlist excludes lockfiles and `node_modules`.
+
 ## [1.0.0-beta.9] — 2026-07-26
 
 ### Added

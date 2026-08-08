@@ -79,26 +79,18 @@ export function checkUnityVersion(raw) {
     };
   }
 
-  // The EntityId bit layout changed during the 6.6 beta cycle: the high bits stopped
-  // being session-constant, so a 32-bit InstanceId can no longer identify an object.
-  if (v.major === 6000 && v.minor === 6 && STREAM_RANK[v.stream] >= STREAM_RANK.b) {
+  // Prereleases are not tested. Unity changes engine internals mid-cycle — the EntityId
+  // bit layout shifted between 6000.6.0a2 and 6000.6.0b5, which silently breaks every
+  // lookup by InstanceId — so an alpha or beta is treated as unsupported regardless of
+  // version. This deliberately catches future prereleases too, not just 6.6.
+  if (v.stream === "a" || v.stream === "b") {
     return {
-      level: 'error',
+      level: "error",
       version: v.raw,
       message:
-        `Unity ${v.raw} is not supported yet. The EntityId bit layout changed during the ` +
-        `6.6 beta cycle, so object lookups by InstanceId fail. Use Unity 6000.5 (or 6000.3) ` +
-        `until the bridge widens its id format.`,
-    };
-  }
-
-  if (v.major === 6000 && v.minor === 6) {
-    return {
-      level: 'warn',
-      version: v.raw,
-      message:
-        `Unity ${v.raw} is a prerelease. Verified on 6000.6.0a2; later 6.6 betas are not ` +
-        `supported. If you hit InstanceId lookup failures, drop back to Unity 6000.5.`,
+        `Unity ${v.raw} is a prerelease and is not supported. Mosaic Bridge is tested ` +
+        `against stable releases only; Unity has changed engine internals mid-cycle in ways ` +
+        `that break object lookups. Use a stable Unity ${UNITY_MINIMUM}+ release.`,
     };
   }
 
@@ -123,7 +115,7 @@ export function checkUnityVersion(raw) {
     version: v.raw,
     message:
       `Unity ${v.raw} has not been verified with this release. ` +
-      `Verified editors: 6000.3, 6000.5, 6000.6.0a2.`,
+      `Verified editors: 6000.3, 6000.5.`,
   };
 }
 

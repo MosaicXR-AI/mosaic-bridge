@@ -61,16 +61,16 @@ describe('checkUnityVersion — matches the documented support matrix', () => {
     expect(r.message).toMatch(/deprecation warnings/);
   });
 
-  it('allows the verified 6.6 alpha with a prerelease warning', () => {
-    expect(checkUnityVersion('6000.6.0a2').level).toBe('warn');
-  });
-
-  it('blocks 6.6 betas — EntityId layout changed there', () => {
-    for (const v of ['6000.6.0b1', '6000.6.0b5', '6000.6.0f1']) {
+  it('blocks every prerelease, not just the ones we happened to test', () => {
+    for (const v of ['6000.6.0a2', '6000.6.0b5', '6000.7.0a1', '7000.1.0b3']) {
       const r = checkUnityVersion(v);
       expect(r.level, v).toBe('error');
-      expect(r.message).toMatch(/EntityId bit layout/);
+      expect(r.message).toMatch(/prerelease/);
     }
+  });
+
+  it('still accepts a stable release of an unverified version', () => {
+    expect(checkUnityVersion('6000.6.0f1').level).toBe('warn');
   });
 
   it('warns, but does not block, on unverified future versions', () => {

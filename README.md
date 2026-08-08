@@ -86,12 +86,17 @@ reimports. Warnings don't block; errors do, and can be overridden with
 | Unity | Installer | Status |
 |-------|-----------|--------|
 | 6000.3 | ✅ installs | Verified — full Editor test suite |
-| 6000.4 | ⚠️ warns | Compiles and runs, but emits deprecation warnings |
+| 6000.4 | ⚠️ warns | Works, but logs deprecation warnings |
 | 6000.5 | ✅ installs | Verified — full Editor test suite (recommended) |
-| 6000.6.0a2 | ⚠️ warns | Verified, but a prerelease |
-| 6000.6.0b1+ | ❌ blocks | Not supported yet — see below |
 | 6000.0 – 6000.2 | ❌ blocks | No `UnityEngine.EntityId` |
 | 2022 LTS and older | ❌ blocks | Not supported |
+| Any alpha or beta | ❌ blocks | Prereleases are not tested — see below |
+
+**Stable releases only.** Unity changes engine internals mid-cycle: the `EntityId` bit
+layout shifted between 6000.6.0a2 and 6000.6.0b5, which silently breaks every object
+lookup by `InstanceId`. Rather than chase moving targets, the bridge is tested against
+stable releases and the installer refuses prereleases. Use `--ignore-unity-version` if you
+want to try one anyway.
 
 Node 18+ is checked the same way, before the installer touches your project.
 
@@ -99,12 +104,9 @@ All checks run identically on **macOS, Windows, and Linux** — the installer re
 paths per-platform and reads `ProjectVersion.txt` with either LF or CRLF line endings,
 so a project authored on Windows and one on macOS are treated the same.
 
-Unity 6.5 replaced the 32-bit instance ID with the 64-bit `EntityId`. The bridge
-adapts to this automatically and keeps `InstanceId` a 32-bit `int` on the MCP wire,
-so tool schemas are unchanged. Unity 6000.6.0b5 changed the `EntityId` bit layout
-again such that a 32-bit id can no longer identify an object, and Unity exposes no
-supported conversion — supporting b5+ requires widening the id across the wire.
-Tracked as a known limitation in the [CHANGELOG](packages/com.mosaic.bridge/CHANGELOG.md).
+Unity 6.5 replaced the 32-bit instance ID with the 64-bit `EntityId`. The bridge adapts
+automatically and keeps `InstanceId` a 32-bit `int` on the MCP wire, so tool schemas and
+clients are unchanged.
 
 ---
 

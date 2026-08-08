@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ai/generate-asset` — Unity AI generation, prepared by the bridge and executed through
+  Unity's own authorized channel.** Takes a plain-language description plus an asset kind
+  (Texture, Material, Sprite, Image, Sound, Animation, Model3D) and returns a ready-to-run
+  generation request: command, advisory model ids, save path, and dimensions.
+
+  The bridge deliberately does **not** invoke generation itself. Unity's terms (updated
+  2026-06-30) restrict automated callers — naming MCP servers explicitly — from invoking
+  Unity offerings without Authorized Agentic Access, with a carve-out for integrations
+  working only with the local Editor and project files. Every other bridge tool sits inside
+  that carve-out; generation is a paid cloud service and would not. Unity ships its own
+  authorized asset-generation MCP, so this tool builds the request and that channel runs it.
+  Returns `Mode: "unity-mcp"` when Unity AI is detected, `"handoff"` when it is not.
+
+  What the bridge adds is what Unity's generator cannot see: measured values from the
+  bundled PBR knowledge base folded into the prompt, each recorded in `KnowledgeApplied`
+  with its source. "wood oak floor planks" becomes a prompt carrying real albedo,
+  roughness and metalness rather than the model's guess. Matching prefers the most specific
+  entry, so "wood oak" never resolves to `wood_pine`.
+
+  Detection is pure reflection with no compile-time dependency, no asmdef and no manifest
+  entry — required, because Unity AI is entitlement-gated and adding it to `manifest.json`
+  breaks resolution. A missing or renamed type degrades to `handoff` rather than failing.
+  The tool is read-only: it writes nothing, creates no folders, and spends no credits.
+  `ConsumesCredits` tells the caller when execution would.
+
+
 ## [1.0.0-beta.6] — 2026-07-26
 
 ### Fixed

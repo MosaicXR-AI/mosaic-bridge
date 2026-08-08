@@ -50,6 +50,58 @@ jobs:
           fi
           echo "Clean — all object identity goes through UnityIds."
 
+      - name: Package sources must not be gitignored
+        # The root .gitignore carries Unity-project globs, and [Bb]uild/ silently swallowed
+        # Editor/Tools/Build/ for four months — the build tool shipped as an empty folder.
+        # This is the check that would have caught it on day one.
+        run: |
+          hidden=$(git ls-files --others --ignored --exclude-standard -- packages/com.mosaic.bridge/)
+          if [ -n "$hidden" ]; then
+            echo "::error::These package sources are gitignored and will never ship:"
+            echo "$hidden"
+            exit 1
+          fi
+          echo "No package sources are hidden by .gitignore."
+
+      - name: Reject hand-authored or duplicate .meta GUIDs
+        # GUIDs written by walking hex nibbles occupy a tiny space, so they collide with
+        # other packages. One such collision with com.unity.purchasing dropped a file from
+        # that package and broke compilation project-wide — and the error named the victim,
+        # not the bridge.
+        run: |
+          python3 - <<'PY'
+          import os, re, sys, collections
+          def structured(g):
+              for seq in ([int(g[i],16) for i in range(0,32,2)],
+                          [int(g[i],16) for i in range(1,32,2)]):
+                  for p in range(1, 7):
+                      if all(seq[i] == seq[i % p] for i in range(len(seq))): return True
+                  for mod in (10, 16):
+                      d = (seq[1] - seq[0]) % mod
+                      if d and all((seq[i+1]-seq[i]) % mod == d for i in range(len(seq)-1)):
+                          return True
+              return False
+
+          seen, bad = collections.defaultdict(list), []
+          for root, dirs, files in os.walk('packages/com.mosaic.bridge'):
+              dirs[:] = [d for d in dirs if d != '.git']
+              for f in files:
+                  if not f.endswith('.meta'): continue
+                  p = os.path.join(root, f)
+                  m = re.search(r'^guid: ([0-9a-f]{32})$',
+                                open(p, encoding='utf-8', errors='ignore').read(), re.M)
+                  if not m: continue
+                  seen[m.group(1)].append(p)
+                  if structured(m.group(1)): bad.append(f'{p}  {m.group(1)}')
+
+          dups = [f'{g}: {v}' for g, v in seen.items() if len(v) > 1]
+          if bad: print('Hand-authored GUIDs (regenerate with uuid.uuid4().hex):', *bad, sep='\n  ')
+          if dups: print('Duplicate GUIDs:', *dups, sep='\n  ')
+          if not bad and not dups:
+              print(f'{sum(len(v) for v in seen.values())} .meta GUIDs look random and unique.')
+          sys.exit(1 if bad or dups else 0)
+          PY
+
       - name: Package manifest and changelog agree
         run: |
           set -euo pipefail

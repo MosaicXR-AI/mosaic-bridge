@@ -91,3 +91,8 @@ docs/Ahmed_Sessions/SESSION_NOTES.md
 docs/Ahmed_Sessions/VoronoiShaderSession.md
 docs/Ahmed_Sessions/WaterShaderSession.md
 docs/Sessions/Ahmed/SESSION_NOTES.md
+
+# The Unity-project rules above are repo-root globs, so they also match directories
+# inside the shipped package. [Bb]uild/ silently swallowed Editor/Tools/Build/ for four
+# months and the build tool never shipped. Never ignore package sources.
+!packages/com.mosaic.bridge/Editor/Tools/Build/

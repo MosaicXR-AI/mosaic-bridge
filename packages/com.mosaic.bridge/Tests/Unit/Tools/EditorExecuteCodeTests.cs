@@ -255,5 +255,51 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
             Assert.IsFalse(result.Success);
             StringAssert.Contains("Cannot parse", result.Error);
         }
+
+        // ── Enum arguments ───────────────────────────────────────────────────────
+        // Callers write enums the way they appear in C#: qualified, and sometimes combined.
+        // Enum.Parse accepts neither form, which is why
+        // AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate) failed while the
+        // single-argument call worked — it reads as an arity limit and is really a form limit.
+
+        [System.Flags]
+        private enum SampleFlags { None = 0, First = 1, Second = 2, Third = 4 }
+
+        [Test]
+        public void ConvertArgument_BareEnumMember_Parses()
+        {
+            var r = EditorExecuteCodeTool.ConvertArgument("First", typeof(SampleFlags));
+            Assert.AreEqual(SampleFlags.First, r);
+        }
+
+        [Test]
+        public void ConvertArgument_QualifiedEnumMember_Parses()
+        {
+            var r = EditorExecuteCodeTool.ConvertArgument("SampleFlags.Second", typeof(SampleFlags));
+            Assert.AreEqual(SampleFlags.Second, r);
+        }
+
+        [Test]
+        public void ConvertArgument_FullyQualifiedEnumMember_Parses()
+        {
+            var r = EditorExecuteCodeTool.ConvertArgument(
+                "UnityEditor.ImportAssetOptions.ForceUpdate", typeof(UnityEditor.ImportAssetOptions));
+            Assert.AreEqual(UnityEditor.ImportAssetOptions.ForceUpdate, r);
+        }
+
+        [Test]
+        public void ConvertArgument_CombinedFlags_ParsesAsOr()
+        {
+            var r = EditorExecuteCodeTool.ConvertArgument(
+                "SampleFlags.First | SampleFlags.Third", typeof(SampleFlags));
+            Assert.AreEqual(SampleFlags.First | SampleFlags.Third, r);
+        }
+
+        [Test]
+        public void ConvertArgument_EnumIsCaseInsensitive()
+        {
+            var r = EditorExecuteCodeTool.ConvertArgument("first", typeof(SampleFlags));
+            Assert.AreEqual(SampleFlags.First, r);
+        }
     }
 }

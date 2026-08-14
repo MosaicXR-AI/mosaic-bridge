@@ -464,10 +464,28 @@ namespace Mosaic.Bridge.Tools.EditorOps
                 return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
             }
 
-            // Handle enums
+            // Handle enums.
+            //
+            // Callers write the enum the way it appears in C#, qualified and sometimes combined:
+            //   UnityEditor.ImportAssetOptions.ForceUpdate
+            //   ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport
+            // Enum.Parse accepts neither — it wants the bare member name, or a comma list. Passing
+            // the qualified form straight through is why AssetDatabase.ImportAsset(path, options)
+            // failed while the single-argument form worked, which reads as an arity limit and is
+            // really an argument-form limit.
             if (targetType.IsEnum)
             {
-                return Enum.Parse(targetType, raw, ignoreCase: true);
+                var parts = raw.Split('|');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    var part = parts[i].Trim();
+                    var dot = part.LastIndexOf('.');
+                    if (dot >= 0 && dot < part.Length - 1)
+                        part = part.Substring(dot + 1);   // drop any Namespace.Type. prefix
+                    parts[i] = part;
+                }
+                // Enum.Parse treats a comma list as a flag combination.
+                return Enum.Parse(targetType, string.Join(",", parts), ignoreCase: true);
             }
 
             // Numeric / general conversion

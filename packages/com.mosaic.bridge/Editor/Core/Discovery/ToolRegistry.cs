@@ -183,6 +183,31 @@ namespace Mosaic.Bridge.Core.Discovery
             };
         }
 
+        /// <summary>
+        /// Is the Editor mid-reload, so an absent tool is transient rather than unknown?
+        ///
+        /// Deliberately NOT "the registry is empty". That was the first attempt and
+        /// ToolRegistryTests.Execute_UnknownTool_Returns404 caught it immediately: a registry with
+        /// no entries is the normal state of a freshly constructed one, so every unknown tool
+        /// started answering 503 and the 404 contract was lost. An empty registry is ambiguous;
+        /// compiling is not.
+        ///
+        /// Erring toward 404 is the safer default anyway — a wrong 404 is a clear, actionable
+        /// error, while a wrong 503 invites a caller to retry forever against a tool that will
+        /// never exist.
+        /// </summary>
+        private bool IsReloading()
+        {
+            try
+            {
+                return EditorApplication.isCompiling || EditorApplication.isUpdating;
+            }
+            catch (Exception)
+            {
+                return false;   // off the main thread these throw; absence is then a real 404
+            }
+        }
+
         // ── Private handlers ─────────────────────────────────────────────────────
 
         private HandlerResponse HandleExecute(HandlerRequest request)
@@ -225,11 +250,32 @@ namespace Mosaic.Bridge.Core.Discovery
 
             if (!_entries.TryGetValue(toolName, out var entry))
             {
+                // A domain reload empties the registry while /tools may still serve a cached list,
+                // so every known tool answers "unknown" for a few seconds. A caller that cannot
+                // tell that from a genuinely missing tool concludes the assembly is broken and
+                // goes hunting a compile error that is not there — which is exactly what happened.
+                //
+                // The STATUS stays 404. 503 is the more correct answer and ToolRegistryTests
+                // asserts 404 as a contract, so changing it is a breaking API change that belongs
+                // in a deliberate version bump, not smuggled in with a diagnostic fix. What the
+                // body says costs nothing and carries the same information.
+                bool reloading = IsReloading();
                 return new HandlerResponse
                 {
                     StatusCode = 404,
                     ContentType = "application/json",
-                    Body = JsonConvert.SerializeObject(new { error = "NOT_FOUND", message = $"Unknown tool: {toolName}" })
+                    Body = JsonConvert.SerializeObject(new
+                    {
+                        error = "NOT_FOUND",
+                        message = reloading
+                            ? $"'{toolName}' is not registered right now, and the Editor is " +
+                              "compiling or importing — during a domain reload the registry is " +
+                              "briefly empty. Retry in a couple of seconds before concluding the " +
+                              "tool does not exist."
+                            : $"Unknown tool: {toolName}",
+                        reloading,
+                        retryable = reloading
+                    })
                 };
             }
 

@@ -43,7 +43,7 @@ known-parameters-only and missing-optional both still succeed. 1151 tests pass.
 
 ---
 
-## 2 — `/execute` answers 404 during a domain reload  ⬜ OPEN
+## 2 — `/execute` answers 404 during a domain reload  🟡 MITIGATED (status unchanged)
 
 `GET /tools` keeps listing every tool while `POST /execute` returns **404** for those same names
 while the domain is reloading. 404 is indistinguishable from "this tool does not exist".
@@ -53,11 +53,24 @@ as "the assembly failed to compile and its tools are gone" for a long stretch. T
 fine throughout; asking for the loaded `System.Type` proved it. Re-running the identical six calls
 minutes later: all succeeded.
 
-**Proposed fix.** **503 with `Retry-After`** while reloading. A reload is transient; a missing tool
-is permanent, and the two must not share a status code. Better still, `/tools` and `/execute`
-should agree on availability — listing a tool that cannot be executed is the actual lie.
+**What was done.** The response body now carries `reloading` and `retryable`, and says so in
+words: *"…the Editor is compiling or importing — during a domain reload the registry is briefly
+empty. Retry in a couple of seconds before concluding the tool does not exist."*
 
-## 3 — `editor/refresh` reports success without rebuilding  ⬜ OPEN
+**The status stays 404, deliberately.** 503 is the more correct answer, and switching to it broke
+`ToolRegistryTests.Execute_UnknownTool_Returns404` — a test asserting a public contract. That is a
+breaking API change and belongs in a deliberate version bump, not smuggled in with a diagnostic
+fix. The body carries the same information at no cost.
+
+A first attempt also treated *an empty registry* as proof of reloading. The same test caught it
+within one run: a freshly constructed registry is empty too, so every unknown tool began answering
+503. Erring toward 404 is the safer default anyway — a wrong 404 is clear and actionable, while a
+wrong 503 invites a client to retry forever against a tool that will never exist.
+
+**Still open:** `/tools` and `/execute` should agree on availability. Listing a tool that cannot be
+executed is the actual lie, and fixing that removes the confusion at its source.
+
+## 3 — `editor/refresh` reports success without rebuilding  ✅ FIXED
 
 `EditorRefreshTool` returns `{"CompilationFailed": false, "IsCompiling": false}` when no compile
 ran at all.
@@ -69,21 +82,30 @@ predated the edits.
 
 The verdict is worse than no verdict: `CompilationFailed: false` reads as "compiled and current".
 
-**Proposed fix.** Report whether a compile actually **ran** — an assembly timestamp or a
-compilation id — not merely that none is in flight. This likely interacts with Auto Refresh being
-disabled in preferences, which the tool should detect and say so, since a refresh that cannot
-refresh should not report success.
+**Fix.** The tool now samples the newest `Library/ScriptAssemblies` write time either side of the
+refresh and reports `AssembliesRebuilt`, `AssembliesUpdatedUtc`, `AutoRefreshEnabled` and
+`Pending`, with a plain-language `Message`. The case that cost the half hour — nothing rebuilt,
+nothing compiling, Auto Refresh disabled, so nothing is *going* to rebuild — now fails with
+`STALE_ASSEMBLIES` and says to enable Auto Refresh or restart, because a refresh that cannot
+refresh must not answer like one that did.
 
-## 4 — `editor/execute-code` cannot call a two-argument static  ⬜ OPEN
+`Refresh()` only QUEUES compilation, so `isCompiling` sampled immediately after is usually false —
+the honest-looking answer arrived before the thing it described. `Pending` now carries that.
+
+## 4 — `editor/execute-code` could not take a qualified or combined enum  ✅ FIXED
 
 `AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate)` → HTTP 500. The single-argument
 form and chained property reads work; a flag-enum argument (`A | B`) also fails.
 
 Consequence: the targeted reimport that would have avoided an Editor restart was unavailable.
 
-**Proposed fix.** Support multiple arguments and enum parsing, or state the arity limit in the
-description. "Evaluates a single static C# expression via reflection" reads as a language limit
-rather than an arity one.
+**It was never an arity limit** — multiple arguments already worked. The failure was the argument
+FORM: `ConvertArgument` passed the raw text to `Enum.Parse`, which accepts neither a qualified
+member (`UnityEditor.ImportAssetOptions.ForceUpdate`) nor a `|` combination. Callers write enums
+the way they appear in C#, so both forms are what they will send.
+
+**Fix.** Qualified prefixes are stripped and `|` is translated to the comma list `Enum.Parse`
+expects. 5 tests, including the exact call that failed.
 
 ---
 

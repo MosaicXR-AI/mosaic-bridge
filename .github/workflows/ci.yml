@@ -9,6 +9,9 @@ on:
     branches: [main]
   pull_request:
   schedule:
+    # Unity retires an LTS stream on its own calendar; nothing in this repo changes when it does.
+    - cron: '17 6 * * 1'
+  schedule:
     # Unity ships new patch releases continuously; a weekly run catches a deprecation
     # that lands without any change on our side.
     - cron: '0 6 * * 1'
@@ -100,6 +103,47 @@ jobs:
           if not bad and not dups:
               print(f'{sum(len(v) for v in seen.values())} .meta GUIDs look random and unique.')
           sys.exit(1 if bad or dups else 0)
+          PY
+
+      # Mosaic ships against maintained Unity LTS only. Asked live rather than from a list,
+      # because "which streams are LTS" changes on Unity's calendar and any table written here
+      # would be wrong within a year — and a stale table does not merely miss defects, it invents
+      # them. Note this governs the DECLARED FLOOR, not the test matrix below: exercising a
+      # SUPPORTED release like 6000.5 is forward-compat coverage and entirely intended.
+      - name: Declared Unity floor is a maintained LTS stream
+        run: |
+          python3 - <<'PY'
+          import json, re, sys, urllib.request
+          from datetime import datetime, timezone
+
+          floor = json.load(open('packages/com.mosaic.bridge/package.json'))['unity']
+          print(f'declared floor: {floor}')
+          if re.search(r'\d+\.\d+\.\d+[ab]\d+', floor):
+              sys.exit(f'::error::{floor} is a prerelease — never a declared floor')
+
+          api = 'https://services.api.unity.com/unity/editor/release/v1/releases'
+          try:                                   # limit>25 is rejected with a bare 400
+              with urllib.request.urlopen(f'{api}?limit=25&order=RELEASE_DATE_DESC&stream=LTS',
+                                          timeout=25) as r:
+                  results = json.loads(r.read())['results']
+          except Exception as e:                 # transient network is not a policy violation
+              print(f'::warning::could not reach Unity release API ({e}) — floor unverified')
+              sys.exit(0)
+
+          now, live = datetime.now(timezone.utc), {}
+          for rel in results:
+              stream = re.match(r'(\d+\.\d+)', rel['version']).group(1)
+              age = (now - datetime.strptime(rel['releaseDate'][:10], '%Y-%m-%d')
+                     .replace(tzinfo=timezone.utc)).days / 30.44
+              if age <= 6:
+                  live.setdefault(stream, rel['version'])
+          print('maintained LTS today:', ', '.join(sorted(live)) or 'none seen')
+
+          stream = re.match(r'(\d+\.\d+)', floor).group(1)
+          if stream not in live:
+              sys.exit(f'::error::{floor} is not a maintained LTS stream. '
+                       f'Move to {" or ".join(sorted(live, reverse=True)[:2])}.')
+          print(f'OK — {stream} is LTS and shipping (newest {live[stream]})')
           PY
 
       - name: Package manifest and changelog agree

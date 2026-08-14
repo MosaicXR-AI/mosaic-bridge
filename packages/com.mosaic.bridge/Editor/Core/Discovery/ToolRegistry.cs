@@ -336,11 +336,25 @@ namespace Mosaic.Bridge.Core.Discovery
                 inputSchema = JsonSchemaGenerator.Generate(e.ParamType)
             }).ToList();
 
+            // `/tools` and `/execute` have to agree about availability. During a domain reload the
+            // registry empties, so this list is briefly a promise the executor cannot keep — every
+            // name here answers "unknown tool" for a few seconds. Listing them without saying so is
+            // the actual lie behind that confusion, and it cost a long debugging session: the 404s
+            // read as a broken assembly rather than a reload.
+            //
+            // `tools` stays exactly where it was, so existing clients are untouched. `reloading`
+            // tells a caller that a failure right now is transient, and `count` lets one notice the
+            // registry has emptied without diffing the list.
             return new HandlerResponse
             {
                 StatusCode = 200,
                 ContentType = "application/json",
-                Body = JsonConvert.SerializeObject(new { tools }, Formatting.None)
+                Body = JsonConvert.SerializeObject(new
+                {
+                    tools,
+                    count = tools.Count,
+                    reloading = IsReloading()
+                }, Formatting.None)
             };
         }
 

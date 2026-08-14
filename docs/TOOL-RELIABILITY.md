@@ -43,7 +43,7 @@ known-parameters-only and missing-optional both still succeed. 1151 tests pass.
 
 ---
 
-## 2 — `/execute` answers 404 during a domain reload  🟡 MITIGATED (status unchanged)
+## 2 — `/execute` answers 404 during a domain reload  ✅ FIXED (status unchanged by design)
 
 `GET /tools` keeps listing every tool while `POST /execute` returns **404** for those same names
 while the domain is reloading. 404 is indistinguishable from "this tool does not exist".
@@ -67,8 +67,12 @@ within one run: a freshly constructed registry is empty too, so every unknown to
 503. Erring toward 404 is the safer default anyway — a wrong 404 is clear and actionable, while a
 wrong 503 invites a client to retry forever against a tool that will never exist.
 
-**Still open:** `/tools` and `/execute` should agree on availability. Listing a tool that cannot be
-executed is the actual lie, and fixing that removes the confusion at its source.
+**Source fixed too.** `/tools` now returns `count` and `reloading` beside the list. During a reload
+that list is briefly a promise the executor cannot keep — every name in it answers "unknown tool"
+for a few seconds — and listing them without saying so was the actual lie behind the confusion.
+`tools` is unchanged in shape, so existing clients are untouched; a caller that reads `reloading`
+knows a failure right now is transient, and `count` shows the registry emptying without diffing
+the list.
 
 ## 3 — `editor/refresh` reports success without rebuilding  ✅ FIXED
 

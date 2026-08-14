@@ -5,6 +5,44 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.10] — 2026-08-14
+
+### Added
+
+- **`gameobject/get_info` returns the transform** — `Position`, `LocalPosition`, `Rotation` and
+  `LocalScale` as `float[]`, so a caller can sample, act, sample again and subtract. Their absence
+  made "did this object actually move?" unanswerable from outside the Editor, which let a recording
+  of moving scenery pass as gameplay.
+
+### Fixed
+
+- **`gameobject/get_info` finds inactive objects.** `GameObject.Find` skips them, so an inactive
+  object answered "not found" — a lie rather than an answer.
+
+## [1.0.0-beta.9] — 2026-08-14
+
+Tool-reliability release. Three of the four fixes share one shape: **a tool reporting success for
+work it did not do**, which a caller cannot detect without independently verifying the world.
+
+### Fixed
+
+- **Unknown parameters are rejected instead of silently ignored.** The generated schema already
+  advertised `additionalProperties: false`; the binder did not enforce it, so a misspelt or invented
+  parameter was dropped and the call succeeded with a result computed from defaults. The error now
+  names the offending parameter *and* the accepted ones.
+- **`editor/refresh` reports whether assemblies were actually rebuilt.** It previously returned
+  `CompilationFailed: false` when no compile had run at all, which reads as "compiled and current".
+  New fields: `AssembliesRebuilt`, `AssembliesUpdatedUtc`, `AutoRefreshEnabled`, `Pending`. When
+  nothing rebuilt, nothing is compiling and Auto Refresh is disabled, it fails with
+  `STALE_ASSEMBLIES` rather than reporting success.
+- **`editor/execute-code` accepts enums as callers write them** — qualified
+  (`UnityEditor.ImportAssetOptions.ForceUpdate`) and combined (`A | B`). This was never an arity
+  limit; multiple arguments already worked.
+- **`/tools` and `/execute` agree about availability during a domain reload.** `/tools` gains
+  `count` and `reloading`; a 404 from `/execute` carries `reloading` and `retryable`. The 404
+  **status is unchanged by design** — switching to 503 breaks a public contract asserted by
+  `ToolRegistryTests`, and belongs in a deliberate version bump.
+
 ## [1.0.0-beta.8] — 2026-08-08
 
 ### Fixed

@@ -122,3 +122,28 @@ that is documented in its description. A caller who reads only the tool name wil
 
 Worth considering a rename (`scene/resolve-object`?), or at minimum leading the description with
 "Does not create — returns a plan."
+
+
+---
+
+## 5 — `gameobject/get_info` returned no transform  ✅ FIXED
+
+It reported components, tag, layer and child count, and no position. That made a whole class of
+question unanswerable from outside the Editor: **"did the object actually move?"** could not be
+checked at all.
+
+The cost was concrete. A Play-Mode recording was accepted as gameplay because its pixels changed —
+what changed was the scenery, while the player stood still — and there was no way to measure the
+difference. Two separate attempts to settle it failed for want of a position: `get_info` returns
+none, and `measure/bounds` came back with a null centre.
+
+**Fix.** `Position`, `LocalPosition`, `Rotation` and `LocalScale`, as `float[]` so a caller can
+subtract two samples without knowing Unity's types. Existing fields are untouched.
+
+Also: `GameObject.Find` only sees ACTIVE objects, so an inactive one answered "not found", which is
+a lie rather than an answer. It now falls back to a search that includes them.
+
+5 tests. One of them caught a bug in the fallback immediately — it filtered on `scene.name` being
+non-empty, which excludes every object in an UNTITLED scene. `scene.IsValid()` is the right check,
+since a prefab asset is what the filter actually means to skip. The same mistake had been written
+into the Pro package's selection helper and was fixed there too.

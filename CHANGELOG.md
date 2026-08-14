@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### com.mosaic.bridge 1.0.0-beta.10
+
+- **`gameobject/get_info` returns the transform** — `Position`, `LocalPosition`, `Rotation`,
+  `LocalScale` as `float[]`. Their absence made "did this object actually move?" unanswerable from
+  outside the Editor, which let a recording of moving scenery pass as gameplay.
+- **`gameobject/get_info` finds inactive objects.** `GameObject.Find` skips them, so an inactive
+  object answered "not found" — a lie rather than an answer.
+
+Additive only; existing fields are unchanged.
+
 ### com.mosaic.bridge 1.0.0-beta.9
 
 Four tool-reliability fixes, all found while driving a live Editor through

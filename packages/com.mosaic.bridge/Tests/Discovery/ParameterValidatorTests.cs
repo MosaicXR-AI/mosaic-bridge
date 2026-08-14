@@ -102,5 +102,52 @@ namespace Mosaic.Bridge.Tests.Discovery
             var p = (NoRequiredParams)result.Value;
             Assert.AreEqual("test", p.Value);
         }
+
+        // ── Unknown parameters ───────────────────────────────────────────────────
+        // The generated schema promises `additionalProperties: false`, and the binder ignored
+        // anything extra. A caller that misspelled a parameter, or invented one, got silence and a
+        // successful-looking result computed from defaults — the parameter simply had no effect.
+        //
+        // Found the hard way: scene/create-object was called with a `primitiveType` it does not
+        // accept. The call succeeded, the parameter was dropped, and the result was read as though
+        // it had been honoured. That misdiagnosis then invalidated a downstream experiment.
+
+        [Test]
+        public void Bind_UnknownParameter_IsRejected()
+        {
+            var result = ParameterValidator.Bind<SimpleParams>(
+                "{\"RequiredField\":\"hello\",\"primitiveType\":\"Cube\"}");
+            Assert.IsFalse(result.IsValid, "an unknown parameter must not be silently ignored");
+            Assert.AreEqual(ErrorCodes.INVALID_PARAM, result.ErrorCode);
+        }
+
+        [Test]
+        public void Bind_UnknownParameter_NamesItAndTheValidOnes()
+        {
+            // "Could not find member 'x'" says what is wrong but not what to write instead, and the
+            // caller is here precisely because they believed a name that does not exist.
+            var result = ParameterValidator.Bind<SimpleParams>(
+                "{\"RequiredField\":\"hello\",\"primitiveType\":\"Cube\"}");
+            StringAssert.Contains("primitiveType", result.ErrorMessage);
+            StringAssert.Contains("name", result.ErrorMessage);
+            StringAssert.Contains("count", result.ErrorMessage);
+            StringAssert.Contains("requiredField (required)", result.ErrorMessage);
+        }
+
+        [Test]
+        public void Bind_KnownParametersOnly_StillSucceeds()
+        {
+            // The narrowing must not cost the ordinary case.
+            var result = ParameterValidator.Bind<SimpleParams>(
+                "{\"RequiredField\":\"hello\",\"Name\":\"world\",\"Count\":3}");
+            Assert.IsTrue(result.IsValid, result.ErrorMessage);
+        }
+
+        [Test]
+        public void Bind_MissingOptionalParameters_StillSucceeds()
+        {
+            var result = ParameterValidator.Bind<SimpleParams>("{\"RequiredField\":\"hello\"}");
+            Assert.IsTrue(result.IsValid, result.ErrorMessage);
+        }
     }
 }

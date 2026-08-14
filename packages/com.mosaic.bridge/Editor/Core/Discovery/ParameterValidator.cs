@@ -40,7 +40,19 @@ namespace Mosaic.Bridge.Core.Discovery
             object deserialized;
             try
             {
-                deserialized = JsonConvert.DeserializeObject(parametersJson, targetType);
+                // MissingMemberHandling.Error, because the generated schema already promises
+                // `additionalProperties: false` and the default binder quietly ignored anything
+                // extra. A caller that misspells a parameter, or invents one, got silence and a
+                // successful-looking result computed from defaults — the parameter simply had no
+                // effect. Silence is the worst possible answer here: the call looks like it did
+                // what was asked.
+                deserialized = JsonConvert.DeserializeObject(parametersJson, targetType,
+                    new JsonSerializerSettings { MissingMemberHandling = MissingMemberHandling.Error });
+            }
+            catch (JsonSerializationException ex) when (ex.Message.StartsWith("Could not find member", StringComparison.Ordinal))
+            {
+                return ParameterValidationResult.Fail(ErrorCodes.INVALID_PARAM,
+                    UnknownParameterMessage(ex, targetType));
             }
             catch (JsonException ex)
             {
@@ -65,6 +77,35 @@ namespace Mosaic.Bridge.Core.Discovery
             }
 
             return ParameterValidationResult.Ok(deserialized);
+        }
+
+        /// <summary>
+        /// Name the offending parameter AND the accepted ones. "Could not find member 'x' on ..."
+        /// tells the caller what is wrong but not what to write instead, and the whole reason this
+        /// error exists is that the caller believed a name that does not exist.
+        /// </summary>
+        private static string UnknownParameterMessage(JsonSerializationException ex, Type targetType)
+        {
+            string bad = null;
+            var open = ex.Message.IndexOf('\'');
+            if (open >= 0)
+            {
+                var close = ex.Message.IndexOf('\'', open + 1);
+                if (close > open) bad = ex.Message.Substring(open + 1, close - open - 1);
+            }
+
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var prop in targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var jp = prop.GetCustomAttribute<JsonPropertyAttribute>();
+                var name = jp?.PropertyName ?? char.ToLowerInvariant(prop.Name[0]) + prop.Name.Substring(1);
+                names.Add(prop.GetCustomAttribute<RequiredAttribute>() != null ? name + " (required)" : name);
+            }
+            names.Sort(StringComparer.Ordinal);
+
+            return $"Unknown parameter '{bad ?? "?"}'. This tool accepts: {string.Join(", ", names)}. " +
+                   "Unknown parameters are rejected rather than ignored, because a silently dropped " +
+                   "parameter produces a result that looks correct and is not.";
         }
 
         /// <summary>Convenience overload for a known type.</summary>

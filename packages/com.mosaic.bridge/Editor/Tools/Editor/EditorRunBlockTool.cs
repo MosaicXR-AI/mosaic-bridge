@@ -254,18 +254,66 @@ namespace Mosaic.Bridge.Tools.EditorOps
                               "Try again in 2 seconds."
                 });
 
-            // Timed out — compile errors most likely
+            // Timed out — compile errors most likely.
+            //
+            // Harvest the errors BEFORE deleting the script. The temp file has to go (a broken
+            // script in Assets/Editor keeps the whole project from compiling), but deleting it and
+            // then saying "call console/get-errors" sent the caller after a file that no longer
+            // exists: the console names Assets/Editor/MosaicBridge_RunBlock_<id>.cs, and by the
+            // time they look, the bridge has removed it. Two round trips to learn something this
+            // call already had in hand.
             string scriptPath = EditorPrefs.GetString(prefBase + "_scriptPath", "");
+            string compileErrors = CollectCompileErrors(jobId);
             DeleteTempScript(jobId, scriptPath);
 
             return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
             {
                 JobId   = jobId,
                 Status  = "error",
-                Message = $"Job timed out after {elapsed}s with no result. This usually means compile errors " +
-                          "prevented the script from running. Call console/get-errors to see compile errors, " +
-                          "fix the code, and resubmit."
+                Error   = string.IsNullOrEmpty(compileErrors) ? null : compileErrors,
+                Message = $"Job timed out after {elapsed}s — the script did not compile."
+                          + (string.IsNullOrEmpty(compileErrors)
+                              ? " No compile errors were captured; call console/get-errors. "
+                              : " The errors are in Error, below. ")
+                          + "Fix the code and resubmit. NOTE: the temp script has been deleted, so "
+                          + "the file the console names no longer exists — the line numbers refer "
+                          + "to the block you submitted, offset by the generated header."
             });
+        }
+
+        /// <summary>
+        /// Compile errors from this job's generated script, newest first, or "" if none were found.
+        /// </summary>
+        /// <remarks>
+        /// Filtered to the job's own file so an unrelated pre-existing error in the project is not
+        /// reported as the cause of this failure — the tool already warns not to submit a block
+        /// into a project that does not compile, and blaming a stale error would make that warning
+        /// harder to act on rather than easier.
+        /// </remarks>
+        private static string CollectCompileErrors(string jobId)
+        {
+            try
+            {
+                var entries = Mosaic.Bridge.Tools.ConsoleTools.ConsoleLogBuffer.GetEntries(
+                    includeInfo: false, includeWarnings: false, includeErrors: true, maxResults: 50);
+                var sb = new StringBuilder();
+                foreach (var e in entries)
+                {
+                    string where = e.File ?? "";
+                    string what  = e.Message ?? "";
+                    if (where.IndexOf(jobId, StringComparison.Ordinal) < 0 &&
+                        what.IndexOf(jobId, StringComparison.Ordinal) < 0)
+                        continue;
+                    if (sb.Length > 0) sb.AppendLine();
+                    sb.Append(what.Trim());
+                }
+                return sb.ToString();
+            }
+            catch (Exception)
+            {
+                // Never let diagnostics turn a compile failure into a tool failure.
+                return "";
+            }
         }
 
         private static void DeleteTempScript(string jobId, string scriptPath)

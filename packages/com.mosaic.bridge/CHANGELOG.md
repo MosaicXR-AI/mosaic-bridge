@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`gameobject/rename`** — there was no way to rename a GameObject at all. `create`, `delete`,
+  `duplicate`, `reparent`, `set_active` and `set_transform` existed; rename did not, and it could
+  not be reached through `component/set_property` either, because `GameObject` does not derive from
+  `Component` and `Transform` has no `name` property.
+
+  The gap surfaced walking a real Unity course through the Editor: *"Rename it to Camera"* was the
+  first instruction that could not be performed at all.
+
+  Renames inactive objects too, and **refuses when the new name is already taken** — every other
+  tool here addresses objects by name, so two sharing one makes the next lookup pick an arbitrary
+  winner. Renaming to its own name succeeds, so re-running a step is not an error.
+
 - **`gameobject/get_info` returns the transform** — `Position`, `LocalPosition`, `Rotation` and
   `LocalScale` as `float[]`, so a caller can sample, act, sample again and subtract. Their absence
   made "did this object actually move?" unanswerable from outside the Editor, which let a recording

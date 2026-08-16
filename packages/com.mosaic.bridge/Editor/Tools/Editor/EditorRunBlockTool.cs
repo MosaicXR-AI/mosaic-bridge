@@ -266,18 +266,31 @@ namespace Mosaic.Bridge.Tools.EditorOps
             string compileErrors = CollectCompileErrors(jobId);
             DeleteTempScript(jobId, scriptPath);
 
+            // Two different failures wear the same timeout, and they have different fixes.
+            //
+            // Reporting both as "the script did not compile" sent people to console/get-errors for
+            // errors that did not exist — after a poll had just said "compilation done, execution
+            // pending", which is the opposite claim. The presence of compile errors for THIS job's
+            // script is the discriminator, and this method already has it in hand.
+            bool didNotCompile = !string.IsNullOrEmpty(compileErrors);
+
             return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
             {
                 JobId   = jobId,
                 Status  = "error",
-                Error   = string.IsNullOrEmpty(compileErrors) ? null : compileErrors,
-                Message = $"Job timed out after {elapsed}s — the script did not compile."
-                          + (string.IsNullOrEmpty(compileErrors)
-                              ? " No compile errors were captured; call console/get-errors. "
-                              : " The errors are in Error, below. ")
-                          + "Fix the code and resubmit. NOTE: the temp script has been deleted, so "
-                          + "the file the console names no longer exists — the line numbers refer "
-                          + "to the block you submitted, offset by the generated header."
+                Error   = didNotCompile ? compileErrors : null,
+                Message = didNotCompile
+                    ? $"Job timed out after {elapsed}s — the script did not compile. The errors are "
+                      + "in Error, below. Fix the code and resubmit. NOTE: the temp script has been "
+                      + "deleted, so the file the console names no longer exists — the line numbers "
+                      + "refer to the block you submitted, offset by the generated header."
+                    : $"Job timed out after {elapsed}s — the script COMPILED, but the block never "
+                      + "ran. No compile errors were logged against it. The generated class is "
+                      + "[InitializeOnLoad] and schedules itself via delayCall, so this means the "
+                      + "domain reload did not deliver that callback — typically another reload, a "
+                      + "play-mode change or a second compile landing on top of it. Do NOT go "
+                      + "looking for compile errors; there are none. Resubmit once the Editor is "
+                      + "idle."
             });
         }
 

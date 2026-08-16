@@ -29,8 +29,11 @@ namespace Mosaic.Bridge.Tools.ConsoleTools
 
                 clearMethod.Invoke(null, null);
 
-                // Also clear our ring buffer so get-errors returns clean results
-                ConsoleLogBuffer.Clear();
+                // Also clear our ring buffer AND mark the persistent file, so get-errors really
+                // does return clean results. Clearing only the ring left the file — which
+                // GetEntries reads FIRST — intact, so the next get-errors returned the same
+                // entries and {"Cleared": true} was false.
+                ConsoleLogBuffer.MarkCleared();
 
                 return ToolResult<ConsoleClearResult>.Ok(new ConsoleClearResult { Cleared = true });
             }

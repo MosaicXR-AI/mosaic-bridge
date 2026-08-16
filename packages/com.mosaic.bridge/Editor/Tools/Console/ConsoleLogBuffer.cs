@@ -221,6 +221,42 @@ namespace Mosaic.Bridge.Tools.ConsoleTools
             get { lock (s_Lock) { return s_Ring.Count; } }
         }
 
+        /// <summary>Marker written by <see cref="MarkCleared"/>; reads stop when they reach it.</summary>
+        private const string ClearMarker = "=== CLEARED ";
+
+        /// <summary>
+        /// Clears the ring AND writes a boundary the file reader stops at.
+        /// </summary>
+        /// <remarks>
+        /// console/clear used to clear Unity's LogEntries and this ring, and return
+        /// {"Cleared": true} — but GetEntries reads the PERSISTENT FILE first, precisely because
+        /// that file "survives Clear so nothing is ever lost". Both halves were reasonable on their
+        /// own; together, clear reported success and the very next get-errors returned the same
+        /// entries. That made a genuine compile failure far harder to diagnose, because the Console
+        /// could not be reset to a known state.
+        ///
+        /// A boundary keeps both properties: the file still holds everything for forensics, and a
+        /// read stops at the most recent clear.
+        /// </remarks>
+        public static void MarkCleared()
+        {
+            Clear();
+            try
+            {
+                EnsureInitialized();
+                lock (s_Lock)
+                {
+                    s_Writer?.WriteLine(ClearMarker + DateTime.Now.ToString("HH:mm:ss") + " ===");
+                    s_Writer?.Flush();
+                }
+            }
+            catch (Exception)
+            {
+                // A boundary we cannot write is not worth failing a clear over; the ring and
+                // Unity's own console are still cleared.
+            }
+        }
+
         public static void Clear()
         {
             lock (s_Lock) { s_Ring.Clear(); }
@@ -244,6 +280,9 @@ namespace Mosaic.Bridge.Tools.ConsoleTools
                 for (int i = lines.Length - 1; i >= 0 && collected < maxResults; i--)
                 {
                     string line = lines[i];
+                    // Scanning backwards, the most recent clear is the earliest thing we may
+                    // report. Stop, do not skip: everything above it was explicitly discarded.
+                    if (line.StartsWith(ClearMarker, StringComparison.Ordinal)) break;
                     if (string.IsNullOrEmpty(line) || line.StartsWith("===")) continue;
 
                     // Parse: LEVEL|message|file:line

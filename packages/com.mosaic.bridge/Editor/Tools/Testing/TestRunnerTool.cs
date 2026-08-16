@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
+using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
@@ -17,20 +18,45 @@ namespace Mosaic.Bridge.Tools.Testing
     public static class TestRunnerTool
     {
         // Static results storage — callbacks fire asynchronously on update ticks
+        /// <summary>
+        /// SessionState key holding the last finished run.
+        /// </summary>
+        /// <remarks>
+        /// `_lastResult` and `_isRunning` are plain statics, and a domain reload — which compiling
+        /// the test assembly causes — wipes both. The completed result was lost, `_isRunning` fell
+        /// back to false, and every subsequent call took the START branch and returned -1. Forever.
+        /// EditorRunBlockTool solved exactly this hazard with EditorPrefs; SessionState is the
+        /// better fit here because a stale run should not outlive the Editor session.
+        /// </remarks>
+        private const string LastResultKey = "MosaicBridge.TestRunner.LastResult";
+
         private static TestRunResult _lastResult;
         private static bool _isRunning;
         private static TestResultCollector _activeCollector;
 
-        [MosaicTool("test/run", "Runs Unity EditMode tests and returns pass/fail results. Optionally filter by test name or category.", isReadOnly: true)]
+        [MosaicTool("test/run",
+                    "Runs Unity EditMode tests and returns pass/fail results. " +
+                    "POLLING: this returns immediately. Read `Status`, not TotalTests — " +
+                    "'started' (TotalTests -1, NOT an error), 'running' (partial counts), " +
+                    "'complete' (final tally). Call again to poll. " +
+                    "A finished run yields its tally ONCE: the next call after that starts a NEW " +
+                    "run, so do not poll past completion. " +
+                    "SCOPE: with no filter this runs the ENTIRE project suite, which can be " +
+                    "hundreds of tests. `testNameFilter` matches the FIXTURE name " +
+                    "(e.g. 'OverflowArenaTests' runs that class; a partial name matches fewer). " +
+                    "Results survive the domain reload that compiling a test assembly causes.",
+                    isReadOnly: true)]
         public static ToolResult<TestRunResult> RunTests(TestRunParams parameters)
         {
             try
             {
                 // If a previous run completed, return those results
-                if (_lastResult != null && !_isRunning)
+                var restored = _lastResult ?? LoadPersisted();
+                if (restored != null && !_isRunning)
                 {
-                    var cached = _lastResult;
-                    _lastResult = null; // consume the result
+                    var cached = restored;
+                    _lastResult = null;               // consume the result
+                    SessionState.EraseString(LastResultKey);
 
                     if (cached.Failed > 0)
                     {
@@ -47,6 +73,7 @@ namespace Mosaic.Bridge.Tools.Testing
                 {
                     var inProgress = new TestRunResult
                     {
+                        Status = "running",
                         TotalTests = _activeCollector?.Results.Count ?? 0,
                         Passed = _activeCollector?.Results.Count(r => r.Status == "Passed") ?? 0,
                         Failed = _activeCollector?.Results.Count(r => r.Status == "Failed") ?? 0,
@@ -101,7 +128,8 @@ namespace Mosaic.Bridge.Tools.Testing
                 // Return immediately — tests run on subsequent update ticks
                 var started = new TestRunResult
                 {
-                    TotalTests = -1 // indicates "started but not complete"
+                    Status = "started",
+                    TotalTests = -1 // kept for callers that already branch on it
                 };
                 return ToolResult<TestRunResult>.OkWithWarnings(started,
                     "Test run started. Call test/run again to retrieve results when complete.",
@@ -111,6 +139,31 @@ namespace Mosaic.Bridge.Tools.Testing
             {
                 _isRunning = false;
                 return ToolResult<TestRunResult>.Fail(ex.Message, "INTERNAL_ERROR");
+            }
+        }
+
+        private static void Persist(TestRunResult result)
+        {
+            try
+            {
+                SessionState.SetString(LastResultKey, JsonUtility.ToJson(result));
+            }
+            catch (Exception)
+            {
+                // A result that cannot be cached is still returned in-process; never fail the run.
+            }
+        }
+
+        private static TestRunResult LoadPersisted()
+        {
+            try
+            {
+                var json = SessionState.GetString(LastResultKey, "");
+                return string.IsNullOrEmpty(json) ? null : JsonUtility.FromJson<TestRunResult>(json);
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -132,6 +185,7 @@ namespace Mosaic.Bridge.Tools.Testing
                     DurationMs = (int)Results.Sum(r => r.DurationMs),
                     FailedTests = Results.Where(r => r.Status == "Failed").Take(20).ToList()
                 };
+                Persist(_lastResult);
                 _isRunning = false;
             }
 
@@ -177,6 +231,14 @@ namespace Mosaic.Bridge.Tools.Testing
 
     public sealed class TestRunResult
     {
+        /// <summary>
+        /// "started" | "running" | "complete". Read this, not TotalTests.
+        ///
+        /// TotalTests was the only signal, and -1 meant "started" — which reads as an error to
+        /// every caller who has ever seen a count. Nothing in the tool description said otherwise.
+        /// </summary>
+        public string Status { get; set; } = "complete";
+
         public int TotalTests { get; set; }
         public int Passed { get; set; }
         public int Failed { get; set; }

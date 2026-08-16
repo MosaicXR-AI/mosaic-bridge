@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Mosaic.Bridge.Contracts.Interfaces;
@@ -267,7 +268,7 @@ namespace Mosaic.Bridge.Core.Diagnostics
             _currentDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
             var filePath = GetLogFilePath(_currentDate);
 
-            _writer = new StreamWriter(filePath, append: true, encoding: System.Text.Encoding.UTF8)
+            _writer = new StreamWriter(filePath, append: true, encoding: new UTF8Encoding(false))
             {
                 AutoFlush = false  // drain task flushes explicitly after each batch
             };

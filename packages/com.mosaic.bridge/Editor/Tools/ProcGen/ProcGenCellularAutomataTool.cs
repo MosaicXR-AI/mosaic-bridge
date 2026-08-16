@@ -74,7 +74,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             cs.AppendLine("        _WriteMap[id.xy] = (_BirthMask & bit) != 0 ? 1.0 : 0.0;");
             cs.AppendLine("}");
 
-            File.WriteAllText(computeFull, cs.ToString(), Encoding.UTF8);
+            File.WriteAllText(computeFull, cs.ToString());
             AssetDatabase.ImportAsset(computeAsset);
 
             // --- Manager Script ---
@@ -176,7 +176,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             ms.AppendLine("    }");
             ms.AppendLine("}");
 
-            File.WriteAllText(managerFull, ms.ToString(), Encoding.UTF8);
+            File.WriteAllText(managerFull, ms.ToString());
             AssetDatabase.ImportAsset(managerAsset);
 
             return ToolResult<ProcGenCellularAutomataResult>.Ok(new ProcGenCellularAutomataResult

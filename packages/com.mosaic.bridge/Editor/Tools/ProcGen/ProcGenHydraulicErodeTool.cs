@@ -155,7 +155,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             cs.AppendLine("    }");
             cs.AppendLine("}");
 
-            File.WriteAllText(computeFull, cs.ToString(), Encoding.UTF8);
+            File.WriteAllText(computeFull, cs.ToString());
             AssetDatabase.ImportAsset(computeAsset);
 
             // --- Manager Script ---
@@ -262,7 +262,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             ms.AppendLine("    }");
             ms.AppendLine("}");
 
-            File.WriteAllText(managerFull, ms.ToString(), Encoding.UTF8);
+            File.WriteAllText(managerFull, ms.ToString());
             AssetDatabase.ImportAsset(managerAsset);
 
             return ToolResult<ProcGenHydraulicErodeResult>.Ok(new ProcGenHydraulicErodeResult

@@ -81,7 +81,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             cs.AppendLine("    _WriteMap[pos] = float2(saturate(newA), saturate(newB));");
             cs.AppendLine("}");
 
-            File.WriteAllText(computeFull, cs.ToString(), Encoding.UTF8);
+            File.WriteAllText(computeFull, cs.ToString());
             AssetDatabase.ImportAsset(computeAsset);
 
             // --- Manager Script ---
@@ -187,7 +187,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             ms.AppendLine("    }");
             ms.AppendLine("}");
 
-            File.WriteAllText(managerFull, ms.ToString(), Encoding.UTF8);
+            File.WriteAllText(managerFull, ms.ToString());
             AssetDatabase.ImportAsset(managerAsset);
 
             return ToolResult<ProcGenReactionDiffusionResult>.Ok(new ProcGenReactionDiffusionResult

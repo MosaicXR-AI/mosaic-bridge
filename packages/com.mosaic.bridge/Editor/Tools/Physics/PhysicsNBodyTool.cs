@@ -95,7 +95,7 @@ namespace Mosaic.Bridge.Tools.Physics
             var script = BuildScript(
                 className, p.Bodies, g, theta, softening, timeStep, integrator, p.BodyPrefabPath);
 
-            File.WriteAllText(fullPath, script, Encoding.UTF8);
+            File.WriteAllText(fullPath, script);
             AssetDatabase.Refresh();
             AssetDatabase.ImportAsset(scriptAssetPath);
 

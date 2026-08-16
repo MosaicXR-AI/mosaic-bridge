@@ -280,7 +280,7 @@ namespace Mosaic.Bridge.Tools.AI
             var fullPath = Path.Combine(projectRoot, scriptAssetPath);
 
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
-            File.WriteAllText(fullPath, sb.ToString(), Encoding.UTF8);
+            File.WriteAllText(fullPath, sb.ToString());
             AssetDatabase.ImportAsset(scriptAssetPath);
 
             // --- Optionally attach to GO ---

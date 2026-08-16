@@ -111,7 +111,7 @@ namespace Mosaic.Bridge.Tools.ConsoleTools
                     TrimFile();
                 }
 
-                s_Writer = new StreamWriter(s_PersistPath, append: true, Encoding.UTF8)
+                s_Writer = new StreamWriter(s_PersistPath, append: true, new UTF8Encoding(false))
                 {
                     AutoFlush = true
                 };

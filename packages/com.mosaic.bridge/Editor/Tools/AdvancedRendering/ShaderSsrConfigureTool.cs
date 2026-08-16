@@ -355,7 +355,7 @@ namespace Mosaic.Bridge.Tools.AdvancedRendering
             var fullPath = Path.Combine(projectRoot, assetPath);
             var dir = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(fullPath, content, Encoding.UTF8);
+            File.WriteAllText(fullPath, content);
             AssetDatabase.ImportAsset(assetPath);
         }
 

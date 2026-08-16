@@ -100,7 +100,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             cs.AppendLine("    vertices[id.x] = n * (_Radius + displacement);");
             cs.AppendLine("}");
 
-            File.WriteAllText(computeFull, cs.ToString(), Encoding.UTF8);
+            File.WriteAllText(computeFull, cs.ToString());
             AssetDatabase.ImportAsset(computeAsset);
 
             // --- Manager Script ---
@@ -216,7 +216,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             ms.AppendLine("    }");
             ms.AppendLine("}");
 
-            File.WriteAllText(managerFull, ms.ToString(), Encoding.UTF8);
+            File.WriteAllText(managerFull, ms.ToString());
             AssetDatabase.ImportAsset(managerAsset);
 
             return ToolResult<ProcGenPlanetResult>.Ok(new ProcGenPlanetResult

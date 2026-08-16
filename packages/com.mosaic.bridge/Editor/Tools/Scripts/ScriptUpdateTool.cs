@@ -22,7 +22,7 @@ namespace Mosaic.Bridge.Tools.Scripts
                 return ToolResult<ScriptUpdateResult>.Fail(
                     $"File not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
 
-            File.WriteAllText(fullPath, p.Content, Encoding.UTF8);
+            File.WriteAllText(fullPath, p.Content);
             AssetDatabase.ImportAsset(p.Path);
 
             return ToolResult<ScriptUpdateResult>.Ok(new ScriptUpdateResult

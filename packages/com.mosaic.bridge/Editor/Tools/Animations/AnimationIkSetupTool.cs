@@ -57,7 +57,7 @@ namespace Mosaic.Bridge.Tools.Animations
             AssetDatabaseHelper.EnsureFolder(savePath);
             string fullDir = Path.Combine(projectRoot, savePath);
             string fullPath = Path.Combine(projectRoot, scriptPath);
-            File.WriteAllText(fullPath, scriptCode, Encoding.UTF8);
+            File.WriteAllText(fullPath, scriptCode);
             AssetDatabase.Refresh();
             AssetDatabase.ImportAsset(scriptPath);
 

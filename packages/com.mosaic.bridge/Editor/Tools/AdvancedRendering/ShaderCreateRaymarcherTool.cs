@@ -195,7 +195,7 @@ namespace Mosaic.Bridge.Tools.AdvancedRendering
             var projectRoot = Application.dataPath.Replace("/Assets", "");
             var fullShaderPath = Path.Combine(projectRoot, shaderPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullShaderPath));
-            File.WriteAllText(fullShaderPath, sb.ToString(), Encoding.UTF8);
+            File.WriteAllText(fullShaderPath, sb.ToString());
             AssetDatabase.ImportAsset(shaderPath);
 
             // Create material

@@ -146,7 +146,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             sb.AppendLine("    }");
             sb.AppendLine("}");
 
-            File.WriteAllText(scriptFull, sb.ToString(), Encoding.UTF8);
+            File.WriteAllText(scriptFull, sb.ToString());
             AssetDatabase.ImportAsset(scriptAsset);
 
             return ToolResult<ProcGenPoissonSampleResult>.Ok(new ProcGenPoissonSampleResult

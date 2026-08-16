@@ -176,7 +176,7 @@ public class FABRIKSolver : MonoBehaviour
 
             var fullPath = Path.Combine(projectRoot, scriptPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
-            File.WriteAllText(fullPath, scriptSrc, Encoding.UTF8);
+            File.WriteAllText(fullPath, scriptSrc);
             AssetDatabase.ImportAsset(scriptPath);
 
             return ToolResult<NavIKFabrikResult>.Ok(new NavIKFabrikResult

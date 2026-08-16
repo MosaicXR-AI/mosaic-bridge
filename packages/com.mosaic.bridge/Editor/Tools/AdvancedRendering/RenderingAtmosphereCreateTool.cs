@@ -89,14 +89,13 @@ namespace Mosaic.Bridge.Tools.AdvancedRendering
             var projectRoot = Application.dataPath.Replace("/Assets", "");
             var fullShaderPath = Path.Combine(projectRoot, shaderAsset);
             Directory.CreateDirectory(Path.GetDirectoryName(fullShaderPath));
-            File.WriteAllText(fullShaderPath, shaderSrc, Encoding.UTF8);
+            File.WriteAllText(fullShaderPath, shaderSrc);
 
             string computePathOut = null;
             if (outputType == "compute_lut")
             {
                 var fullCompute = Path.Combine(projectRoot, computeAsset);
-                File.WriteAllText(fullCompute, BuildLutComputeShader(rayleigh, mie, planetRadius, atmoHeight),
-                                  Encoding.UTF8);
+                File.WriteAllText(fullCompute, BuildLutComputeShader(rayleigh, mie, planetRadius, atmoHeight));
                 computePathOut = computeAsset;
             }
 

@@ -50,7 +50,7 @@ namespace Mosaic.Bridge.Tools.Scripts
                 p.Path);
 
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
-            File.WriteAllText(fullPath, p.Content, Encoding.UTF8);
+            File.WriteAllText(fullPath, p.Content);
             AssetDatabase.ImportAsset(p.Path);
 
             return ToolResult<ScriptCreateResult>.Ok(new ScriptCreateResult

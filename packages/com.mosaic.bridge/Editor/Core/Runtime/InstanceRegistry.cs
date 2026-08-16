@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Linq;
 using Newtonsoft.Json;
 
@@ -189,7 +190,7 @@ namespace Mosaic.Bridge.Core.Runtime
 
                 fs.SetLength(0);
                 fs.Seek(0, SeekOrigin.Begin);
-                using (var writer = new StreamWriter(fs, System.Text.Encoding.UTF8, 4096, leaveOpen: true))
+                using (var writer = new StreamWriter(fs, new UTF8Encoding(false), 4096, leaveOpen: true))
                 {
                     string json = JsonConvert.SerializeObject(entries, Formatting.Indented);
                     writer.Write(json);

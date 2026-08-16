@@ -130,7 +130,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             cs.AppendLine("    Result[id] = fbm3D(p, _Octaves, _Persistence, _NoiseType);");
             cs.AppendLine("}");
 
-            File.WriteAllText(computeFull, cs.ToString(), Encoding.UTF8);
+            File.WriteAllText(computeFull, cs.ToString());
             AssetDatabase.ImportAsset(computeAsset);
 
             // --- Manager Script ---
@@ -194,7 +194,7 @@ namespace Mosaic.Bridge.Tools.ProcGen
             ms.AppendLine("}");
             ms.AppendLine("#endif");
 
-            File.WriteAllText(managerFull, ms.ToString(), Encoding.UTF8);
+            File.WriteAllText(managerFull, ms.ToString());
             AssetDatabase.ImportAsset(managerAsset);
 
             return ToolResult<ProcGenNoise3DTextureResult>.Ok(new ProcGenNoise3DTextureResult

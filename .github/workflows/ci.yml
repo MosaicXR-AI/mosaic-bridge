@@ -50,6 +50,25 @@ jobs:
           fi
           echo "Clean — all object identity goes through UnityIds."
 
+      - name: Text writes must not emit a UTF-8 BOM
+        # .NET's Encoding.UTF8 emits a byte-order mark; File.WriteAllText(path, text) does not.
+        # A BOM makes a .uxml unparseable — "Data at the root level is invalid. Line 1, position 1"
+        # — and the failed import STILL produces a VisualTreeAsset that exists and resolves, so
+        # UIDocument accepts it, nothing errors, and the UI is simply empty. Every .uxml written
+        # through script/create failed that way, silently. C# and JSON tolerate a BOM, which is why
+        # this survived: the tools that write them looked fine for as long as nobody wrote markup.
+        run: |
+          set -euo pipefail
+          if hits=$(grep -rnE "WriteAllText\([^;]*Encoding\.UTF8|new StreamWriter\([^;]*Encoding\.UTF8" \
+                      packages/com.mosaic.bridge --include='*.cs'); then
+            echo "::error::A text write specifies Encoding.UTF8, which emits a BOM."
+            echo "Drop the argument (File.WriteAllText defaults to UTF-8 without a BOM),"
+            echo "or pass new UTF8Encoding(false) where an encoding is required."
+            echo "$hits"
+            exit 1
+          fi
+          echo "Clean — no text write emits a BOM."
+
       - name: Package sources must not be gitignored
         # The root .gitignore carries Unity-project globs, and [Bb]uild/ silently swallowed
         # Editor/Tools/Build/ for four months — the build tool shipped as an empty folder.

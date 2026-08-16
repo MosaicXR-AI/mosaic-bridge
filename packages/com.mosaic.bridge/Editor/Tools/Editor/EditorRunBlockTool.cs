@@ -58,7 +58,7 @@ namespace Mosaic.Bridge.Tools.EditorOps
 
             // Write the temp script
             string script = BuildScript(className, jobId, p.Code, p.Usings);
-            File.WriteAllText(fullPath, script, Encoding.UTF8);
+            File.WriteAllText(fullPath, script);
 
             // Record submission time BEFORE triggering compile (survives domain reload)
             long submitted = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

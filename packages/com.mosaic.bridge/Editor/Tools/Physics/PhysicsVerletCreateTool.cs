@@ -97,7 +97,7 @@ namespace Mosaic.Bridge.Tools.Physics
                 className, type, pointCount, segmentLength, stiffness, damping, gravity,
                 pinCsv, solverIterations, collisionRadius);
 
-            File.WriteAllText(fullPath, script, Encoding.UTF8);
+            File.WriteAllText(fullPath, script);
             AssetDatabase.Refresh();
             AssetDatabase.ImportAsset(scriptAssetPath);
 

@@ -143,7 +143,7 @@ namespace Mosaic.Bridge.Tools.Physics
             string projectRoot = Application.dataPath.Replace("/Assets", "");
             string fullPath = Path.Combine(projectRoot, scriptAssetPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
-            File.WriteAllText(fullPath, scriptContent, Encoding.UTF8);
+            File.WriteAllText(fullPath, scriptContent);
 
             AssetDatabase.Refresh();
             AssetDatabase.ImportAsset(scriptAssetPath);

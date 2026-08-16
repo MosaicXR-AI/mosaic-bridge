@@ -519,7 +519,7 @@ public class RadianceCascadesFeature_{name} : MonoBehaviour
         {
             var fullPath = Path.Combine(projectRoot, assetPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
-            File.WriteAllText(fullPath, content, Encoding.UTF8);
+            File.WriteAllText(fullPath, content);
             AssetDatabase.ImportAsset(assetPath);
         }
     }

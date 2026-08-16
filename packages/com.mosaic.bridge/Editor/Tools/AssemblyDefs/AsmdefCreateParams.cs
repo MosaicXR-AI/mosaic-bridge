@@ -6,7 +6,12 @@ namespace Mosaic.Bridge.Tools.AssemblyDefs
     {
         /// <summary>Assembly definition name (e.g., "MyGame.Core").</summary>
         [Required] public string Name { get; set; }
-        /// <summary>Folder path relative to Assets/ where the .asmdef file will be created.</summary>
+        /// <summary>
+        /// FOLDER the .asmdef is created in, e.g. "Assets/Scripts/Runtime". The file itself is
+        /// named after <see cref="Name"/>. An .asmdef file path is accepted as an alias for its
+        /// own folder — passing one used to create a DIRECTORY of that name and nest the file
+        /// inside it, successfully and silently.
+        /// </summary>
         [Required] public string Path { get; set; }
         /// <summary>Optional assembly references (e.g., ["Unity.TextMeshPro", "Newtonsoft.Json"]).</summary>
         public string[] References { get; set; }

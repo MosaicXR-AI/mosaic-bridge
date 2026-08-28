@@ -1,6 +1,6 @@
 {
   "name": "@mosaicxr-ai/mcp-server",
-  "version": "1.0.0-beta.8",
+  "version": "1.0.0-beta.11",
   "description": "MCP server for Mosaic Bridge \u2014 connects AI clients (Claude Desktop, Cursor, etc.) to the Unity Editor.",
   "license": "Apache-2.0",
   "author": {

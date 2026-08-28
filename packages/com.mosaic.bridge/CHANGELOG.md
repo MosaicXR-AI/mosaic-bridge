@@ -5,6 +5,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.11] — 2026-08-28
+
+### Fixed
+
+- **Five tools that misreported what happened** (B1-B5): success/failure results now match
+  the actual Editor outcome, so an agent never continues on a silently failed step.
+- **`script/*` content handling** — content arriving as JSON, not only as a string, is
+  accepted instead of erroring.
+- **asmdef writes** — a file path is no longer mistaken for a folder of that name.
+- **Text writes no longer emit a UTF-8 BOM** — generated C# and asset files are
+  byte-clean for Unity's importers and diff tools.
+- **`editor/run_block`** — compile errors are returned to the caller instead of pointing
+  at a deleted temp file.
+
+### Added
+
+- **CLI wordmark** — the `create-bridge` installer shows the MOSAIC BRIDGE wordmark on a
+  TTY (NO_COLOR respected; piped output unchanged).
+
 ## [1.0.0-beta.10] — 2026-08-14
 
 ### Added

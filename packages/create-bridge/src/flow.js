@@ -187,6 +187,18 @@ export async function runInteractive(opts) {
 
 function showIntro() {
   console.log();
+  // Wordmark on a TTY only; NO_COLOR wins. Cool blue-to-emerald run — the free bridge.
+  if (process.stdout.isTTY && !process.env.NO_COLOR) {
+    const L = (rgb, s) => `\x1b[38;2;${rgb}m${s}`;
+    const R = '\x1b[0m';
+    console.log('  ' + L('127;180;224', '█▀▄▀█ ') + L('108;190;208', '█▀█ ') + L('92;199;190', '█▀ ') +
+      L('80;206;170', '▄▀█ ') + L('74;209;156', '█ ') + L('70;211;146', '█▀▀') + R);
+    console.log('  ' + L('127;180;224', '█ ▀ █ ') + L('108;190;208', '█▄█ ') + L('92;199;190', '▄█ ') +
+      L('80;206;170', '█▀█ ') + L('74;209;156', '█ ') + L('70;211;146', '█▄▄') + R +
+      '  \x1b[1;38;2;70;211;146mBRIDGE\x1b[0m');
+    console.log('  \x1b[2myour AI agent inside the real Unity Editor · (c) Mousa Soutari\x1b[0m');
+    console.log();
+  }
   p.intro(pc.bgCyan(pc.black(' Mosaic Bridge ')) + pc.cyan(' · Unity MCP setup'));
   p.log.message(
     pc.dim('This will install com.mosaic.bridge in your Unity project and')

@@ -6,6 +6,19 @@ The connection is outbound only: this process dials the service, so nothing need
 be opened on your network, and the Editor answers only calls arriving on that one
 authenticated socket.
 
+**macOS / Linux**
+```
+sh install.sh --url wss://cloud.example.com/tunnel --token <your-token> --project ~/Projects/Unity/my-course
+```
+
+**Windows** (PowerShell)
+```
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Url wss://cloud.example.com/tunnel -Token <your-token> -Project C:\Users\you\Projects\Unity\my-course
+```
+
+The installer checks the toolchain, adds the Mosaic Bridge package to the Unity
+project, and starts the connector. Afterwards, starting it again is just:
+
 ```
 npx @mosaicxr-ai/connector --url wss://cloud.example.com/tunnel --token <your-token>
 ```

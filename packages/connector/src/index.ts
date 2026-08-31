@@ -15,7 +15,7 @@
 import WebSocket from "ws";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 
 interface Discovery {
   port: number;
@@ -70,12 +70,17 @@ function findDiscovery(explicit?: string): Discovery {
   if (existsSync(registry)) {
     try {
       const reg = JSON.parse(readFileSync(registry, "utf8").replace(/^﻿/, ""));
+      // The registry is written by the Editor in camelCase; older tooling used
+      // snake_case. Accept both rather than silently finding nothing.
       const entries: any[] = Array.isArray(reg) ? reg : reg.instances || reg.entries || [];
-      const sorted = entries
-        .filter((e) => e && (e.runtime_dir || e.project_hash))
-        .sort((a, b) => (b.started_unix_seconds || 0) - (a.started_unix_seconds || 0));
+      const hashOf = (e: any) => e.projectHash || e.project_hash;
+      const dirOf = (e: any) => e.runtimeDir || e.runtime_dir;
+      const startedOf = (e: any) =>
+        e.startedUnixSeconds || e.started_unix_seconds ||
+        (e.registeredAt ? Date.parse(e.registeredAt) / 1000 : 0);
+      const sorted = entries.filter((e) => e && (dirOf(e) || hashOf(e))).sort((a, b) => startedOf(b) - startedOf(a));
       for (const e of sorted) {
-        candidates.push(e.runtime_dir ? join(e.runtime_dir, "bridge-discovery.json") : join(base, e.project_hash, "bridge-discovery.json"));
+        candidates.push(dirOf(e) ? join(dirOf(e), "bridge-discovery.json") : join(base, hashOf(e), "bridge-discovery.json"));
       }
     } catch {
       /* fall through to the direct guess below */
@@ -95,44 +100,81 @@ function findDiscovery(explicit?: string): Discovery {
   );
 }
 
-/** The bridge authenticates every request with an HMAC over method, path and body —
- *  the same scheme the local MCP server uses, so nothing about the Editor's security
- *  posture changes by connecting through the cloud. */
-async function callBridge(d: Discovery, route: string, params: unknown, timeoutMs: number): Promise<unknown> {
-  const path = `/tools/${route}`;
-  const bodyBuffer = Buffer.from(JSON.stringify({ parameters: params ?? {} }), "utf8");
-  const nonce = randomUUID();
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const secret = Buffer.from(d.secret_base64, "base64");
-  const payload = Buffer.concat([
-    Buffer.from(`POST\n${path}\n${nonce}\n${timestamp}\n`, "utf8"),
-    Buffer.from(createHmac("sha256", secret).update(bodyBuffer).digest("hex"), "utf8"),
-  ]);
-  const signature = createHmac("sha256", secret).update(payload).digest("base64");
+/** The bridge authenticates every request with an HMAC over a canonical string.
+ *
+ *  This mirrors packages/mcp-server/src/hmac.ts exactly, including the v1
+ *  length-prefixed framing: a signature that merely "looks right" is rejected, and
+ *  the local MCP server is the reference implementation for what right means. */
+function buildCanonical(nonce: string, timestamp: string, method: string, path: string, bodySha256: string): string {
+  const len = (x: string) => Buffer.byteLength(x, "utf8");
+  return [
+    "v1",
+    `${len(nonce)}:${nonce}`,
+    `${len(timestamp)}:${timestamp}`,
+    `${len(method)}:${method}`,
+    `${len(path)}:${path}`,
+    `${len(bodySha256)}:${bodySha256}`,
+  ].join("\n");
+}
 
+function signRequest(secretBase64: string, method: string, path: string, body: Buffer) {
+  const nonce = randomUUID().replace(/-/g, "");
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const bodySha256 = createHash("sha256").update(body).digest("hex");
+  const canonical = buildCanonical(nonce, timestamp, method.toUpperCase(), path, bodySha256);
+  const signature = createHmac("sha256", Buffer.from(secretBase64, "base64"))
+    .update(Buffer.from(canonical, "utf8"))
+    .digest("hex");
+  return { nonce, timestamp, signature };
+}
+
+async function bridgeRequest(
+  d: Discovery,
+  method: "GET" | "POST",
+  path: string,
+  body: unknown,
+  timeoutMs: number
+): Promise<unknown> {
+  const bodyBuffer = body ? Buffer.from(JSON.stringify(body), "utf8") : Buffer.alloc(0);
+  const { nonce, timestamp, signature } = signRequest(d.secret_base64, method, path, bodyBuffer);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`http://127.0.0.1:${d.port}${path}`, {
-      method: "POST",
+      method,
       headers: {
         "Content-Type": "application/json",
         "X-Mosaic-Nonce": nonce,
         "X-Mosaic-Timestamp": timestamp,
         "X-Mosaic-Signature": signature,
       },
-      body: bodyBuffer,
+      body: bodyBuffer.length > 0 ? bodyBuffer : undefined,
       signal: controller.signal,
     });
     const text = await res.text();
+    let parsed: unknown = text;
     try {
-      return JSON.parse(text);
+      parsed = JSON.parse(text);
     } catch {
-      return text;
+      /* the bridge answered with plain text; pass it through */
     }
+    if (!res.ok) throw new Error(`bridge ${res.status}: ${typeof parsed === "string" ? parsed : JSON.stringify(parsed)}`);
+    return parsed;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Routes the cloud understands: a bridge tool name executes, and two service routes
+ *  let the cloud ask what this Editor is and what it can do. */
+async function callBridge(d: Discovery, route: string, params: unknown, timeoutMs: number): Promise<unknown> {
+  if (route === "_health") return bridgeRequest(d, "GET", "/health", undefined, timeoutMs);
+  if (route === "_tools") return bridgeRequest(d, "GET", "/tools", undefined, timeoutMs);
+  // The Editor registers tools as mosaic_<category>_<action>; the pipeline and its
+  // docs speak of routes as <category>/<action>. Accept either spelling rather than
+  // making the caller remember which layer it is talking to.
+  const tool = route.includes("/") ? "mosaic_" + route.replace(/\//g, "_") : route;
+  return bridgeRequest(d, "POST", "/execute", { tool, parameters: params ?? {} }, timeoutMs);
 }
 
 function connect(args: Args, attempt = 0): void {
@@ -174,12 +216,19 @@ function connect(args: Args, attempt = 0): void {
     }
   });
 
-  const retry = (why: string) => {
+  const retry = (why: string, code?: number) => {
+    // 4000 means the service accepted a newer connector for this user: another
+    // process took the slot. Reconnecting would start a fight neither side wins,
+    // so this one steps aside instead.
+    if (code === 4000) {
+      process.stdout.write("another connector took over this token; exiting\n");
+      process.exit(0);
+    }
     const wait = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
     process.stdout.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
     setTimeout(() => connect(args, attempt + 1), wait);
   };
-  ws.on("close", (code) => retry(`connection closed (${code})`));
+  ws.on("close", (code) => retry(`connection closed (${code})`, code));
   ws.on("error", (err) => {
     if (ws.readyState !== WebSocket.OPEN) retry(`connection error: ${err.message}`);
   });

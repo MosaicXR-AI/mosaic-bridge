@@ -13,6 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
+import { setup, readConfig, addProject, statusReport, usage } from "./cli.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -36,16 +37,57 @@ function parseArgs(argv: string[]): Args {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
   };
-  const url = get("--url") || process.env.MOSAIC_CLOUD_URL || "";
-  const token = get("--token") || process.env.MOSAIC_CLOUD_TOKEN || "";
+  const stored = readConfig();
+  const url = get("--url") || process.env.MOSAIC_CLOUD_URL || stored?.url || "";
+  const token = get("--token") || process.env.MOSAIC_CLOUD_TOKEN || stored?.token || "";
   if (!url || !token) {
-    process.stderr.write(
-      "usage: mosaic-connector --url wss://<service>/tunnel --token <token>\n" +
-        "       (or set MOSAIC_CLOUD_URL and MOSAIC_CLOUD_TOKEN)\n"
-    );
+    process.stderr.write("not configured. Run: mosaic-connector setup\n");
     process.exit(2);
   }
   return { url, token, discoveryFile: get("--discovery-file"), verbose: argv.includes("--verbose") };
+}
+
+/** Subcommands run and exit; anything else falls through to the connection loop. */
+async function main(argv: string[]): Promise<void> {
+  const cmd = argv[0];
+  if (cmd === "setup") {
+    const get = (f: string) => (argv.indexOf(f) >= 0 ? argv[argv.indexOf(f) + 1] : undefined);
+    await setup({ url: get("--url"), token: get("--token") });
+    return;
+  }
+  if (cmd === "add") {
+    const target = argv[1];
+    if (!target) {
+      process.stderr.write("usage: mosaic-connector add <path to Unity project>\n");
+      process.exit(2);
+    }
+    const r = addProject(target);
+    process.stdout.write(r.message + "\n");
+    if (r.added) {
+      const cfg = readConfig();
+      if (cfg && !cfg.projects.includes(target)) {
+        cfg.projects.push(target);
+        (await import("./cli.js")).writeConfig(cfg);
+      }
+      process.stdout.write("Open the project in Unity once so the package imports.\n");
+    }
+    return;
+  }
+  if (cmd === "status") {
+    process.stdout.write(statusReport() + "\n");
+    return;
+  }
+  if (cmd === "help" || cmd === "--help" || cmd === "-h") {
+    process.stdout.write(usage() + "\n");
+    return;
+  }
+  // No configuration yet and no command: walk the person through setup rather than
+  // printing a usage error they cannot act on.
+  if (!cmd && !readConfig()) {
+    await setup();
+    return;
+  }
+  connect(parseArgs(argv.filter((a) => a !== "run")));
 }
 
 function sharedBase(): string {
@@ -234,4 +276,4 @@ function connect(args: Args, attempt = 0): void {
   });
 }
 
-connect(parseArgs(process.argv.slice(2)));
+main(process.argv.slice(2));

@@ -6,6 +6,34 @@ The connection is outbound only: this process dials the service, so nothing need
 be opened on your network, and the Editor answers only calls arriving on that one
 authenticated socket.
 
+## Installing
+
+**The easiest way:** open `https://<your-service>/install` and download the installer
+for your platform. It installs one program and no runtime.
+
+Then, once:
+
+```
+mosaic-connector setup
+```
+
+It asks for the service address and your access code, then offers to add the Mosaic
+Bridge package to the Unity projects it finds on this machine. **The package is added
+per Unity project**, because that is where Unity keeps its dependencies, so a new
+project later just needs:
+
+```
+mosaic-connector add /path/to/that/project
+```
+
+While you work, leave this running:
+
+```
+mosaic-connector run
+```
+
+## Installing from source
+
 **macOS / Linux**
 ```
 sh install.sh --url wss://cloud.example.com/tunnel --token <your-token> --project ~/Projects/Unity/my-course

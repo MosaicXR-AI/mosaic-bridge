@@ -1,0 +1,23 @@
+{
+  "name": "@mosaicxr-ai/connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Connects a local Unity Editor running Mosaic Bridge to a Mosaic Cloud service, over an outbound connection only",
+  "bin": {
+    "mosaic-connector": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

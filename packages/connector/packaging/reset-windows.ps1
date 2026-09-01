@@ -59,12 +59,20 @@ if ($Project) {
   $manifest = Join-Path $Project "Packages\manifest.json"
   if (Test-Path $manifest) {
     $m = Get-Content $manifest -Raw | ConvertFrom-Json
-    if ($m.dependencies.PSObject.Properties.Name -contains "com.mosaic.bridge") {
-      Act "remove com.mosaic.bridge from $manifest" {
-        $m.dependencies.PSObject.Properties.Remove("com.mosaic.bridge")
+    $mosaicDeps = @($m.dependencies.PSObject.Properties.Name | Where-Object { $_ -like "com.mosaic.*" })
+    $hasRegistry = $m.PSObject.Properties.Name -contains "scopedRegistries" -and
+                   ($m.scopedRegistries | Where-Object { $_.name -eq "Mosaic" })
+    if ($mosaicDeps.Count -or $hasRegistry) {
+      Act "remove $($mosaicDeps.Count) Mosaic package(s) and the Mosaic registry from $manifest" {
+        foreach ($d in $mosaicDeps) { $m.dependencies.PSObject.Properties.Remove($d) }
+        if ($m.PSObject.Properties.Name -contains "scopedRegistries") {
+          $kept = @($m.scopedRegistries | Where-Object { $_.name -ne "Mosaic" })
+          if ($kept.Count) { $m.scopedRegistries = $kept }
+          else { $m.PSObject.Properties.Remove("scopedRegistries") }
+        }
         ($m | ConvertTo-Json -Depth 40) | Set-Content $manifest -Encoding UTF8
       }
-    } else { Write-Host "  (bridge package not in the manifest)" -ForegroundColor DarkGray }
+    } else { Write-Host "  (no Mosaic packages in the manifest)" -ForegroundColor DarkGray }
   } else { Write-Host "  ($Project is not a Unity project)" -ForegroundColor Red }
 
   $lock = Join-Path $Project "Packages\packages-lock.json"
@@ -79,7 +87,19 @@ if ($Project) {
   Write-Host "  (no -Project given: the Unity project was left untouched)" -ForegroundColor DarkGray
 }
 
-# 5. The downloaded binary, so the next test starts from the download step
+# 5. Unity registry access for this service, written once per machine by setup
+$upm = Join-Path $env:USERPROFILE ".upmconfig.toml"
+if (Test-Path $upm) {
+  $text = Get-Content $upm -Raw
+  if ($text -match '\[npmAuth\."[^"]*registry"\]') {
+    Act "remove the Mosaic block from $upm" {
+      $cleaned = [regex]::Replace($text, '(?s)\[npmAuth\."[^"]*registry"\].*?(?=\[|$)', '')
+      Set-Content $upm $cleaned.Trim() -Encoding UTF8
+    }
+  } else { Write-Host "  (no Mosaic entry in .upmconfig.toml)" -ForegroundColor DarkGray }
+}
+
+# 6. The downloaded binary, so the next test starts from the download step
 Get-ChildItem (Join-Path $env:USERPROFILE "Downloads") -Filter "mosaic-connector*" -ErrorAction SilentlyContinue |
   ForEach-Object { $f = $_.FullName; Act "delete $f" { Remove-Item -Force $f } }
 

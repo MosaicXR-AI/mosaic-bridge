@@ -148,7 +148,7 @@ namespace Mosaic.Bridge.Core.Bootstrap
                 root["mcpServers"] = mcpServers;
             }
 
-            // Build the mosaic-bridge entry. Use "mosaic-mcp" binary name when path detection
+            // Build the local-route entry. Fall back to the scoped npm package when path detection
             // fails so users with a global npm install still get a working config.
             JObject serverEntry;
             if (!string.IsNullOrEmpty(mcpServerPath))
@@ -169,6 +169,9 @@ namespace Mosaic.Bridge.Core.Bootstrap
                 // clients spawn stdio servers without a shell, so a bare
                 // command: "mosaic-mcp" fails to launch. Wrap through `cmd /c`
                 // so the shim resolves correctly.
+                // Never invoke a bare `mosaic-mcp`: an unrelated package publishes a
+                // binary of that name on npm, so a bare command runs whatever happens
+                // to be first on PATH. The scoped package name cannot be mistaken.
                 var isWindows = UnityEngine.Application.platform == UnityEngine.RuntimePlatform.WindowsEditor;
                 serverEntry = isWindows
                     ? new JObject(
@@ -176,15 +179,19 @@ namespace Mosaic.Bridge.Core.Bootstrap
                         new JProperty("command", "cmd"),
                         new JProperty("args", new JArray(
                             "/c",
-                            "mosaic-mcp",
+                            "npx",
+                            "-y",
+                            "@mosaicxr-ai/mcp-server",
                             "--project-path",
                             projectPath
                         ))
                     )
                     : new JObject(
                         new JProperty("type", "stdio"),
-                        new JProperty("command", "mosaic-mcp"),
+                        new JProperty("command", "npx"),
                         new JProperty("args", new JArray(
+                            "-y",
+                            "@mosaicxr-ai/mcp-server",
                             "--project-path",
                             projectPath
                         ))
@@ -194,7 +201,7 @@ namespace Mosaic.Bridge.Core.Bootstrap
                 // console look like a failed install and told users to install something
                 // the product says they do not need.
                 logger?.Debug(
-                    "Local MCP server not detected; the .mcp.json entry falls back to a global 'mosaic-mcp' binary. " +
+                    "Local MCP server not detected; the .mcp.json entry falls back to npx @mosaicxr-ai/mcp-server. " +
                     "This matters only when Claude Code talks to the Editor directly; " +
                     "the Mosaic connector does not use it.");
             }

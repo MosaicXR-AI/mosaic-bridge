@@ -11,6 +11,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
+    "mosaic-bridge-mcp": "dist/index.js",
     "mosaic-mcp": "dist/index.js"
   },
   "files": [

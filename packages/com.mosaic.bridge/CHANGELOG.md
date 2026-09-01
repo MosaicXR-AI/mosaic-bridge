@@ -5,6 +5,31 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.12] — 2026-09-01
+
+### Fixed
+
+- **Mosaic Pro tools are allowed by default.** AssemblyGuard refused all 29 of them on
+  first import, so a licensed product greeted its buyer with 29 warnings naming the
+  tools they had just bought and telling them to edit a settings page. The Pro
+  assemblies have the same authorship and trust basis as the bridge tool assemblies,
+  and exist only when the licensed packages are installed.
+- **No `.mcp.json` is written unless it can work.** The Editor wrote one unasked into
+  the project root pointing at a binary that was not installed, which then shadowed a
+  working HTTP server for anyone starting Claude Code there.
+- **No bare `mosaic-mcp` in generated configuration.** An unrelated package on npm
+  publishes a binary of that name, so a bare command ran whatever was first on PATH.
+  Generated configuration now invokes `npx -y @mosaicxr-ai/mcp-server`, and the
+  package also installs as `mosaic-bridge-mcp`.
+- **The npm hint is no longer a warning.** Most installations reach the Editor through
+  the Mosaic connector, which needs no npm package at all; the line was the only
+  warning in an otherwise clean console.
+
+### Added
+
+- **`@mosaicxr-ai/connector`** — links a local Unity Editor to a Mosaic service over an
+  outbound connection, with installers for Windows and macOS.
+
 ## [1.0.0-beta.11] — 2026-08-28
 
 ### Fixed

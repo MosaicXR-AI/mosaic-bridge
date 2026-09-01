@@ -75,6 +75,18 @@ if ($Project) {
     } else { Write-Host "  (no Mosaic packages in the manifest)" -ForegroundColor DarkGray }
   } else { Write-Host "  ($Project is not a Unity project)" -ForegroundColor Red }
 
+  # Unity mirrors scoped registries into ProjectSettings, where they survive a
+  # manifest edit and quietly reappear on the next open.
+  $pms = Join-Path $Project "ProjectSettings\PackageManagerSettings.asset"
+  if ((Test-Path $pms) -and ((Get-Content $pms -Raw) -match "Mosaic")) {
+    Act "remove the Mosaic registry from $pms" {
+      $text = Get-Content $pms -Raw
+      $text = [regex]::Replace($text, "(?ms)^\s*- m_Id:.*?(?=^\s*- m_Id:|^\s*m_UserSelectedRegistryName|\z)", {
+        param($m) if ($m.Value -match "Mosaic") { "" } else { $m.Value } })
+      Set-Content $pms $text -Encoding UTF8
+    }
+  }
+
   $lock = Join-Path $Project "Packages\packages-lock.json"
   if (Test-Path $lock) { Act "delete $lock (Unity rebuilds it)" { Remove-Item -Force $lock } }
 

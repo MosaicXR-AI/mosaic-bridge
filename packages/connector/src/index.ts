@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, addProject, statusReport, usage } from "./cli.js";
+import { setup, readConfig, addProject, statusReport, usage, servicePackages } from "./cli.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -61,7 +61,11 @@ async function main(argv: string[]): Promise<void> {
       process.stderr.write("usage: mosaic-connector add <path to Unity project>\n");
       process.exit(2);
     }
-    const r = addProject(target);
+    // A project added later must get the same packages as one added during setup,
+    // so ask the service again rather than adding Bridge alone.
+    const stored = readConfig();
+    const svc = stored ? await servicePackages(stored.url, stored.token) : null;
+    const r = addProject(target, svc);
     process.stdout.write(r.message + "\n");
     if (r.added) {
       const cfg = readConfig();

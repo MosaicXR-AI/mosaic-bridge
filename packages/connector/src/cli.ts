@@ -43,9 +43,54 @@ export function writeConfig(cfg: AppConfig): void {
   fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2), { mode: 0o600 });
 }
 
-/** Adds the bridge package to a Unity project, leaving every other dependency and the
- *  file's formatting alone. Idempotent: running it twice changes nothing. */
-export function addProject(projectPath: string): { added: boolean; message: string } {
+export interface ServicePackages {
+  registry: string;
+  scopes: string[];
+  packages: { name: string; version: string }[];
+}
+
+/** Ask the service which packages this access code includes.
+ *
+ *  Pro is not on public GitHub and never will be: the service serves it, gated by the
+ *  same access code as everything else. Before this existed there was no route by
+ *  which a customer could install Pro at all. */
+export async function servicePackages(url: string, token: string): Promise<ServicePackages | null> {
+  const base = url.replace(/^ws/, "http").replace(/\/tunnel\/?$/, "");
+  try {
+    const res = await fetch(`${base}/registry`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    return (await res.json()) as ServicePackages;
+  } catch {
+    return null;
+  }
+}
+
+/** Unity reads registry access tokens from ~/.upmconfig.toml, not from the project,
+ *  so this is written once per machine rather than into anything a team shares. */
+export function writeUpmConfig(registry: string, token: string): string {
+  const file = path.join(os.homedir(), ".upmconfig.toml");
+  const origin = registry.replace(/\/$/, "");
+  const block = `[npmAuth."${origin}"]\ntoken = "${token}"\nalwaysAuth = true\n`;
+  let existing = "";
+  try {
+    existing = fs.readFileSync(file, "utf-8");
+  } catch {
+    /* first time */
+  }
+  // Replace our own block if it is already there; leave every other registry alone.
+  const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\[npmAuth\\."${escaped}"\\][^[]*`, "g");
+  const next = (existing.replace(re, "").trimEnd() + "\n\n" + block).trimStart();
+  fs.writeFileSync(file, next, { mode: 0o600 });
+  return file;
+}
+
+/** Adds the Mosaic packages to a Unity project, leaving every other dependency and the
+ *  file's formatting alone. Idempotent: running it twice changes nothing.
+ *
+ *  Bridge comes from its public git URL; Pro comes from the service's registry, added
+ *  as a scoped registry so Unity fetches it as the machine's licensed user. */
+export function addProject(projectPath: string, svc?: ServicePackages | null): { added: boolean; message: string } {
   const manifest = path.join(projectPath, "Packages", "manifest.json");
   if (!fs.existsSync(manifest)) {
     return { added: false, message: `not a Unity project (no Packages/manifest.json): ${projectPath}` };
@@ -53,12 +98,37 @@ export function addProject(projectPath: string): { added: boolean; message: stri
   const raw = fs.readFileSync(manifest, "utf-8");
   const m = JSON.parse(raw.replace(/^﻿/, ""));
   m.dependencies = m.dependencies || {};
-  if (m.dependencies[BRIDGE_PKG]) {
-    return { added: false, message: `already added to ${path.basename(projectPath)}` };
+  const before = JSON.stringify(m);
+
+  if (!m.dependencies[BRIDGE_PKG]) m.dependencies[BRIDGE_PKG] = BRIDGE_SRC;
+
+  const extra: string[] = [];
+  if (svc && svc.packages.length) {
+    m.scopedRegistries = Array.isArray(m.scopedRegistries) ? m.scopedRegistries : [];
+    const entry = { name: "Mosaic", url: svc.registry, scopes: svc.scopes };
+    const idx = m.scopedRegistries.findIndex((r: any) => r && r.name === "Mosaic");
+    if (idx >= 0) m.scopedRegistries[idx] = entry;
+    else m.scopedRegistries.push(entry);
+    for (const p of svc.packages) {
+      if (p.name === BRIDGE_PKG) continue; // bridge stays on its public git URL
+      if (!m.dependencies[p.name]) {
+        m.dependencies[p.name] = p.version;
+        extra.push(p.name.replace(/^com\.mosaic\./, ""));
+      }
+    }
   }
-  m.dependencies[BRIDGE_PKG] = BRIDGE_SRC;
+
+  if (JSON.stringify(m) === before) {
+    return { added: false, message: `already set up: ${path.basename(projectPath)}` };
+  }
   fs.writeFileSync(manifest, JSON.stringify(m, null, 2) + "\n");
-  return { added: true, message: `added the Mosaic Bridge package to ${path.basename(projectPath)}` };
+  const what = ["Bridge", ...extra].join(" + ");
+  return {
+    added: true,
+    message:
+      `added ${what} to ${path.basename(projectPath)}` +
+      (svc ? "" : " (Pro packages unavailable: the service did not answer)"),
+  };
 }
 
 /** Unity Hub keeps the list of known projects; offering them beats asking a person to
@@ -130,6 +200,18 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
 
     const cfg: AppConfig = { url, token, projects: existing?.projects ?? [] };
 
+    // What this access code includes, and what Unity needs in order to fetch it.
+    // Done once here rather than per project.
+    process.stdout.write("checking which packages your code includes... ");
+    const svc = await servicePackages(url, token);
+    if (svc && svc.packages.length) {
+      process.stdout.write(svc.packages.map((p) => p.name.replace(/^com\.mosaic\./, "")).join(", ") + "\n");
+      const written = writeUpmConfig(svc.registry, token);
+      process.stdout.write(`Unity registry access written to ${written}\n`);
+    } else {
+      process.stdout.write("none available (Bridge only)\n");
+    }
+
     // Unity Hub only knows projects that have been opened through it, so a project
     // cloned from git or copied from another machine is invisible here. Typing a path
     // has to be a first-class option, not a documented workaround.
@@ -154,7 +236,7 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
           process.stdout.write(`  ${t}: no such entry\n`);
           continue;
         }
-        const r = addProject(target);
+        const r = addProject(target, svc);
         process.stdout.write(`  ${r.message}\n`);
         if (fs.existsSync(path.join(target, "Packages", "manifest.json")) && !cfg.projects.includes(target)) {
           cfg.projects.push(target);

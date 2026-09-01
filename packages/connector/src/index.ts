@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, addProject, statusReport, usage, servicePackages } from "./cli.js";
+import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages } from "./cli.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -65,15 +65,19 @@ async function main(argv: string[]): Promise<void> {
     // so ask the service again rather than adding Bridge alone.
     const stored = readConfig();
     const svc = stored ? await servicePackages(stored.url, stored.token) : null;
+    // Record the project before touching it. A crash between the manifest write and
+    // the config write leaves the project and the connector disagreeing about
+    // reality, which is exactly what happened: `add` reported success, then died,
+    // and `status` showed nothing.
+    const cfg = readConfig();
+    if (cfg && !cfg.projects.includes(target)) {
+      cfg.projects.push(target);
+      writeConfig(cfg);
+    }
     const r = addProject(target, svc);
     process.stdout.write(r.message + "\n");
     if (r.added) {
-      const cfg = readConfig();
-      if (cfg && !cfg.projects.includes(target)) {
-        cfg.projects.push(target);
-        (await import("./cli.js")).writeConfig(cfg);
-      }
-      process.stdout.write("Open the project in Unity once so the package imports.\n");
+      process.stdout.write("Open the project in Unity once so the packages import.\n");
     }
     return;
   }
@@ -232,12 +236,35 @@ function connect(args: Args, attempt = 0): void {
     let d: Discovery | null = null;
     try {
       d = findDiscovery(args.discoveryFile);
-    } catch (e) {
-      process.stdout.write(`connected to the service, but ${(e as Error).message}\n`);
+    } catch {
+      /* reported below as a waiting state, not as a failure */
     }
-    process.stdout.write(
-      `connector ready${d ? ` (Unity ${d.unity_version ?? "?"} on port ${d.port})` : ""}\n`
-    );
+    if (d) {
+      process.stdout.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
+    } else {
+      // Do not say "ready" when there is no Editor: the previous version printed the
+      // problem and "connector ready" one line apart, and a person reasonably read
+      // the second line and stopped. It also blamed a closed project when the real
+      // cause is usually a project without the Mosaic Bridge package.
+      process.stdout.write(
+        "connected to the service, waiting for a Unity Editor.\n" +
+          "  Open a Unity project that has the Mosaic Bridge package installed.\n" +
+          "  If it is already open, that project may not have the package: run\n" +
+          "  mosaic-connector add <project path>, then reopen it in Unity.\n"
+      );
+      // Keep looking, so the state resolves itself when the Editor appears rather
+      // than requiring the person to restart something.
+      const poll = setInterval(() => {
+        try {
+          const found = findDiscovery(args.discoveryFile);
+          clearInterval(poll);
+          process.stdout.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
+        } catch {
+          /* still waiting */
+        }
+      }, 3000);
+      ws.on("close", () => clearInterval(poll));
+    }
   });
 
   ws.on("message", async (raw) => {

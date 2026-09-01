@@ -56,7 +56,14 @@ namespace Mosaic.Bridge.Core.Security
             "Mosaic.Bridge.Tools.URP",
             "Mosaic.Bridge.Tools.HDRP",
             "Mosaic.Bridge.Tools.Splines",
-            "Mosaic.Bridge.Tools.VisualScripting"
+            "Mosaic.Bridge.Tools.VisualScripting",
+            // Mosaic Pro. Same authorship and the same trust basis as the tool
+            // assemblies above: these exist only when the customer has installed the
+            // licensed packages. Leaving them out meant a paid product greeted its
+            // buyer with twenty-nine warnings naming the tools they had just bought
+            // and telling them to go and edit a settings page.
+            "Mosaic.Pro.Core",
+            "Mosaic.Pro.Education"
         };
 
         // ── Public API ───────────────────────────────────────────────────────

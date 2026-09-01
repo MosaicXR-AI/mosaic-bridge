@@ -59,6 +59,19 @@ namespace Mosaic.Bridge.Core.Bootstrap
                     // The user can force regeneration via the menu item.
                     return false;
                 }
+
+                // Only write a config we know can actually start. When the npm server is
+                // absent the entry would point at a binary that is not installed, land
+                // unasked in the user's repository, and shadow a working HTTP server they
+                // configured themselves. Silence is better than a broken file: the menu
+                // item is there for anyone who wants it.
+                if (string.IsNullOrEmpty(DetectMcpServerPath(logger)))
+                {
+                    logger?.Debug(
+                        "Skipping .mcp.json: the local MCP server is not installed. " +
+                        "Use Tools > Mosaic Bridge > Configure Claude Code if you want one written anyway.");
+                    return false;
+                }
                 return WriteConfig(logger, overwrite: false);
             }
             catch (Exception ex)
@@ -176,9 +189,14 @@ namespace Mosaic.Bridge.Core.Bootstrap
                             projectPath
                         ))
                     );
-                logger?.Warn(
-                    "Could not detect mosaic-mcp dist/index.js; falling back to global 'mosaic-mcp' binary. " +
-                    "Install with: npm install -g @mosaicxr-ai/mcp-server");
+                // Not a warning: most installations reach the Editor through the Mosaic
+                // connector, which needs no npm package at all. Warning here made a clean
+                // console look like a failed install and told users to install something
+                // the product says they do not need.
+                logger?.Debug(
+                    "Local MCP server not detected; the .mcp.json entry falls back to a global 'mosaic-mcp' binary. " +
+                    "This matters only when Claude Code talks to the Editor directly; " +
+                    "the Mosaic connector does not use it.");
             }
 
             mcpServers[ServerKey] = serverEntry;

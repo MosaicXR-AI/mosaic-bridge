@@ -115,19 +115,50 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
       process.stdout.write(`could not reach it (${(e as Error).message})\n`);
     }
 
+    // Unity fetches the bridge package over git. Without git on PATH the failure
+    // surfaces much later, as a Unity package-resolution error that mentions neither
+    // git nor Mosaic, so it is worth saying here.
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("git --version", { stdio: "ignore" });
+    } catch {
+      process.stdout.write(
+        "\nNOTE: git was not found on PATH. Unity needs it to fetch the Mosaic Bridge\n" +
+          "package, so install Git and re-open Unity if the package fails to import.\n"
+      );
+    }
+
     const cfg: AppConfig = { url, token, projects: existing?.projects ?? [] };
 
+    // Unity Hub only knows projects that have been opened through it, so a project
+    // cloned from git or copied from another machine is invisible here. Typing a path
+    // has to be a first-class option, not a documented workaround.
     const found = knownUnityProjects().filter((p) => !cfg.projects.includes(p));
     if (found.length) {
-      process.stdout.write("\nUnity projects found on this machine:\n");
+      process.stdout.write("\nUnity projects Unity Hub knows about:\n");
       found.forEach((p, i) => process.stdout.write(`  ${i + 1}. ${p}\n`));
-      const pick = await rl.question("Add which? (numbers separated by spaces, or Enter to skip): ");
-      for (const n of pick.split(/\s+/).filter(Boolean)) {
-        const p = found[Number(n) - 1];
-        if (!p) continue;
-        const r = addProject(p);
+    } else {
+      process.stdout.write("\nUnity Hub has no projects registered on this machine.\n");
+    }
+    process.stdout.write(
+      found.length
+        ? "\nEnter numbers to add, or type a full path to a project Hub does not list.\n"
+        : "\nType the full path to your Unity project.\n"
+    );
+    const answer = (await rl.question("Add which? (numbers, a path, or Enter to skip): ")).trim();
+    if (answer) {
+      const tokens = answer.startsWith("/") || /^[A-Za-z]:/.test(answer) ? [answer] : answer.split(/\s+/);
+      for (const t of tokens) {
+        const target = /^\d+$/.test(t) ? found[Number(t) - 1] : t.replace(/^["']|["']$/g, "");
+        if (!target) {
+          process.stdout.write(`  ${t}: no such entry\n`);
+          continue;
+        }
+        const r = addProject(target);
         process.stdout.write(`  ${r.message}\n`);
-        if (!cfg.projects.includes(p)) cfg.projects.push(p);
+        if (fs.existsSync(path.join(target, "Packages", "manifest.json")) && !cfg.projects.includes(target)) {
+          cfg.projects.push(target);
+        }
       }
     }
 

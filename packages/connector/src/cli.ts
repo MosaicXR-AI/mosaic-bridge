@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import readline from "node:readline/promises";
+import { execFileSync } from "node:child_process";
+import { waitForEditor } from "./discovery.js";
 
 export interface AppConfig {
   url: string;
@@ -246,12 +248,75 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
 
     writeConfig(cfg);
     process.stdout.write(`\nSaved to ${configPath()}\n`);
+
+    // Do the client configuration rather than printing a command to copy.
+    const claude = configureClaudeCode(url, token);
+    process.stdout.write((claude.ok ? "" : "\n") + claude.message + "\n");
+
     if (cfg.projects.length) {
-      process.stdout.write("Open the project in Unity once so the package imports, then run: mosaic-connector run\n");
+      // Then prove it. Ending on three unverified instructions leaves a person with
+      // no way to tell success from silence; waiting costs a minute and answers it.
+      const answer = (await rl.question("\nOpen the project in Unity now and I will wait for it? [Y/n] ")).trim().toLowerCase();
+      if (answer !== "n" && answer !== "no") {
+        process.stdout.write("Waiting for the Unity Editor. Open the project; the packages import on first open.\n");
+        let lastReport = 0;
+        const editor = await waitForEditor(6 * 60_000, (secs) => {
+          if (secs - lastReport >= 30) {
+            lastReport = secs;
+            process.stdout.write(`  still waiting (${secs}s). Unity is probably still importing.\n`);
+          }
+        });
+        if (editor) {
+          process.stdout.write(`\nconnected - Unity ${editor.unity_version ?? "?"} on port ${editor.port}\n`);
+          process.stdout.write("Everything is set up. Run: mosaic-connector run\n");
+        } else {
+          process.stdout.write(
+            "\nThe Editor did not appear within six minutes. That usually means the project\n" +
+              "is still importing, or it does not have the Mosaic packages yet. When it is\n" +
+              "open, run: mosaic-connector run\n"
+          );
+        }
+      } else {
+        process.stdout.write("Open the project in Unity once so the packages import, then run: mosaic-connector run\n");
+      }
     }
     return cfg;
   } finally {
     rl.close();
+  }
+}
+
+/** Configure Claude Code for the person, instead of handing them a command.
+ *
+ *  Running `claude mcp add` by hand is the single most common way a first run goes
+ *  wrong: without --scope user the server exists only in whichever folder the command
+ *  happened to run in, and the tools vanish the moment they open their project. The
+ *  connector already holds the address and the code, so there is nothing to type. */
+export function configureClaudeCode(url: string, token: string): { ok: boolean; message: string } {
+  const base = url.replace(/^ws/, "http").replace(/\/tunnel\/?$/, "");
+  try {
+    execFileSync("claude", [
+      "mcp", "add",
+      "--scope", "user",
+      "--transport", "http",
+      "mosaic", `${base}/mcp`,
+      "--header", `Authorization: Bearer ${token}`,
+    ], { stdio: "pipe" });
+    return { ok: true, message: "Claude Code configured for this machine (user scope)." };
+  } catch (err: any) {
+    const out = String(err?.stderr || err?.stdout || err?.message || "");
+    if (/already exists/i.test(out)) {
+      return { ok: true, message: "Claude Code already had a Mosaic server configured." };
+    }
+    if (/ENOENT|not found/i.test(out)) {
+      return {
+        ok: false,
+        message:
+          "Claude Code is not installed on this machine. Install it from claude.com/claude-code, " +
+          "then run: mosaic-connector setup again, or add the server yourself from the install page.",
+      };
+    }
+    return { ok: false, message: `Could not configure Claude Code automatically: ${out.split("\n")[0]}` };
   }
 }
 

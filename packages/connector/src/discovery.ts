@@ -64,6 +64,26 @@ export function findDiscovery(explicit?: string): Discovery {
   );
 }
 
+/** A discovery file proves a Unity Editor once wrote one, not that a bridge is
+ *  answering now. The file survives the Editor closing, and it survives an Editor
+ *  whose bridge never compiled: an acceptance test found the connector announcing
+ *  "Unity 6000.4.8f1 on port 8282" while nothing was listening on that port at all,
+ *  and every subsequent call failing with a bare "fetch failed". Probe before
+ *  claiming. */
+export async function bridgeAlive(d: Discovery, timeoutMs = 2500): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    // /health needs no signature; reachability is the only question here.
+    const res = await fetch(`http://127.0.0.1:${d.port}/health`, { signal: controller.signal });
+    return res.ok || res.status === 401;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Wait for an Editor to appear, reporting as it goes. Returns null on timeout so the
  *  caller can say something useful rather than throwing at a person. */
 export async function waitForEditor(
@@ -74,7 +94,14 @@ export async function waitForEditor(
   const started = Date.now();
   for (;;) {
     try {
-      return findDiscovery(explicit);
+      const d = findDiscovery(explicit);
+      // A stale file is worse than none: it makes the wait succeed against an Editor
+      // that is not there.
+      if (await bridgeAlive(d)) return d;
+      if (Date.now() - started > timeoutMs) return null;
+      onTick?.(Math.round((Date.now() - started) / 1000));
+      await new Promise((r) => setTimeout(r, 3000));
+      continue;
     } catch {
       if (Date.now() - started > timeoutMs) return null;
       onTick?.(Math.round((Date.now() - started) / 1000));

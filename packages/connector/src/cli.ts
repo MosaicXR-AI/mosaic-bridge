@@ -226,16 +226,38 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
     }
     process.stdout.write(
       found.length
-        ? "\nEnter numbers to add, or type a full path to a project Hub does not list.\n"
+        ? `\nEnter numbers to add (for example 1, or 1,2, or 1-${found.length}), or type a full path\n` +
+          "to a project Hub does not list.\n"
         : "\nType the full path to your Unity project.\n"
     );
     const answer = (await rl.question("Add which? (numbers, a path, or Enter to skip): ")).trim();
     if (answer) {
-      const tokens = answer.startsWith("/") || /^[A-Za-z]:/.test(answer) ? [answer] : answer.split(/\s+/);
+      // "numbers" invites 1,2 as readily as 1 2, and a comma used to be reinterpreted
+      // as a file path: the person was told their Unity project was not a Unity
+      // project, and setup then reported success having added nothing.
+      const looksLikePath = answer.startsWith("/") || answer.startsWith("~") || /^[A-Za-z]:[\\/]/.test(answer);
+      const numeric = /^[\d\s,\-]+$/.test(answer);
+      let tokens: string[];
+      if (looksLikePath) {
+        tokens = [answer];
+      } else if (numeric) {
+        tokens = [];
+        for (const part of answer.split(/[\s,]+/).filter(Boolean)) {
+          const range = /^(\d+)-(\d+)$/.exec(part);
+          if (range) {
+            const [a, b] = [Number(range[1]), Number(range[2])];
+            for (let i = Math.min(a, b); i <= Math.max(a, b); i++) tokens.push(String(i));
+          } else {
+            tokens.push(part);
+          }
+        }
+      } else {
+        tokens = [answer];
+      }
       for (const t of tokens) {
         const target = /^\d+$/.test(t) ? found[Number(t) - 1] : t.replace(/^["']|["']$/g, "");
         if (!target) {
-          process.stdout.write(`  ${t}: no such entry\n`);
+          process.stdout.write(`  ${t}: there is no project ${t} in the list above\n`);
           continue;
         }
         const r = addProject(target, svc);
@@ -252,6 +274,15 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
     // Do the client configuration rather than printing a command to copy.
     const claude = configureClaudeCode(url, token);
     process.stdout.write((claude.ok ? "" : "\n") + claude.message + "\n");
+
+    if (!cfg.projects.length) {
+      // Saying "saved" after adding nothing is how a person ends up with a configured
+      // machine and no configured project, and no way to tell.
+      process.stdout.write(
+        "\nNo Unity project was set up. Nothing in the Editor will work until one is.\n" +
+          "Run: mosaic-connector add <path to your Unity project>\n"
+      );
+    }
 
     if (cfg.projects.length) {
       // Then prove it. Ending on three unverified instructions leaves a person with

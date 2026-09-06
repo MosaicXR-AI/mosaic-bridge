@@ -14,7 +14,7 @@
  */
 import WebSocket from "ws";
 import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages } from "./cli.js";
-import { findDiscovery, type Discovery } from "./discovery.js";
+import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
 interface Args {
@@ -171,11 +171,22 @@ function connect(args: Args, attempt = 0): void {
   const target = `${args.url}${args.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(args.token)}`;
   const ws = new WebSocket(target);
 
-  ws.on("open", () => {
+  ws.on("open", async () => {
     attempt = 0;
     let d: Discovery | null = null;
     try {
-      d = findDiscovery(args.discoveryFile);
+      const found = findDiscovery(args.discoveryFile);
+      // Announce a version and a port only after something answers on them. The file
+      // outlives the Editor, and an Editor whose bridge failed to compile leaves one
+      // behind that describes a bridge which never ran.
+      d = (await bridgeAlive(found)) ? found : null;
+      if (!d) {
+        process.stdout.write(
+          "A Unity Editor was found on record, but its Mosaic Bridge is not answering.\n" +
+            "  Usually the project is still importing, or the package failed to compile.\n" +
+            "  Check the Unity Console for errors, then leave this running.\n"
+        );
+      }
     } catch {
       /* reported below as a waiting state, not as a failure */
     }
@@ -194,9 +205,10 @@ function connect(args: Args, attempt = 0): void {
       );
       // Keep looking, so the state resolves itself when the Editor appears rather
       // than requiring the person to restart something.
-      const poll = setInterval(() => {
+      const poll = setInterval(async () => {
         try {
           const found = findDiscovery(args.discoveryFile);
+          if (!(await bridgeAlive(found))) return; // recorded, but not answering yet
           clearInterval(poll);
           process.stdout.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
         } catch {
@@ -225,7 +237,15 @@ function connect(args: Args, attempt = 0): void {
       const result = await callBridge(d, msg.route, msg.params, 120_000);
       ws.send(JSON.stringify({ id: msg.id, result }));
     } catch (err) {
-      ws.send(JSON.stringify({ id: msg.id, error: (err as Error).message }));
+      // "fetch failed" is what Node says when nothing is listening, and it names
+      // neither the cause nor a remedy. The person reading it is an instructor.
+      const raw = (err as Error).message || String(err);
+      const message = /fetch failed|ECONNREFUSED|ENOTFOUND/i.test(raw)
+        ? "The Unity Editor is not answering. Its Mosaic Bridge is not running: the " +
+          "project may still be importing, or the Mosaic package may have failed to " +
+          "compile. Check the Unity Console for errors."
+        : raw;
+      ws.send(JSON.stringify({ id: msg.id, error: message }));
     }
   });
 

@@ -9,13 +9,17 @@
         "Unity.Addressables.Editor",
         "Unity.ResourceManager"
     ],
-    "includePlatforms": ["Editor"],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "MOSAIC_HAS_ADDRESSABLES"
+    ],
     "versionDefines": [
         {
             "name": "com.unity.addressables",

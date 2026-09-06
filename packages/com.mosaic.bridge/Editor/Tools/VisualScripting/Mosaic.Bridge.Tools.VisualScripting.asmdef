@@ -16,7 +16,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "MOSAIC_HAS_VISUALSCRIPTING"
+    ],
     "versionDefines": [
         {
             "name": "com.unity.visualscripting",

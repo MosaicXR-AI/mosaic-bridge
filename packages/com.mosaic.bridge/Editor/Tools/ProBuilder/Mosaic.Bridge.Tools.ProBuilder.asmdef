@@ -16,7 +16,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "MOSAIC_HAS_PROBUILDER"
+    ],
     "versionDefines": [
         {
             "name": "com.unity.probuilder",

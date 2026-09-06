@@ -162,6 +162,9 @@ jobs:
           print(f'OK — {stream} is LTS and shipping (newest {live[stream]})')
           PY
 
+      - name: Optional integrations are constrained, not just flagged
+        run: python3 scripts/validate_asmdefs.py
+
       - name: Package manifest and changelog agree
         run: |
           set -euo pipefail

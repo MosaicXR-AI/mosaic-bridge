@@ -17,7 +17,9 @@
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,
-    "defineConstraints": [],
+    "defineConstraints": [
+        "MOSAIC_HAS_URP"
+    ],
     "versionDefines": [
         {
             "name": "com.unity.render-pipelines.universal",

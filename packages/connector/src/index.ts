@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages } from "./cli.js";
+import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
@@ -74,6 +74,10 @@ async function main(argv: string[]): Promise<void> {
     if (r.added) {
       process.stdout.write("Open the project in Unity once so the packages import.\n");
     }
+    return;
+  }
+  if (cmd === "version" || cmd === "--version" || cmd === "-v") {
+    process.stdout.write(`mosaic-connector ${CONNECTOR_VERSION}\n`);
     return;
   }
   if (cmd === "status") {

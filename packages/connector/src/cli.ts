@@ -18,6 +18,11 @@ export interface AppConfig {
   projects: string[];
 }
 
+/** Printed by `version` and at the top of `help`. An acceptance round spent a page
+ *  reporting connector behaviour as unfixed because the machine was running a build from
+ *  before the fix, and nothing on it could say which build that was. */
+export const CONNECTOR_VERSION = "0.8.0";
+
 const BRIDGE_PKG = "com.mosaic.bridge";
 const BRIDGE_SRC = "https://github.com/MosaicXR-AI/mosaic-bridge.git?path=/packages/com.mosaic.bridge";
 
@@ -406,12 +411,15 @@ export function usage(): string {
   return [
     "mosaic-connector — connects this machine's Unity Editor to Mosaic",
     "",
+    `mosaic-connector ${CONNECTOR_VERSION}`,
+    "",
     "  setup                 first run: service address, access code, pick projects",
     "    --url U --token T --project P   answer it all up front, no prompts",
     "  add <project path>    add the Mosaic Bridge package to one more Unity project",
     "  status                what is configured on this machine",
     "  run                   connect and stay connected (leave the window open)",
     "",
+    "  version               print the connector build",
     "With no command, `run` is assumed when configured, and `setup` when not.",
   ].join("\n");
 }

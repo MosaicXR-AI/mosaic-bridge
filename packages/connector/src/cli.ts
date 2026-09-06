@@ -113,9 +113,17 @@ export function addProject(projectPath: string, svc?: ServicePackages | null): {
     else m.scopedRegistries.push(entry);
     for (const p of svc.packages) {
       if (p.name === BRIDGE_PKG) continue; // bridge stays on its public git URL
-      if (!m.dependencies[p.name]) {
+      const pinned = m.dependencies[p.name];
+      if (!pinned) {
         m.dependencies[p.name] = p.version;
         extra.push(p.name.replace(/^com\.mosaic\./, ""));
+      } else if (pinned !== p.version) {
+        // An existing pin was left untouched, so there was no way to upgrade a project
+        // short of hand-editing manifest.json — and a project pinned to a version the
+        // service had moved past kept running only on Unity's package cache. Running
+        // `add` again is the obvious thing to try, so it is what performs the upgrade.
+        m.dependencies[p.name] = p.version;
+        extra.push(`${p.name.replace(/^com\.mosaic\./, "")} ${pinned} -> ${p.version}`);
       }
     }
   }

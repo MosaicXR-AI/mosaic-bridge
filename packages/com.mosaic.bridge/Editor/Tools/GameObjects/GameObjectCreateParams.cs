@@ -15,6 +15,7 @@ namespace Mosaic.Bridge.Tools.GameObjects
         /// Valid values: Cube, Sphere, Cylinder, Plane, Capsule, Quad.
         /// If null/empty, creates an empty GameObject.
         /// </summary>
+        [AllowedValues(typeof(UnityEngine.PrimitiveType))]
         public string PrimitiveType { get; set; }
     }
 }

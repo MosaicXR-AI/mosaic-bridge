@@ -52,6 +52,19 @@ namespace Mosaic.Bridge.Core.Discovery
                 if (!prop.CanWrite) continue;
 
                 var schema = TypeToSchema(prop.PropertyType, visited);
+
+                // The values a parameter accepts are part of its schema. Without this the
+                // published schema said "string" for parameters whose validator knows an
+                // exact six-item list, so the only way to discover a value was to send a
+                // wrong one and read the rejection.
+                var allowed = prop.GetCustomAttribute<AllowedValuesAttribute>();
+                if (allowed != null && allowed.Values.Length > 0)
+                {
+                    var arr = new JArray();
+                    foreach (var v in allowed.Values) arr.Add(v);
+                    schema[allowed.Exhaustive ? "enum" : "examples"] = arr;
+                }
+
                 properties[ToCamelCase(prop.Name)] = schema;
 
                 if (prop.GetCustomAttribute<RequiredAttribute>() != null)

@@ -58,9 +58,14 @@ export function findDiscovery(explicit?: string): Discovery {
       if (d.port && d.secret_base64) return d;
     }
   }
+  // "then start the connector again" was wrong advice and reached people through the two
+  // busiest surfaces — every editor_call and editor_routes failure — while editor_status
+  // had already been corrected. The connector reconnects by itself; telling someone to
+  // restart it sends them to fix the one part that is working.
   throw new Error(
-    "No running Unity Editor with the Mosaic Bridge was found. Open the Unity project first, " +
-      "then start the connector again."
+    "No running Unity Editor with the Mosaic Bridge was found. Open the Unity project on " +
+      "that machine and check its Console: the Mosaic package may still be importing, or may " +
+      "have failed to compile. Leave the connector running — it reconnects on its own."
   );
 }
 

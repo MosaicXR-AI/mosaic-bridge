@@ -170,18 +170,28 @@ export function knownUnityProjects(): string[] {
 
 /** First run: ask for the two things only the customer knows, verify them against the
  *  service, and offer the Unity projects we can already see. */
-export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig> {
+export async function setup(preset: Partial<AppConfig> = {}, project?: string): Promise<AppConfig> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const existing = readConfig();
+  // Whether there is anyone to answer. Setup crashed with a Node stack trace —
+  // ERR_USE_AFTER_CLOSE, readline was closed — the moment it asked a question with no
+  // terminal attached, which is exactly how it runs under an automation tool or from a
+  // script. A prompt that cannot be answered is not an error; it is a question that
+  // should not be asked.
+  const interactive = Boolean(process.stdin.isTTY);
+  const ask = async (q: string): Promise<string> => {
+    if (!interactive) return "";
+    return await rl.question(q);
+  };
   try {
     const url =
       preset.url ||
-      (await rl.question(`Service address${existing?.url ? ` [${existing.url}]` : ""}: `)) ||
+      (await ask(`Service address${existing?.url ? ` [${existing.url}]` : ""}: `)) ||
       existing?.url ||
       "";
     const token =
       preset.token ||
-      (await rl.question(`Access code${existing?.token ? " [keep existing]" : ""}: `)) ||
+      (await ask(`Access code${existing?.token ? " [keep existing]" : ""}: `)) ||
       existing?.token ||
       "";
     if (!url || !token) throw new Error("both the service address and the access code are required");
@@ -199,8 +209,12 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
     // surfaces much later, as a Unity package-resolution error that mentions neither
     // git nor Mosaic, so it is worth saying here.
     try {
-      const { execSync } = await import("node:child_process");
-      execSync("git --version", { stdio: "ignore" });
+      // Statically imported, never `await import`. A dynamic import inside a pkg
+      // snapshot always throws — the binary has no import callback — so this check
+      // failed on every packaged build and told every customer, including ones with
+      // git installed, to go and install git. The same mistake took the connector down
+      // once before; the rule is that the packaged binary imports nothing at runtime.
+      execFileSync("git", ["--version"], { stdio: "ignore" });
     } catch {
       process.stdout.write(
         "\nNOTE: git was not found on PATH. Unity needs it to fetch the Mosaic Bridge\n" +
@@ -226,19 +240,25 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
     // cloned from git or copied from another machine is invisible here. Typing a path
     // has to be a first-class option, not a documented workaround.
     const found = knownUnityProjects().filter((p) => !cfg.projects.includes(p));
-    if (found.length) {
-      process.stdout.write("\nUnity projects Unity Hub knows about:\n");
-      found.forEach((p, i) => process.stdout.write(`  ${i + 1}. ${p}\n`));
-    } else {
-      process.stdout.write("\nUnity Hub has no projects registered on this machine.\n");
+    // Only when a question is actually being asked. Told to "type the full path to your
+    // Unity project" by a run that had already been given one, and with no prompt to
+    // type it at, a reader reasonably concludes the run went wrong.
+    const asking = !project && interactive;
+    if (asking) {
+      if (found.length) {
+        process.stdout.write("\nUnity projects Unity Hub knows about:\n");
+        found.forEach((p, i) => process.stdout.write(`  ${i + 1}. ${p}\n`));
+      } else {
+        process.stdout.write("\nUnity Hub has no projects registered on this machine.\n");
+      }
+      process.stdout.write(
+        found.length
+          ? `\nEnter numbers to add (for example 1, or 1,2, or 1-${found.length}), or type a full path\n` +
+            "to a project Hub does not list.\n"
+          : "\nType the full path to your Unity project.\n"
+      );
     }
-    process.stdout.write(
-      found.length
-        ? `\nEnter numbers to add (for example 1, or 1,2, or 1-${found.length}), or type a full path\n` +
-          "to a project Hub does not list.\n"
-        : "\nType the full path to your Unity project.\n"
-    );
-    const answer = (await rl.question("Add which? (numbers, a path, or Enter to skip): ")).trim();
+    const answer = (project || (await ask("Add which? (numbers, a path, or Enter to skip): "))).trim();
     if (answer) {
       // "numbers" invites 1,2 as readily as 1 2, and a comma used to be reinterpreted
       // as a file path: the person was told their Unity project was not a Unity
@@ -292,10 +312,16 @@ export async function setup(preset: Partial<AppConfig> = {}): Promise<AppConfig>
       );
     }
 
-    if (cfg.projects.length) {
+    if (cfg.projects.length && !interactive) {
+      // With nobody at the keyboard there is nobody to open Unity either, so waiting six
+      // minutes for an Editor that cannot appear would just look like a hang.
+      process.stdout.write(
+        "\nOpen the project in Unity once so the packages import, then run: mosaic-connector run\n"
+      );
+    } else if (cfg.projects.length) {
       // Then prove it. Ending on three unverified instructions leaves a person with
       // no way to tell success from silence; waiting costs a minute and answers it.
-      const answer = (await rl.question("\nOpen the project in Unity now and I will wait for it? [Y/n] ")).trim().toLowerCase();
+      const answer = (await ask("\nOpen the project in Unity now and I will wait for it? [Y/n] ")).trim().toLowerCase();
       if (answer !== "n" && answer !== "no") {
         process.stdout.write("Waiting for the Unity Editor. Open the project; the packages import on first open.\n");
         let lastReport = 0;
@@ -381,6 +407,7 @@ export function usage(): string {
     "mosaic-connector — connects this machine's Unity Editor to Mosaic",
     "",
     "  setup                 first run: service address, access code, pick projects",
+    "    --url U --token T --project P   answer it all up front, no prompts",
     "  add <project path>    add the Mosaic Bridge package to one more Unity project",
     "  status                what is configured on this machine",
     "  run                   connect and stay connected (leave the window open)",

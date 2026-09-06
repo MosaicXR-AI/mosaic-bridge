@@ -44,7 +44,10 @@ async function main(argv: string[]): Promise<void> {
   const cmd = argv[0];
   if (cmd === "setup") {
     const get = (f: string) => (argv.indexOf(f) >= 0 ? argv[argv.indexOf(f) + 1] : undefined);
-    await setup({ url: get("--url"), token: get("--token") });
+    // --project makes the whole of setup answerable from a command line, which is what
+    // an automation tool or an IT rollout needs; without it, setup could only ever be
+    // completed by a person typing at a prompt.
+    await setup({ url: get("--url"), token: get("--token") }, get("--project"));
     return;
   }
   if (cmd === "add") {

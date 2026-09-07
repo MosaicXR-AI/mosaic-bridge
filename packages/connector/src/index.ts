@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, CONNECTOR_VERSION } from "./cli.js";
+import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
@@ -61,8 +61,12 @@ async function main(argv: string[]): Promise<void> {
     const stored = readConfig();
     let svc = null;
     try {
-      svc = stored ? await servicePackages(stored.url, stored.token) : null;
+      svc = stored ? await servicePackages(stored.url, stored.token, machineIdentity(stored)) : null;
     } catch (e) {
+      if (e instanceof MachineLimitReached) {
+        process.stderr.write(e.message + "\nThe project was not changed.\n");
+        process.exit(2);
+      }
       if (e instanceof AccessCodeRejected) {
         process.stderr.write(
           "The service did not accept the saved access code, so the project was not changed.\n" +
@@ -195,8 +199,26 @@ async function callBridge(d: Discovery, route: string, params: unknown, timeoutM
 }
 
 function connect(args: Args, attempt = 0): void {
-  const target = `${args.url}${args.url.includes("?") ? "&" : "?"}token=${encodeURIComponent(args.token)}`;
+  // Who is dialling in, not just with which code. The service keeps the list of
+  // machines per code and refuses one too many.
+  const m = machineIdentity(readConfig());
+  const q = new URLSearchParams({
+    token: args.token, machine: m.id, host: m.host, osuser: m.osUser, platform: m.platform, connector: m.connector,
+  });
+  const target = `${args.url}${args.url.includes("?") ? "&" : "?"}${q.toString()}`;
   const ws = new WebSocket(target);
+
+  // A 403 carries the reason in its body — which machines already hold this code —
+  // and reconnecting would only repeat it. Print it, and stop.
+  ws.on("unexpected-response", (_req, res) => {
+    if (res.statusCode !== 403) return;
+    let body = "";
+    res.on("data", (c: Buffer) => (body += c.toString()));
+    res.on("end", () => {
+      process.stdout.write((body || "The service refused this machine.") + "\n");
+      process.exit(2);
+    });
+  });
 
   ws.on("open", async () => {
     attempt = 0;

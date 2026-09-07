@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import readline from "node:readline/promises";
+import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { waitForEditor } from "./discovery.js";
 
@@ -16,12 +17,58 @@ export interface AppConfig {
   url: string;
   token: string;
   projects: string[];
+  /** Generated once, at setup, and sent with every connection. It is how the service
+   *  knows which machines a code is used from, and refuses one too many. */
+  machineId?: string;
+}
+
+export interface MachineIdentity {
+  id: string;
+  host: string;
+  osUser: string;
+  platform: string;
+  connector: string;
+}
+
+/** This machine, as the service will know it. The id is created the first time it is
+ *  needed and kept in connector.json, so it survives Unity reinstalls and connector
+ *  re-downloads but not a fresh setup on a different computer. */
+export function machineIdentity(cfg?: AppConfig | null): MachineIdentity {
+  let id = cfg?.machineId;
+  if (!id) {
+    id = randomUUID().replace(/-/g, "");
+    if (cfg) {
+      cfg.machineId = id;
+      try {
+        writeConfig(cfg);
+      } catch {
+        /* unsaved: a new id next time, which counts as a new machine — better than silence */
+      }
+    }
+  }
+  let osUser = "";
+  try {
+    osUser = os.userInfo().username;
+  } catch {
+    osUser = process.env.USER || process.env.USERNAME || "";
+  }
+  return { id, host: os.hostname(), osUser, platform: process.platform, connector: CONNECTOR_VERSION };
+}
+
+export function machineHeaders(m: MachineIdentity): Record<string, string> {
+  return {
+    "X-Mosaic-Machine": m.id,
+    "X-Mosaic-Host": m.host,
+    "X-Mosaic-User": m.osUser,
+    "X-Mosaic-Platform": m.platform,
+    "X-Mosaic-Connector": m.connector,
+  };
 }
 
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.9.2";
+export const CONNECTOR_VERSION = "0.10.0";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in
@@ -76,15 +123,30 @@ export class AccessCodeRejected extends Error {
   }
 }
 
-export async function servicePackages(url: string, token: string): Promise<ServicePackages | null> {
+/** Thrown when the service answers 403: the code is real but already on its limit of
+ *  machines. The message is the service's own, and names the machines. */
+export class MachineLimitReached extends Error {}
+
+export async function servicePackages(url: string, token: string, machine?: MachineIdentity): Promise<ServicePackages | null> {
   const base = url.replace(/^ws/, "http").replace(/\/tunnel\/?$/, "");
   let res: Response;
   try {
-    res = await fetch(`${base}/registry`, { headers: { Authorization: `Bearer ${token}` } });
+    res = await fetch(`${base}/registry`, {
+      headers: { Authorization: `Bearer ${token}`, ...(machine ? machineHeaders(machine) : {}) },
+    });
   } catch {
     return null; // unreachable: a different problem, reported differently
   }
   if (res.status === 401) throw new AccessCodeRejected();
+  if (res.status === 403) {
+    let message = "This access code is already in use on its maximum number of machines.";
+    try {
+      message = ((await res.json()) as { message?: string }).message || message;
+    } catch {
+      /* keep the default */
+    }
+    throw new MachineLimitReached(message);
+  }
   if (!res.ok) return null;
   return (await res.json()) as ServicePackages;
 }
@@ -233,15 +295,23 @@ export async function setup(preset: Partial<AppConfig> = {}, project?: string): 
       process.stdout.write(`could not reach it (${(e as Error).message})\n`);
     }
 
-    const cfg: AppConfig = { url, token, projects: existing?.projects ?? [] };
+    const cfg: AppConfig = { url, token, projects: existing?.projects ?? [], machineId: existing?.machineId };
 
     // What this access code includes, and what Unity needs in order to fetch it.
     // Done once here rather than per project.
     process.stdout.write("checking which packages your code includes... ");
     let svc: ServicePackages | null;
+    // Identify this machine before saving anything: an id created here and saved with
+    // the config is the one every later connection presents.
+    const machine = machineIdentity(cfg);
     try {
-      svc = await servicePackages(url, token);
+      svc = await servicePackages(url, token, machine);
     } catch (e) {
+      if (e instanceof MachineLimitReached) {
+        process.stdout.write("refused\n\n" + e.message + "\nNothing was saved.\n");
+        process.exitCode = 2;
+        return { url, token: "", projects: existing?.projects ?? [] };
+      }
       if (e instanceof AccessCodeRejected) {
         process.stdout.write("refused\n\n");
         process.stdout.write(

@@ -21,9 +21,14 @@ export interface AppConfig {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.8.0";
+export const CONNECTOR_VERSION = "0.9.0";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
+/** Where the Bridge comes from when the service cannot be asked. Every install failure in
+ *  eight acceptance rounds on Windows was on this one package, because a git clone writes
+ *  2,709 files into a temp folder and then renames it — and a real-time scanner still
+ *  holding a handle inside makes that rename fail with EPERM. The registry never failed
+ *  once. So the service now publishes the Bridge too, and this URL is the fallback only. */
 const BRIDGE_SRC = "https://github.com/MosaicXR-AI/mosaic-bridge.git?path=/packages/com.mosaic.bridge";
 
 export function configDir(): string {
@@ -117,7 +122,6 @@ export function addProject(projectPath: string, svc?: ServicePackages | null): {
     if (idx >= 0) m.scopedRegistries[idx] = entry;
     else m.scopedRegistries.push(entry);
     for (const p of svc.packages) {
-      if (p.name === BRIDGE_PKG) continue; // bridge stays on its public git URL
       const pinned = m.dependencies[p.name];
       if (!pinned) {
         m.dependencies[p.name] = p.version;
@@ -128,7 +132,10 @@ export function addProject(projectPath: string, svc?: ServicePackages | null): {
         // service had moved past kept running only on Unity's package cache. Running
         // `add` again is the obvious thing to try, so it is what performs the upgrade.
         m.dependencies[p.name] = p.version;
-        extra.push(`${p.name.replace(/^com\.mosaic\./, "")} ${pinned} -> ${p.version}`);
+        // A git URL as the old pin is the Bridge moving off git; say "git" rather than
+        // printing the whole URL into a one-line summary.
+        const was = String(pinned).startsWith("http") ? "git" : String(pinned);
+        extra.push(`${p.name.replace(/^com\.mosaic\./, "")} ${was} -> ${p.version}`);
       }
     }
   }

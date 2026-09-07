@@ -165,7 +165,15 @@ async function bridgeRequest(
 /** Routes the cloud understands: a bridge tool name executes, and two service routes
  *  let the cloud ask what this Editor is and what it can do. */
 async function callBridge(d: Discovery, route: string, params: unknown, timeoutMs: number): Promise<unknown> {
-  if (route === "_health") return bridgeRequest(d, "GET", "/health", undefined, timeoutMs);
+  if (route === "_health") {
+    // Which Editor this is. The service kept reporting one project's "first answered"
+    // time after a different project had been opened, because nothing in the health
+    // reply said which Editor was answering.
+    const h = await bridgeRequest(d, "GET", "/health", undefined, timeoutMs);
+    return typeof h === "object" && h
+      ? { ...(h as object), project_path: d.unity_project_path ?? null, unity_version: d.unity_version ?? null, port: d.port }
+      : h;
+  }
   if (route === "_tools") return bridgeRequest(d, "GET", "/tools", undefined, timeoutMs);
   // The Editor registers tools as mosaic_<category>_<action>; the pipeline and its
   // docs speak of routes as <category>/<action>. Accept either spelling rather than

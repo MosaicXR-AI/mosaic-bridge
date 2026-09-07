@@ -16,7 +16,17 @@ namespace Mosaic.Bridge.Core.Licensing
         public int DailyQuota => int.MaxValue;
         public int TrialDaysRemaining => 14;
 
-        public event Action<LicenseTier> StatusChanged;
+        /// <summary>
+        /// Required by the interface, never raised: this provider's status never changes.
+        /// Declared with explicit accessors so the compiler does not warn (CS0067) about an
+        /// event that is assigned and never used — in a customer's Console, since the
+        /// Bridge is compiled from source there.
+        /// </summary>
+        public event Action<LicenseTier> StatusChanged
+        {
+            add { }
+            remove { }
+        }
 
         public bool RecordToolCall()
         {

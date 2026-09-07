@@ -157,7 +157,7 @@ namespace Mosaic.Bridge.Core.Discovery
                     // access code was issued to against the account actually using it.
                     unity_user = EditorIdentity.UserName,
                     unity_user_id = EditorIdentity.UserId,
-                    unity_display_name = EditorIdentity.DisplayName,
+                    unity_org_name = EditorIdentity.OrganizationName,
                     unity_org_id = EditorIdentity.OrganizationId,
                     unity_identity_at = EditorIdentity.RefreshedAt
                 };

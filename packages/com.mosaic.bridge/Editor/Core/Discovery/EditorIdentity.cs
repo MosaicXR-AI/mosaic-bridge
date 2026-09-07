@@ -25,7 +25,7 @@ namespace Mosaic.Bridge.Core.Discovery
 
         public static string UserName { get; private set; } = "";
         public static string UserId { get; private set; } = "";
-        public static string DisplayName { get; private set; } = "";
+        public static string OrganizationName { get; private set; } = "";
         public static string OrganizationId { get; private set; } = "";
         /// <summary>UTC time the values above were last read, ISO 8601; empty until the first read.</summary>
         public static string RefreshedAt { get; private set; } = "";
@@ -43,8 +43,8 @@ namespace Mosaic.Bridge.Core.Discovery
             {
                 UserName = CloudProjectSettings.userName ?? "";
                 UserId = CloudProjectSettings.userId ?? "";
-                DisplayName = CloudProjectSettings.userDisplayName ?? "";
                 OrganizationId = CloudProjectSettings.organizationId ?? "";
+                OrganizationName = CloudProjectSettings.organizationName ?? "";
                 RefreshedAt = DateTime.UtcNow.ToString("o");
             }
             catch (Exception)

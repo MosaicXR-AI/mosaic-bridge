@@ -213,8 +213,19 @@ function connect(args: Args, attempt = 0): void {
   const ws = new WebSocket(target);
 
   // A 403 carries the reason in its body — which machines already hold this code —
-  // and reconnecting would only repeat it. Print it, and stop.
+  // and reconnecting would only repeat it. Print it, and stop. A 401 marked "expired"
+  // is different: the code is right and its date has passed. That is the operator's
+  // to extend, so this connector waits and checks every ten minutes; when the date
+  // moves it connects on its own and nothing has to be typed here.
+  let expired = false;
   ws.on("unexpected-response", (_req, res) => {
+    if (res.statusCode === 401 && String(res.headers["x-mosaic-reason"] || "") === "expired") {
+      expired = true;
+      let body = "";
+      res.on("data", (c: Buffer) => (body += c.toString()));
+      res.on("end", () => process.stdout.write((body || "This access code has expired.") + "\n"));
+      return;
+    }
     if (res.statusCode !== 403) return;
     let body = "";
     res.on("data", (c: Buffer) => (body += c.toString()));
@@ -314,6 +325,12 @@ function connect(args: Args, attempt = 0): void {
   });
 
   const retry = (why: string, code?: number) => {
+    if (expired) {
+      const wait = 10 * 60_000;
+      process.stdout.write(`waiting for the code to be extended; checking again in ${wait / 60_000} minutes\n`);
+      setTimeout(() => connect(args, 0), wait);
+      return;
+    }
     // 401 on the upgrade means the code is wrong; reconnecting every two seconds for
     // ever just hides that behind a scrolling log.
     if (/\b401\b/.test(why)) {

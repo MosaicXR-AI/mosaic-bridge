@@ -92,6 +92,7 @@ export async function refreshEntitlement(url: string, token: string, machine: Ma
   } catch (e) {
     return { ok: false, message: `could not reach the service for a Pro licence (${(e as Error).message}); the last one saved still applies until it expires` };
   }
+  if (res.status === 401 && res.headers.get("x-mosaic-reason") === "expired") return { ok: false, message: "this access code has expired, so no fresh Pro licence was issued; the last one saved applies until its own date. Ask whoever issued the code to extend it — nothing to do here" };
   if (res.status === 401) return { ok: false, message: "the service did not accept this access code, so no Pro licence was issued" };
   if (res.status === 404) return { ok: false, message: "this service does not issue Pro licences (older version); Pro tools stay as they were" };
   if (!res.ok) return { ok: false, message: `the service answered ${res.status} when asked for a Pro licence` };
@@ -125,7 +126,7 @@ export function machineHeaders(m: MachineIdentity): Record<string, string> {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.11.0";
+export const CONNECTOR_VERSION = "0.11.1";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in

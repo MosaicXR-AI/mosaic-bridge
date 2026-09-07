@@ -21,7 +21,7 @@ export interface AppConfig {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.9.0";
+export const CONNECTOR_VERSION = "0.9.1";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in
@@ -112,7 +112,9 @@ export function addProject(projectPath: string, svc?: ServicePackages | null): {
   m.dependencies = m.dependencies || {};
   const before = JSON.stringify(m);
 
-  if (!m.dependencies[BRIDGE_PKG]) m.dependencies[BRIDGE_PKG] = BRIDGE_SRC;
+  // The service lists the Bridge itself now; git is only for when it cannot be asked.
+  const bridgeFromService = Boolean(svc && svc.packages.some((p) => p.name === BRIDGE_PKG));
+  if (!m.dependencies[BRIDGE_PKG] && !bridgeFromService) m.dependencies[BRIDGE_PKG] = BRIDGE_SRC;
 
   const extra: string[] = [];
   if (svc && svc.packages.length) {
@@ -144,7 +146,9 @@ export function addProject(projectPath: string, svc?: ServicePackages | null): {
     return { added: false, message: `already set up: ${path.basename(projectPath)}` };
   }
   fs.writeFileSync(manifest, JSON.stringify(m, null, 2) + "\n");
-  const what = ["Bridge", ...extra].join(" + ");
+  // "added Bridge + bridge git -> 1.0.0-beta.13" named the Bridge twice once it came
+  // from the service; the unconditional prefix was from when git was its only source.
+  const what = (bridgeFromService ? extra : ["Bridge (git)", ...extra]).join(" + ");
   return {
     added: true,
     message:

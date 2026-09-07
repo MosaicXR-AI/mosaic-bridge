@@ -26,8 +26,12 @@ namespace Mosaic.Bridge.Core.Licensing
         {
             get
             {
+                // Ceiling, to agree with EditorPrefsLicenseStatusProvider — which is what the
+                // Pro tools actually gate on. This used .Days (a floor), so the dashboard said
+                // 14 while License Status and the gate said 13, and on the last day the
+                // dashboard would have shown 1 while every Pro tool was already refused.
                 var activated = GetActivationDate();
-                var remaining = TrialDurationDays - (DateTime.UtcNow - activated).Days;
+                var remaining = TrialDurationDays - (int)Math.Ceiling((DateTime.UtcNow - activated).TotalDays);
                 return Math.Max(0, remaining);
             }
         }
@@ -66,8 +70,11 @@ namespace Mosaic.Bridge.Core.Licensing
         {
             get
             {
-                var activated = GetActivationDate();
-                return (DateTime.UtcNow - activated).TotalDays > TrialDurationDays;
+                // One definition of "expired", shared with the Pro gate: the day the count
+                // reaches zero. This tested elapsed > 14 days, a full day later than the
+                // provider's ceiling — so the Bridge would have kept saying "active" for a day
+                // after every Pro tool had started refusing.
+                return TrialDaysRemaining <= 0;
             }
         }
 

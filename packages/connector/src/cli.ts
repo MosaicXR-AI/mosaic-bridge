@@ -72,6 +72,46 @@ export function machineIdentity(cfg?: AppConfig | null): MachineIdentity {
   return { id, host: os.hostname(), osUser, platform: process.platform, connector: CONNECTOR_VERSION };
 }
 
+/** Where Pro looks for its licence: beside this connector's config. */
+export function entitlementPath(): string {
+  return path.join(configDir(), "entitlement.json");
+}
+
+/** Fetch a fresh entitlement for this code and machine, and write it where Pro reads it.
+ *
+ *  Pro's licence is a statement signed by the service — who, which features, which Unity
+ *  ID, which machine, until when — not a counter in the Editor. It is refreshed on every
+ *  setup, add and connection, so while the code is valid it never runs out, and once the
+ *  code is revoked it stops within a week. Failure here is reported, never fatal: the
+ *  Editor still connects; only Pro's tools will say why they are refused. */
+export async function refreshEntitlement(url: string, token: string, machine: MachineIdentity): Promise<{ ok: boolean; message: string }> {
+  const base = url.replace(/^ws/, "http").replace(/\/tunnel\/?$/, "");
+  let res: Response;
+  try {
+    res = await fetch(`${base}/entitlement`, { headers: { Authorization: `Bearer ${token}`, ...machineHeaders(machine) } });
+  } catch (e) {
+    return { ok: false, message: `could not reach the service for a Pro licence (${(e as Error).message}); the last one saved still applies until it expires` };
+  }
+  if (res.status === 401) return { ok: false, message: "the service did not accept this access code, so no Pro licence was issued" };
+  if (res.status === 404) return { ok: false, message: "this service does not issue Pro licences (older version); Pro tools stay as they were" };
+  if (!res.ok) return { ok: false, message: `the service answered ${res.status} when asked for a Pro licence` };
+  const body = await res.text();
+  let expires = "";
+  try {
+    const j = JSON.parse(body) as { payload: string };
+    expires = String((JSON.parse(Buffer.from(j.payload, "base64").toString("utf-8")) as { expiresAt?: string }).expiresAt || "");
+  } catch {
+    return { ok: false, message: "the service sent a Pro licence this connector could not read" };
+  }
+  try {
+    fs.mkdirSync(configDir(), { recursive: true });
+    fs.writeFileSync(entitlementPath(), body + "\n", { mode: 0o600 });
+  } catch (e) {
+    return { ok: false, message: `could not save the Pro licence: ${(e as Error).message}` };
+  }
+  return { ok: true, message: `Pro licence saved${expires ? `, valid until ${expires.slice(0, 10)}` : ""} (refreshed on every connection)` };
+}
+
 export function machineHeaders(m: MachineIdentity): Record<string, string> {
   return {
     "X-Mosaic-Machine": m.id,
@@ -85,7 +125,7 @@ export function machineHeaders(m: MachineIdentity): Record<string, string> {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.10.1";
+export const CONNECTOR_VERSION = "0.11.0";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in
@@ -313,6 +353,10 @@ export async function setup(preset: Partial<AppConfig> = {}, project?: string): 
     }
 
     const cfg: AppConfig = { url, token, projects: existing?.projects ?? [], machineId: existing?.machineId };
+    {
+      const ent = await refreshEntitlement(url, token, machineIdentity(cfg));
+      process.stdout.write((ent.ok ? "" : "NOTE: ") + ent.message + "\n");
+    }
 
     // What this access code includes, and what Unity needs in order to fetch it.
     // Done once here rather than per project.

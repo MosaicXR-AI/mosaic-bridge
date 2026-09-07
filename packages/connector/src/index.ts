@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, CONNECTOR_VERSION } from "./cli.js";
+import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, refreshEntitlement, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
@@ -87,6 +87,10 @@ async function main(argv: string[]): Promise<void> {
     }
     const r = addProject(target, svc);
     process.stdout.write(r.message + "\n");
+    if (stored) {
+      const ent = await refreshEntitlement(stored.url, stored.token, machineIdentity(stored));
+      process.stdout.write((ent.ok ? "" : "NOTE: ") + ent.message + "\n");
+    }
     if (r.added) {
       process.stdout.write("Open the project in Unity once so the packages import.\n");
     }
@@ -222,6 +226,17 @@ function connect(args: Args, attempt = 0): void {
 
   ws.on("open", async () => {
     attempt = 0;
+    // A fresh Pro licence on every connection, and every six hours while connected: a
+    // person who is still allowed never sees it expire, and a revoked code stops Pro
+    // within a week whether or not the connector is ever restarted.
+    const refresh = async () => {
+      const ent = await refreshEntitlement(args.url, args.token, m);
+      if (!ent.ok) process.stdout.write("NOTE: " + ent.message + "\n");
+      else if (args.verbose) process.stdout.write(ent.message + "\n");
+    };
+    void refresh();
+    const refreshTimer = setInterval(refresh, 6 * 3600_000);
+    ws.on("close", () => clearInterval(refreshTimer));
     let d: Discovery | null = null;
     try {
       const found = findDiscovery(args.discoveryFile);

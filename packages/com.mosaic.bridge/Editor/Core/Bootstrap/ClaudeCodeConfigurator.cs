@@ -87,7 +87,7 @@ namespace Mosaic.Bridge.Core.Bootstrap
         /// Adds or replaces the <c>mosaic-bridge</c> entry; preserves any other entries
         /// already present in the file.
         /// </summary>
-        [MenuItem("Tools/Mosaic Bridge/Configure Claude Code")]
+        [MenuItem("Mosaic/Diagnostics/Write Claude Code config (direct)", priority = 83)]
         public static void WriteConfigMenu()
         {
             // Can't access BridgeBootstrap.Logger directly in all contexts — write with null

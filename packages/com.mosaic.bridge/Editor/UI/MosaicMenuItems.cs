@@ -11,7 +11,7 @@ namespace Mosaic.Bridge.UI
     /// </summary>
     public static class MosaicMenuItems
     {
-        [MenuItem("Mosaic/Report Issue", priority = 1)]
+        [MenuItem("Mosaic/Report Issue", priority = 61)]
         public static void ReportIssue()
         {
             Execute();

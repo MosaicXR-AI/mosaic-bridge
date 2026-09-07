@@ -12,7 +12,7 @@ namespace Mosaic.Bridge.UI
     /// </summary>
     public class BridgeDashboardWindow : EditorWindow
     {
-        [MenuItem("Window/Mosaic/Bridge Dashboard")]
+        [MenuItem("Mosaic/Bridge Dashboard", priority = 41)]
         public static void ShowWindow()
         {
             GetWindow<BridgeDashboardWindow>("Mosaic Bridge");

@@ -49,7 +49,7 @@ namespace Mosaic.Bridge.UI
 
         // ── Menu item ───────────────────────────────────────────────────────────
 
-        [MenuItem("Window/Mosaic/Onboarding Wizard", priority = 50)]
+        [MenuItem("Mosaic/Set up Claude Code (local, no cloud)", priority = 60)]
         public static void ShowWindow()
         {
             var window = GetWindow<OnboardingWizard>(utility: true, title: "Mosaic Bridge Setup");
@@ -239,7 +239,7 @@ namespace Mosaic.Bridge.UI
 
             if (GUILayout.Button("Open Diagnostics", GUILayout.Width(200)))
             {
-                EditorApplication.ExecuteMenuItem("Window/Mosaic/Diagnostics");
+                EditorApplication.ExecuteMenuItem("Mosaic/Diagnostics/Diagnostics Window");
             }
 
             GUILayout.Space(2);

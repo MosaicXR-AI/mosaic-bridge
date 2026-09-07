@@ -6,7 +6,7 @@ namespace Mosaic.Bridge.UI
 {
     public class DiagnosticsWindow : EditorWindow
     {
-        [MenuItem("Window/Mosaic/Diagnostics")]
+        [MenuItem("Mosaic/Diagnostics/Diagnostics Window", priority = 80)]
         public static void ShowWindow()
         {
             GetWindow<DiagnosticsWindow>("Mosaic Diagnostics");

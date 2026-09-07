@@ -7,13 +7,13 @@ namespace Mosaic.Bridge.UI
 {
     /// <summary>
     /// Dockable Editor window displaying license tier, trial status, quota usage,
-    /// and activation controls. Accessible via Window > Mosaic > License Status.
+    /// and activation controls. Accessible via Mosaic > License Status.
     /// </summary>
     public class LicenseStatusPanel : EditorWindow
     {
         private const string PurchaseUrl = "https://mosaicxr.com/pricing";
 
-        [MenuItem("Window/Mosaic/License Status", priority = 5)]
+        [MenuItem("Mosaic/License Status", priority = 2)]
         public static void ShowWindow()
         {
             GetWindow<LicenseStatusPanel>("License Status");

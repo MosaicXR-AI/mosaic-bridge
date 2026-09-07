@@ -15,7 +15,7 @@ namespace Mosaic.Bridge.UI
     /// </summary>
     public class ScriptApprovalWindow : EditorWindow
     {
-        [MenuItem("Window/Mosaic/Script Approvals", priority = 8)]
+        [MenuItem("Mosaic/Script Approvals", priority = 40)]
         public static void ShowWindow()
         {
             GetWindow<ScriptApprovalWindow>("Script Approvals");

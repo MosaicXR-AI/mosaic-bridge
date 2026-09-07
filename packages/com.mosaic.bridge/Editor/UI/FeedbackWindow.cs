@@ -16,7 +16,7 @@ namespace Mosaic.Bridge.UI
     /// </summary>
     public class FeedbackWindow : EditorWindow
     {
-        [MenuItem("Window/Mosaic/Send Feedback", priority = 40)]
+        [MenuItem("Mosaic/Send Feedback", priority = 62)]
         public static void ShowWindow()
         {
             var window = GetWindow<FeedbackWindow>("Mosaic Feedback");

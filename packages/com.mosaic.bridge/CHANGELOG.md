@@ -5,6 +5,72 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.20] — 2026-09-07
+
+### Removed
+
+- **The Bridge has no licence.** The 14-day trial, the 50-call daily quota, the
+  activation key, the License Status window, and the licence sections of the dashboard
+  and project settings are gone, with their tests. The Bridge is free and unlimited.
+  Mosaic Pro carries a licence of its own, issued by the Mosaic service; the Bridge no
+  longer plays any part in it. *Mosaic › Status* shows the Bridge state, tool count and
+  the signed-in Unity ID.
+
+## [1.0.0-beta.19] — 2026-09-07
+
+### Fixed
+
+- Trial days were computed two ways (a floor for the dialog, a ceiling for the gate),
+  so the Status dialog could say one day left while tools were already refused.
+
+## [1.0.0-beta.18] — 2026-09-07
+
+### Fixed
+
+- CS0067 (event never used) in the always-allow licence stub, seen in every Console that
+  compiled the Bridge from source.
+
+## [1.0.0-beta.17] — 2026-09-07
+
+### Fixed
+
+- Three licence messages pointed at mosaicxr.com; the product is mosaicxr.ai.
+
+## [1.0.0-beta.16] — 2026-09-07
+
+### Changed
+
+- **One `Mosaic` menu.** Status, licence, captures, approvals, dashboard, restart,
+  Claude Code setup, feedback, Unity AI and Diagnostics sit under a single top-level
+  menu with fixed priorities; the `Window › Mosaic` and `Tools › Mosaic` entries are
+  gone. *Mosaic › Status* states the two facts that decide whether the Editor can be
+  driven: who is signed in to Unity, and how long the licence lasts.
+
+## [1.0.0-beta.15] — 2026-09-07
+
+### Fixed
+
+- beta.14 did not compile: `CloudProjectSettings.userDisplayName` does not exist. The
+  health reply reports the organisation name instead. beta.14 is unpublished.
+
+## [1.0.0-beta.14] — 2026-09-07
+
+### Added
+
+- The health reply says who is signed in to Unity (`unity_user`, `unity_user_id`,
+  `unity_org_id`, `unity_org_name`), refreshed every fifteen seconds, so a service can
+  tie an access code to a Unity ID and refuse an Editor signed in as someone else.
+
+## [1.0.0-beta.13] — 2026-09-07
+
+### Changed
+
+- **The Bridge installs from the registry, not by git clone.** The connector writes a
+  registry entry and a tarball dependency; Git is no longer a prerequisite, and the
+  Windows Defender rename race that broke clones is gone with it.
+- `[AllowedValues]` publishes a parameter's accepted values and examples in the tool
+  schema, so a caller is told the enum instead of guessing it.
+
 ## [1.0.0-beta.12] — 2026-09-01
 
 ### Fixed

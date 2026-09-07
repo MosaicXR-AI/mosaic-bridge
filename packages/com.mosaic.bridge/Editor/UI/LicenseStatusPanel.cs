@@ -11,7 +11,7 @@ namespace Mosaic.Bridge.UI
     /// </summary>
     public class LicenseStatusPanel : EditorWindow
     {
-        private const string PurchaseUrl = "https://mosaicxr.com/pricing";
+        private const string PurchaseUrl = "https://mosaicxr.ai/pricing";
 
         [MenuItem("Mosaic/License Status", priority = 2)]
         public static void ShowWindow()

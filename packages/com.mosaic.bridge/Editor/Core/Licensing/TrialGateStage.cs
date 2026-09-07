@@ -32,7 +32,7 @@ namespace Mosaic.Bridge.Core.Licensing
                     ? ErrorCodes.TRIAL_EXPIRED
                     : ErrorCodes.RATE_LIMITED;
                 var message = reason == BlockReason.TrialExpired
-                    ? "Your 14-day trial has expired. Visit mosaicxr.com/pricing to upgrade."
+                    ? "Your 14-day trial has expired. Visit mosaicxr.ai/pricing to upgrade."
                     : $"Daily tool call limit reached ({_trial.DailyQuota}/{_trial.DailyQuota}). Resets at midnight local time.";
 
                 toolResult = new HandlerResponse
@@ -43,7 +43,7 @@ namespace Mosaic.Bridge.Core.Licensing
                     {
                         error = errorCode,
                         message,
-                        suggestedFix = "Visit https://mosaicxr.com/pricing to upgrade."
+                        suggestedFix = "Visit https://mosaicxr.ai/pricing to upgrade."
                     })
                 };
                 return false;

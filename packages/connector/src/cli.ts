@@ -21,7 +21,7 @@ export interface AppConfig {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.9.1";
+export const CONNECTOR_VERSION = "0.9.2";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in
@@ -66,15 +66,27 @@ export interface ServicePackages {
  *  Pro is not on public GitHub and never will be: the service serves it, gated by the
  *  same access code as everything else. Before this existed there was no route by
  *  which a customer could install Pro at all. */
+/** Thrown when the service answers 401: the code is wrong, and nothing built on it can
+ *  work. Setup used to treat this exactly like "service unreachable" — it printed "none
+ *  available (Bridge only)", saved the bad code, and exited 0. The customer found out
+ *  inside Unity, from a registry error that named neither Mosaic nor the code. */
+export class AccessCodeRejected extends Error {
+  constructor() {
+    super("The service did not accept that access code.");
+  }
+}
+
 export async function servicePackages(url: string, token: string): Promise<ServicePackages | null> {
   const base = url.replace(/^ws/, "http").replace(/\/tunnel\/?$/, "");
+  let res: Response;
   try {
-    const res = await fetch(`${base}/registry`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) return null;
-    return (await res.json()) as ServicePackages;
+    res = await fetch(`${base}/registry`, { headers: { Authorization: `Bearer ${token}` } });
   } catch {
-    return null;
+    return null; // unreachable: a different problem, reported differently
   }
+  if (res.status === 401) throw new AccessCodeRejected();
+  if (!res.ok) return null;
+  return (await res.json()) as ServicePackages;
 }
 
 /** Unity reads registry access tokens from ~/.upmconfig.toml, not from the project,
@@ -221,29 +233,27 @@ export async function setup(preset: Partial<AppConfig> = {}, project?: string): 
       process.stdout.write(`could not reach it (${(e as Error).message})\n`);
     }
 
-    // Unity fetches the bridge package over git. Without git on PATH the failure
-    // surfaces much later, as a Unity package-resolution error that mentions neither
-    // git nor Mosaic, so it is worth saying here.
-    try {
-      // Statically imported, never `await import`. A dynamic import inside a pkg
-      // snapshot always throws — the binary has no import callback — so this check
-      // failed on every packaged build and told every customer, including ones with
-      // git installed, to go and install git. The same mistake took the connector down
-      // once before; the rule is that the packaged binary imports nothing at runtime.
-      execFileSync("git", ["--version"], { stdio: "ignore" });
-    } catch {
-      process.stdout.write(
-        "\nNOTE: git was not found on PATH. Unity needs it to fetch the Mosaic Bridge\n" +
-          "package, so install Git and re-open Unity if the package fails to import.\n"
-      );
-    }
-
     const cfg: AppConfig = { url, token, projects: existing?.projects ?? [] };
 
     // What this access code includes, and what Unity needs in order to fetch it.
     // Done once here rather than per project.
     process.stdout.write("checking which packages your code includes... ");
-    const svc = await servicePackages(url, token);
+    let svc: ServicePackages | null;
+    try {
+      svc = await servicePackages(url, token);
+    } catch (e) {
+      if (e instanceof AccessCodeRejected) {
+        process.stdout.write("refused\n\n");
+        process.stdout.write(
+          "The service did not accept that access code. Nothing was saved.\n" +
+            "Check the code you were given (it is case-sensitive, with no spaces) and run\n" +
+            "setup again. If it keeps being refused, ask whoever issued it.\n"
+        );
+        process.exitCode = 2;
+        return { url, token: "", projects: existing?.projects ?? [] };
+      }
+      throw e;
+    }
     if (svc && svc.packages.length) {
       process.stdout.write(svc.packages.map((p) => p.name.replace(/^com\.mosaic\./, "")).join(", ") + "\n");
       const written = writeUpmConfig(svc.registry, token);

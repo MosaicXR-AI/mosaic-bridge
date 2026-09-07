@@ -13,7 +13,7 @@
  * way it always is.
  */
 import WebSocket from "ws";
-import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, CONNECTOR_VERSION } from "./cli.js";
+import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
@@ -59,7 +59,19 @@ async function main(argv: string[]): Promise<void> {
     // A project added later must get the same packages as one added during setup,
     // so ask the service again rather than adding Bridge alone.
     const stored = readConfig();
-    const svc = stored ? await servicePackages(stored.url, stored.token) : null;
+    let svc = null;
+    try {
+      svc = stored ? await servicePackages(stored.url, stored.token) : null;
+    } catch (e) {
+      if (e instanceof AccessCodeRejected) {
+        process.stderr.write(
+          "The service did not accept the saved access code, so the project was not changed.\n" +
+            "Run: mosaic-connector setup   with the correct code, then add the project again.\n"
+        );
+        process.exit(2);
+      }
+      throw e;
+    }
     // Record the project before touching it. A crash between the manifest write and
     // the config write leaves the project and the connector disagreeing about
     // reality, which is exactly what happened: `add` reported success, then died,
@@ -265,6 +277,15 @@ function connect(args: Args, attempt = 0): void {
   });
 
   const retry = (why: string, code?: number) => {
+    // 401 on the upgrade means the code is wrong; reconnecting every two seconds for
+    // ever just hides that behind a scrolling log.
+    if (/\b401\b/.test(why)) {
+      process.stdout.write(
+        "The service rejected this access code. It may have been mistyped or replaced.\n" +
+          "Run: mosaic-connector setup   with the correct code.\n"
+      );
+      process.exit(2);
+    }
     // 4000 means the service accepted a newer connector for this user: another
     // process took the slot. Reconnecting would start a fight neither side wins,
     // so this one steps aside instead.

@@ -33,19 +33,36 @@ export interface MachineIdentity {
 /** This machine, as the service will know it. The id is created the first time it is
  *  needed and kept in connector.json, so it survives Unity reinstalls and connector
  *  re-downloads but not a fresh setup on a different computer. */
+/** The machine id lives in its own file, not in connector.json.
+ *
+ *  It was kept in the config, and written only when a config was being saved. A
+ *  connector started with --url and --token and no saved config — which is how it runs
+ *  under a service account or an automation tool — therefore minted a new id on every
+ *  launch, and one laptop counted as three machines against a limit of two. The id is a
+ *  fact about the machine, so it is stored like one. */
+export function machineIdPath(): string {
+  return path.join(configDir(), "machine-id");
+}
+
 export function machineIdentity(cfg?: AppConfig | null): MachineIdentity {
   let id = cfg?.machineId;
   if (!id) {
-    id = randomUUID().replace(/-/g, "");
-    if (cfg) {
-      cfg.machineId = id;
-      try {
-        writeConfig(cfg);
-      } catch {
-        /* unsaved: a new id next time, which counts as a new machine — better than silence */
-      }
+    try {
+      id = fs.readFileSync(machineIdPath(), "utf-8").trim() || undefined;
+    } catch {
+      /* first run on this machine */
     }
   }
+  if (!id) {
+    id = randomUUID().replace(/-/g, "");
+    try {
+      fs.mkdirSync(configDir(), { recursive: true });
+      fs.writeFileSync(machineIdPath(), id + "\n", { mode: 0o600 });
+    } catch {
+      /* unsaved: a new id next time, which counts as a new machine — better than silence */
+    }
+  }
+  if (cfg && cfg.machineId !== id) cfg.machineId = id;
   let osUser = "";
   try {
     osUser = os.userInfo().username;
@@ -68,7 +85,7 @@ export function machineHeaders(m: MachineIdentity): Record<string, string> {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.10.0";
+export const CONNECTOR_VERSION = "0.10.1";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in
@@ -482,11 +499,13 @@ export function configureClaudeCode(url: string, token: string): { ok: boolean; 
 }
 
 export function statusReport(): string {
+  const m = machineIdentity(readConfig());
   const cfg = readConfig();
   if (!cfg) return `not configured yet. Run: mosaic-connector setup`;
   const lines = [
     `service:  ${cfg.url}`,
     `code:     ${cfg.token.slice(0, 6)}… (stored in ${configPath()})`,
+    `machine:  ${m.host} (${m.id.slice(0, 12)}…) — quote this if a machine needs releasing from your code`,
     `projects: ${cfg.projects.length ? "" : "none added yet"}`,
   ];
   for (const p of cfg.projects) {

@@ -152,7 +152,14 @@ namespace Mosaic.Bridge.Core.Discovery
                     status = "ok",
                     bridge_state = BridgeBootstrap.State.ToString(),
                     tool_count = _entries.Count,
-                    version = "1.0.0"
+                    version = "1.0.0",
+                    // Who is signed in to this Editor, so a service can check the account an
+                    // access code was issued to against the account actually using it.
+                    unity_user = EditorIdentity.UserName,
+                    unity_user_id = EditorIdentity.UserId,
+                    unity_display_name = EditorIdentity.DisplayName,
+                    unity_org_id = EditorIdentity.OrganizationId,
+                    unity_identity_at = EditorIdentity.RefreshedAt
                 };
                 return new HandlerResponse
                 {

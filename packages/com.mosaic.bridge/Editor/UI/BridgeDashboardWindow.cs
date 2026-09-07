@@ -1,7 +1,6 @@
 using UnityEditor;
 using UnityEngine;
 using Mosaic.Bridge.Core.Bootstrap;
-using Mosaic.Bridge.Core.Licensing;
 
 namespace Mosaic.Bridge.UI
 {
@@ -54,9 +53,6 @@ namespace Mosaic.Bridge.UI
             DrawToolsSection();
             EditorGUILayout.Space(10);
 
-            DrawLicenseSection();
-            EditorGUILayout.Space(10);
-
             DrawPipelineSection();
             EditorGUILayout.Space(10);
 
@@ -103,33 +99,6 @@ namespace Mosaic.Bridge.UI
             {
                 var count = BridgeBootstrap.ToolRegistry?.Count ?? 0;
                 EditorGUILayout.LabelField("Registered Tools", count.ToString());
-            }
-        }
-
-        private void DrawLicenseSection()
-        {
-            EditorGUILayout.LabelField("License", EditorStyles.boldLabel);
-            using (new EditorGUI.IndentLevelScope())
-            {
-                var tier = EditorPrefs.GetString("MosaicBridge.LicenseTier", "trial");
-                EditorGUILayout.LabelField("Tier", tier);
-
-                if (tier == "trial")
-                {
-                    var manager = new TrialManager();
-                    EditorGUILayout.LabelField("Days Remaining", manager.TrialDaysRemaining.ToString());
-                    EditorGUILayout.LabelField("Daily Quota", $"{manager.DailyQuotaUsed} / {manager.DailyQuota}");
-
-                    if (manager.IsBlocked)
-                    {
-                        var reason = manager.GetBlockReason();
-                        EditorGUILayout.HelpBox(
-                            reason == BlockReason.TrialExpired
-                                ? "Trial expired. Activate a license to continue."
-                                : "Daily quota exhausted. Resets at midnight.",
-                            MessageType.Warning);
-                    }
-                }
             }
         }
 

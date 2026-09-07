@@ -3,7 +3,6 @@ using UnityEditor;
 using UnityEngine;
 using Mosaic.Bridge.Core.Bootstrap;
 using Mosaic.Bridge.Core.Discovery;
-using Mosaic.Bridge.Core.Licensing;
 
 namespace Mosaic.Bridge.UI
 {
@@ -28,37 +27,16 @@ namespace Mosaic.Bridge.UI
             var registry = BridgeBootstrap.ToolRegistry;
             var tools    = registry != null ? registry.Count : 0;
 
-            // Who is signed in, and how long the licence lasts: the two facts that decide
-            // whether the Editor can be driven at all, and neither was visible anywhere.
+            // Who is signed in: the fact that decides whether Pro will run at all, and it
+            // was not visible anywhere. The Bridge itself is free and unlimited; Pro's own
+            // licence is under Mosaic ▸ Pro Licence when Pro is installed.
             var user = string.IsNullOrEmpty(EditorIdentity.UserName) || EditorIdentity.UserName == "anonymous"
                 ? "not signed in to Unity"
                 : EditorIdentity.UserName;
-            string licence;
-            try
-            {
-                var status = new EditorPrefsLicenseStatusProvider();
-                var tier = status.CurrentTier;
-                if (tier == LicenseTier.Trial || tier == LicenseTier.Expired)
-                {
-                    var days = status.TrialDaysRemaining;
-                    licence = days > 0
-                        ? $"trial, {days} day(s) left (ends {DateTime.Now.AddDays(days):d MMM yyyy})"
-                        : "trial EXPIRED — Pro tools are refused until a licence is activated";
-                }
-                else
-                {
-                    licence = tier.ToString();
-                }
-            }
-            catch (Exception)
-            {
-                licence = "unknown";
-            }
 
             string msg = $"Bridge:    {state}{(port > 0 ? $" on port {port}" : "")}\n" +
                          $"Tools:     {(tools > 0 ? tools.ToString() : "not loaded")}\n" +
-                         $"Unity ID:  {user}\n" +
-                         $"Licence:   {licence}";
+                         $"Unity ID:  {user}";
 
             EditorUtility.DisplayDialog("Mosaic", msg, "OK");
         }

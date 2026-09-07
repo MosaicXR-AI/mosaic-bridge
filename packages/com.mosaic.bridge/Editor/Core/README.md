@@ -11,7 +11,6 @@ component group.
 | `Validation/` | Parameter validation against typed parameter classes |
 | `Authentication/` | HMAC-SHA256 challenge-response, nonce cache, secret generation |
 | `KnowledgeProvider/` | Knowledge base loading and query API |
-| `Licensing/` | License validation, OS-native keystore, JWT parsing, trial state |
 | `Logging/` | Diagnostic logging with allowlist redaction |
 | `Mcp/` | Node.js MCP server child process spawning and lifecycle |
 | `Http/` | HTTP request parsing, response writing, rate limiting, routing |

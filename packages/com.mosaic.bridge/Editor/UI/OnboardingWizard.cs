@@ -242,13 +242,6 @@ namespace Mosaic.Bridge.UI
                 EditorApplication.ExecuteMenuItem("Mosaic/Diagnostics/Diagnostics Window");
             }
 
-            GUILayout.Space(2);
-
-            if (GUILayout.Button("View License", GUILayout.Width(200)))
-            {
-                LicenseStatusPanel.ShowWindow();
-            }
-
             GUILayout.Space(16);
 
             _dontShowAgain = EditorGUILayout.ToggleLeft("Don't show this again", _dontShowAgain);

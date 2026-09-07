@@ -7,7 +7,6 @@ using Mosaic.Bridge.Core.Diagnostics;
 using Mosaic.Bridge.Core.Discovery;
 using Mosaic.Bridge.Core.Dispatcher;
 using Mosaic.Bridge.Core.Mcp;
-using Mosaic.Bridge.Core.Licensing;
 using Mosaic.Bridge.Core.Pipeline;
 using Mosaic.Bridge.Core.Pipeline.Capture;
 using Mosaic.Bridge.Core.Pipeline.Stages;
@@ -179,10 +178,6 @@ namespace Mosaic.Bridge.Core.Bootstrap
                     pipelineConfig,
                     Logger,
                     toolName => ToolRegistry.GetEntry(toolName));
-                // Story 7.1: Trial gate — blocks tool calls when trial expired or quota exhausted
-                var trialManager = new TrialManager();
-                pipeline.AddPreStage(new TrialGateStage(trialManager));
-
                 // Story 12.2: Semantic pre-validation (runs for modes >= Validated)
                 pipeline.AddPreStage(new SemanticValidatorStage(new IValidationRule[]
                 {

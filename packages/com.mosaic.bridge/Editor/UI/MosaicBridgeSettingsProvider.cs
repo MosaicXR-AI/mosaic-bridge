@@ -20,7 +20,7 @@ namespace Mosaic.Bridge.UI
         {
             return new MosaicBridgeSettingsProvider
             {
-                keywords = new[] { "Mosaic", "Bridge", "MCP", "Pipeline", "License", "Trial", "Assembly", "Tools", "Feature", "Flags", "Telemetry", "Particle", "Pack", "VFX", "Effects" }
+                keywords = new[] { "Mosaic", "Bridge", "MCP", "Pipeline", "Assembly", "Tools", "Feature", "Flags", "Telemetry", "Particle", "Pack", "VFX", "Effects" }
             };
         }
 
@@ -64,48 +64,6 @@ namespace Mosaic.Bridge.UI
 
             // === Feature Flags (Story 10.5) ===
             FeatureFlagsSection.Draw();
-
-            EditorGUILayout.Space(10);
-
-            // === License Status ===
-            EditorGUILayout.LabelField("License", EditorStyles.boldLabel);
-            using (new EditorGUI.DisabledGroupScope(true))
-            {
-                var tier = EditorPrefs.GetString("MosaicBridge.LicenseTier", "trial");
-                EditorGUILayout.TextField("Current Tier", tier);
-            }
-
-            EditorGUILayout.Space(5);
-
-            // License key activation
-            EditorGUILayout.LabelField("Activate License", EditorStyles.miniBoldLabel);
-            _licenseKeyInput = EditorGUILayout.TextField("License Key", _licenseKeyInput ?? "");
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                if (GUILayout.Button("Activate", GUILayout.Width(100)))
-                {
-                    var activator = new Core.Licensing.LicenseActivator();
-                    var result = activator.Activate(_licenseKeyInput);
-                    if (result.IsSuccess)
-                        EditorUtility.DisplayDialog("License Activated",
-                            $"Successfully activated {result.Tier} license.", "OK");
-                    else
-                        EditorUtility.DisplayDialog("Activation Failed",
-                            result.ErrorMessage, "OK");
-                }
-
-                if (GUILayout.Button("Deactivate", GUILayout.Width(100)))
-                {
-                    var activator = new Core.Licensing.LicenseActivator();
-                    activator.Deactivate();
-                    EditorUtility.DisplayDialog("License Deactivated",
-                        "Reverted to trial mode.", "OK");
-                }
-            }
-
         }
-
-        private string _licenseKeyInput;
     }
 }

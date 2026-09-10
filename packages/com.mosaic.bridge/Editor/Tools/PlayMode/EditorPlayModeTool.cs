@@ -29,6 +29,7 @@ namespace Mosaic.Bridge.Tools.PlayMode
 
         private static double _pumpUntil;
         private static bool _hooked;
+        private static int _lastPumpFrame = -1;
 
         [MosaicTool("editor/play-mode",
                     "Controls Unity play mode: play, pause, stop, step, or status. " +
@@ -119,6 +120,7 @@ namespace Mosaic.Bridge.Tools.PlayMode
         private static void StartPump(float seconds)
         {
             _pumpUntil = EditorApplication.timeSinceStartup + Mathf.Clamp(seconds, 0f, 600f);
+            _lastPumpFrame = -1;
             if (_hooked) return;
             EditorApplication.update += Pump;
             _hooked = true;
@@ -139,9 +141,20 @@ namespace Mosaic.Bridge.Tools.PlayMode
                 StopPump();
                 return;
             }
-            // The whole fix, one line: an unfocused Editor still ticks update, and this is
-            // what turns a tick into a frame of the game.
+            // Only when the loop is actually stalled. Whether an unfocused Editor keeps
+            // ticking is platform-dependent — macOS does, the Windows Editor this was
+            // written for does not — and queueing an update on a loop that is already
+            // running makes the game advance faster than real time, which would quietly
+            // distort anything recorded through it. If the frame moved on its own since
+            // the last tick, there is nothing to drive.
+            var frame = Time.frameCount;
+            if (frame != _lastPumpFrame)
+            {
+                _lastPumpFrame = frame;
+                return;
+            }
             EditorApplication.QueuePlayerLoopUpdate();
+            _lastPumpFrame = Time.frameCount;
         }
 
         private static string GetStateString()

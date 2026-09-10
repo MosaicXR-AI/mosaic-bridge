@@ -27,7 +27,10 @@ everything else on the reviewer's list combined.
   all diagnosed as broken while every one of them was correct. `editor/play-mode` takes
   `PumpSeconds`, and every result now carries `FrameCount` and `TimeSinceLevelLoad`, so
   a caller can see whether time is passing instead of inferring it. `status` is a new
-  action for polling without changing anything.
+  action for polling without changing anything. The pump drives the loop only while it
+  is actually stalled: whether an unfocused Editor keeps ticking is platform-dependent,
+  and driving one that is already running would make the game advance faster than real
+  time.
 
 ## [1.0.0-beta.20] — 2026-09-07
 

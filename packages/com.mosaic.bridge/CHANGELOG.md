@@ -12,6 +12,14 @@ everything else on the reviewer's list combined.
 
 ### Added
 
+- **`scene/open` and `scene/new` take a `SaveMode`.** Every scene switch called
+  `SaveCurrentModifiedScenesIfUserWantsTo`, which raises Unity's "Save changes to
+  scene?" dialog whenever the open scene is dirty. A modal pumps its own event loop on
+  the main thread, so every queued request times out until a human clicks the button —
+  fatal for an Editor being driven remotely, and unrecoverable without walking to the
+  machine. The default is now to save without asking; `discard` and `prompt` are there
+  for callers that want them, and the description says what a prompt costs.
+
 - **`editor/compile-status`.** There was no way to learn that a script had compiled.
   Menu items silently execute the *previously* compiled assembly, so an edit that has
   not finished building runs the old code and reports success. The only workarounds

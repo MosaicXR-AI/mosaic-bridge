@@ -5,6 +5,30 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.21] — 2026-09-10
+
+From a twelve-hour autonomous course build: the two issues that cost more time than
+everything else on the reviewer's list combined.
+
+### Added
+
+- **`editor/compile-status`.** There was no way to learn that a script had compiled.
+  Menu items silently execute the *previously* compiled assembly, so an edit that has
+  not finished building runs the old code and reports success. The only workarounds
+  were tailing `Editor.log` — which a second open Editor fills with null padding —
+  or polling an assembly timestamp. Poll this until `Settled`, and read the last
+  compilation's errors from it.
+
+### Fixed
+
+- **An unfocused Editor now advances the player loop.** Play mode entered over the
+  bridge sat at frame 1 with `timeSinceLevelLoad` 0.00 indefinitely: no physics, no
+  NavMesh, no particles, no animation. A patrol agent, a particle system and a HUD were
+  all diagnosed as broken while every one of them was correct. `editor/play-mode` takes
+  `PumpSeconds`, and every result now carries `FrameCount` and `TimeSinceLevelLoad`, so
+  a caller can see whether time is passing instead of inferring it. `status` is a new
+  action for polling without changing anything.
+
 ## [1.0.0-beta.20] — 2026-09-07
 
 ### Removed

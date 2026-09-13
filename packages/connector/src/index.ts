@@ -16,6 +16,7 @@ import WebSocket from "ws";
 import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, refreshEntitlement, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
 import { computeBackoffMs, nextAttempt, STABLE_MS } from "./backoff.js";
+import { RunLogger, writeRunState, readRunState, collidesWithRunningInstance, formatLiveStatus, type RunState } from "./runlog.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
 /** How often the connector pings the tunnel while connected.
@@ -111,7 +112,11 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   if (cmd === "status") {
-    process.stdout.write(statusReport() + "\n");
+    // C-2: static config used to be the whole answer. It is still the first half; the
+    // second half is whatever a currently-running `run` process last recorded about
+    // itself, read from disk because a separate `status` invocation shares no memory
+    // with it.
+    process.stdout.write(statusReport() + "\n\n" + formatLiveStatus() + "\n");
     return;
   }
   if (cmd === "help" || cmd === "--help" || cmd === "-h") {
@@ -124,7 +129,48 @@ async function main(argv: string[]): Promise<void> {
     await setup();
     return;
   }
-  connect(parseArgs(argv.filter((a) => a !== "run")), 0);
+
+  // C-3(a): a second connector against the same token evicts the first, silently. The
+  // service is the actual authority here (it is the one that enforces the eviction), so
+  // this cannot be a hard refusal without risking blocking a legitimate restart (a
+  // process manager relaunching after a crash can easily leave a stale state file
+  // pointing at a pid that is already gone). What it CAN do, safely, is say what is
+  // about to happen before it happens, so "another connector took over this token" is
+  // not the first anyone hears of it. Whether a future version should instead prompt for
+  // confirmation (and, if so, how to do that under a process supervisor with no
+  // attached terminal) is a product decision left open here.
+  const priorState = readRunState();
+  if (collidesWithRunningInstance(priorState, process.pid)) {
+    process.stdout.write(
+      `NOTE: another mosaic-connector process (pid ${priorState!.pid}) appears to already be running on ` +
+        `this machine (state: "${priorState!.state}", last updated ${priorState!.updatedAt}).\n` +
+        "Starting this one will take over its connection to the service; the other process will then exit.\n"
+    );
+  }
+
+  const logger = new RunLogger();
+  const args = parseArgs(argv.filter((a) => a !== "run"));
+
+  const state: RunState = { pid: process.pid, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: "connecting" };
+  const updateState = (patch: Partial<RunState>) => {
+    Object.assign(state, patch, { updatedAt: new Date().toISOString() });
+    writeRunState(state);
+  };
+  updateState({});
+
+  // A process manager sending SIGTERM, or a person pressing Ctrl+C, both leave "connected"
+  // behind in run-state.json forever unless something marks the exit — which would make
+  // a LATER `status` (or the collision check above, for the next connector started here)
+  // report a live connection that no longer exists.
+  const markExited = () => {
+    updateState({ state: "exited" });
+    logger.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", markExited);
+  process.on("SIGTERM", markExited);
+
+  connect(args, 0, logger, updateState);
 }
 
 /** The bridge authenticates every request with an HMAC over a canonical string.
@@ -212,7 +258,7 @@ async function callBridge(d: Discovery, route: string, params: unknown, timeoutM
   return bridgeRequest(d, "POST", "/execute", { tool, parameters: params ?? {} }, timeoutMs);
 }
 
-function connect(args: Args, attempt: number): void {
+function connect(args: Args, attempt: number, logger: RunLogger, updateState: (patch: Partial<RunState>) => void): void {
   // Who is dialling in, not just with which code. The service keeps the list of
   // machines per code and refuses one too many.
   const m = machineIdentity(readConfig());
@@ -236,9 +282,10 @@ function connect(args: Args, attempt: number): void {
       res.on("data", (c: Buffer) => (body += c.toString()));
       res.on("end", () => {
         const wait = 10 * 60_000;
-        process.stdout.write((body || "This access code has expired.") + `\nChecking again in ${wait / 60_000} minutes.\n`);
+        logger.write((body || "This access code has expired.") + `\nChecking again in ${wait / 60_000} minutes.\n`);
+        updateState({ state: "disconnected", detail: "access code expired" });
         req.destroy();
-        setTimeout(() => connect(args, 0), wait);
+        setTimeout(() => connect(args, 0, logger, updateState), wait);
       });
       return;
     }
@@ -246,7 +293,9 @@ function connect(args: Args, attempt: number): void {
     let body = "";
     res.on("data", (c: Buffer) => (body += c.toString()));
     res.on("end", () => {
-      process.stdout.write((body || "The service refused this machine.") + "\n");
+      logger.write((body || "The service refused this machine.") + "\n");
+      updateState({ state: "exited", detail: "service refused this machine (403)" });
+      logger.close();
       process.exit(2);
     });
   });
@@ -272,6 +321,10 @@ function connect(args: Args, attempt: number): void {
       }
       alive = false;
       ws.ping();
+      // A live, idle connection with nothing to say still proves it is alive every
+      // heartbeat, so `status` never has to guess whether "connected, updated 40
+      // minutes ago" means healthy-and-quiet or actually-dead-and-nobody-noticed.
+      updateState({});
     }, HEARTBEAT_INTERVAL_MS);
     ws.on("close", () => clearInterval(heartbeat));
 
@@ -280,8 +333,8 @@ function connect(args: Args, attempt: number): void {
     // within a week whether or not the connector is ever restarted.
     const refresh = async () => {
       const ent = await refreshEntitlement(args.url, args.token, m);
-      if (!ent.ok) process.stdout.write("NOTE: " + ent.message + "\n");
-      else if (args.verbose) process.stdout.write(ent.message + "\n");
+      if (!ent.ok) logger.write("NOTE: " + ent.message + "\n");
+      else if (args.verbose) logger.write(ent.message + "\n");
     };
     void refresh();
     const refreshTimer = setInterval(refresh, 6 * 3600_000);
@@ -294,7 +347,7 @@ function connect(args: Args, attempt: number): void {
       // behind that describes a bridge which never ran.
       d = (await bridgeAlive(found)) ? found : null;
       if (!d) {
-        process.stdout.write(
+        logger.write(
           "A Unity Editor was found on record, but its Mosaic Bridge is not answering.\n" +
             "  Usually the project is still importing, or the package failed to compile.\n" +
             "  Check the Unity Console for errors, then leave this running.\n"
@@ -304,18 +357,20 @@ function connect(args: Args, attempt: number): void {
       /* reported below as a waiting state, not as a failure */
     }
     if (d) {
-      process.stdout.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
+      logger.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
+      updateState({ state: "connected", unityVersion: d.unity_version, port: d.port, detail: "connector ready" });
     } else {
       // Do not say "ready" when there is no Editor: the previous version printed the
       // problem and "connector ready" one line apart, and a person reasonably read
       // the second line and stopped. It also blamed a closed project when the real
       // cause is usually a project without the Mosaic Bridge package.
-      process.stdout.write(
+      logger.write(
         "connected to the service, waiting for a Unity Editor.\n" +
           "  Open a Unity project that has the Mosaic Bridge package installed.\n" +
           "  If it is already open, that project may not have the package: run\n" +
           "  mosaic-connector add <project path>, then reopen it in Unity.\n"
       );
+      updateState({ state: "waiting_for_editor" });
       // Keep looking, so the state resolves itself when the Editor appears rather
       // than requiring the person to restart something.
       const poll = setInterval(async () => {
@@ -323,7 +378,8 @@ function connect(args: Args, attempt: number): void {
           const found = findDiscovery(args.discoveryFile);
           if (!(await bridgeAlive(found))) return; // recorded, but not answering yet
           clearInterval(poll);
-          process.stdout.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
+          logger.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
+          updateState({ state: "connected", unityVersion: found.unity_version, port: found.port, detail: "connector ready" });
         } catch {
           /* still waiting */
         }
@@ -340,11 +396,11 @@ function connect(args: Args, attempt: number): void {
       return;
     }
     if (msg.type === "hello") {
-      if (args.verbose) process.stdout.write(`authenticated as ${msg.user}\n`);
+      if (args.verbose) logger.write(`authenticated as ${msg.user}\n`);
       return;
     }
     if (!msg.id || !msg.route) return;
-    if (args.verbose) process.stdout.write(`-> ${msg.route}\n`);
+    if (args.verbose) logger.write(`-> ${msg.route}\n`);
     try {
       const d = findDiscovery(args.discoveryFile);
       const result = await callBridge(d, msg.route, msg.params, 120_000);
@@ -366,17 +422,21 @@ function connect(args: Args, attempt: number): void {
     // 401 on the upgrade means the code is wrong; reconnecting every two seconds for
     // ever just hides that behind a scrolling log.
     if (/\b401\b/.test(why)) {
-      process.stdout.write(
+      logger.write(
         "The service rejected this access code. It may have been mistyped or replaced.\n" +
           "Run: mosaic-connector setup   with the correct code.\n"
       );
+      updateState({ state: "exited", detail: "access code rejected (401)" });
+      logger.close();
       process.exit(2);
     }
     // 4000 means the service accepted a newer connector for this user: another
     // process took the slot. Reconnecting would start a fight neither side wins,
     // so this one steps aside instead.
     if (code === 4000) {
-      process.stdout.write("another connector took over this token; exiting\n");
+      logger.write("another connector took over this token; exiting\n");
+      updateState({ state: "exited", detail: "evicted by another connector (4000)" });
+      logger.close();
       process.exit(0);
     }
     // C-1: `wasStable` is true only once this connection survived at least STABLE_MS —
@@ -385,8 +445,9 @@ function connect(args: Args, attempt: number): void {
     // being handed a fresh 1s wait just because it briefly opened.
     const wasStable = Date.now() - openedAt >= STABLE_MS;
     const wait = computeBackoffMs(attempt);
-    process.stdout.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
-    setTimeout(() => connect(args, nextAttempt(attempt, wasStable)), wait);
+    logger.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
+    updateState({ state: "disconnected", detail: why });
+    setTimeout(() => connect(args, nextAttempt(attempt, wasStable), logger, updateState), wait);
   };
   ws.on("close", (code) => retry(`connection closed (${code})`, code));
   ws.on("error", (err) => {

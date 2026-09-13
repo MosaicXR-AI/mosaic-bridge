@@ -14,8 +14,22 @@
  */
 import WebSocket from "ws";
 import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, refreshEntitlement, CONNECTOR_VERSION } from "./cli.js";
-import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
+import { findDiscovery, bridgeAlive, discoveryChanged, type Discovery } from "./discovery.js";
+import { computeBackoffMs, nextAttempt, STABLE_MS } from "./backoff.js";
+import { RunLogger, writeRunState, readRunState, collidesWithRunningInstance, formatLiveStatus, type RunState } from "./runlog.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+
+/** How often the connector pings the tunnel while connected, and — same interval — how
+ *  often it re-checks the discovery file for a bridge that restarted underneath it.
+ *
+ *  C-1's reported 1006 loop is what an abnormal close with no close frame usually means
+ *  happened on the OTHER end already — a dead intermediary, or a proxy that timed the
+ *  connection out — invisibly, for however long nothing here was watching. A ping the
+ *  far end must answer converts that into a clean, promptly-detected close instead of a
+ *  socket that looks open until some unrelated write eventually fails. A-1 is the same
+ *  gap on the bridge side: nothing polled for a domain reload finishing, so nothing
+ *  said so until the next RPC happened to arrive. */
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 interface Args {
   url: string;
@@ -101,7 +115,11 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   if (cmd === "status") {
-    process.stdout.write(statusReport() + "\n");
+    // C-2: static config used to be the whole answer. It is still the first half; the
+    // second half is whatever a currently-running `run` process last recorded about
+    // itself, read from disk because a separate `status` invocation shares no memory
+    // with it.
+    process.stdout.write(statusReport() + "\n\n" + formatLiveStatus() + "\n");
     return;
   }
   if (cmd === "help" || cmd === "--help" || cmd === "-h") {
@@ -114,7 +132,48 @@ async function main(argv: string[]): Promise<void> {
     await setup();
     return;
   }
-  connect(parseArgs(argv.filter((a) => a !== "run")));
+
+  // C-3(a): a second connector against the same token evicts the first, silently. The
+  // service is the actual authority here (it is the one that enforces the eviction), so
+  // this cannot be a hard refusal without risking blocking a legitimate restart (a
+  // process manager relaunching after a crash can easily leave a stale state file
+  // pointing at a pid that is already gone). What it CAN do, safely, is say what is
+  // about to happen before it happens, so "another connector took over this token" is
+  // not the first anyone hears of it. Whether a future version should instead prompt for
+  // confirmation (and, if so, how to do that under a process supervisor with no
+  // attached terminal) is a product decision left open here.
+  const priorState = readRunState();
+  if (collidesWithRunningInstance(priorState, process.pid)) {
+    process.stdout.write(
+      `NOTE: another mosaic-connector process (pid ${priorState!.pid}) appears to already be running on ` +
+        `this machine (state: "${priorState!.state}", last updated ${priorState!.updatedAt}).\n` +
+        "Starting this one will take over its connection to the service; the other process will then exit.\n"
+    );
+  }
+
+  const logger = new RunLogger();
+  const args = parseArgs(argv.filter((a) => a !== "run"));
+
+  const state: RunState = { pid: process.pid, startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), state: "connecting" };
+  const updateState = (patch: Partial<RunState>) => {
+    Object.assign(state, patch, { updatedAt: new Date().toISOString() });
+    writeRunState(state);
+  };
+  updateState({});
+
+  // A process manager sending SIGTERM, or a person pressing Ctrl+C, both leave "connected"
+  // behind in run-state.json forever unless something marks the exit — which would make
+  // a LATER `status` (or the collision check above, for the next connector started here)
+  // report a live connection that no longer exists.
+  const markExited = () => {
+    updateState({ state: "exited" });
+    logger.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", markExited);
+  process.on("SIGTERM", markExited);
+
+  connect(args, 0, logger, updateState);
 }
 
 /** The bridge authenticates every request with an HMAC over a canonical string.
@@ -202,7 +261,7 @@ async function callBridge(d: Discovery, route: string, params: unknown, timeoutM
   return bridgeRequest(d, "POST", "/execute", { tool, parameters: params ?? {} }, timeoutMs);
 }
 
-function connect(args: Args, attempt = 0): void {
+function connect(args: Args, attempt: number, logger: RunLogger, updateState: (patch: Partial<RunState>) => void): void {
   // Who is dialling in, not just with which code. The service keeps the list of
   // machines per code and refuses one too many.
   const m = machineIdentity(readConfig());
@@ -211,6 +270,7 @@ function connect(args: Args, attempt = 0): void {
   });
   const target = `${args.url}${args.url.includes("?") ? "&" : "?"}${q.toString()}`;
   const ws = new WebSocket(target);
+  const openedAt = Date.now();
 
   // A 403 carries the reason in its body — which machines already hold this code —
   // and reconnecting would only repeat it. Print it, and stop. A 401 marked "expired"
@@ -225,9 +285,10 @@ function connect(args: Args, attempt = 0): void {
       res.on("data", (c: Buffer) => (body += c.toString()));
       res.on("end", () => {
         const wait = 10 * 60_000;
-        process.stdout.write((body || "This access code has expired.") + `\nChecking again in ${wait / 60_000} minutes.\n`);
+        logger.write((body || "This access code has expired.") + `\nChecking again in ${wait / 60_000} minutes.\n`);
+        updateState({ state: "disconnected", detail: "access code expired" });
         req.destroy();
-        setTimeout(() => connect(args, 0), wait);
+        setTimeout(() => connect(args, 0, logger, updateState), wait);
       });
       return;
     }
@@ -235,20 +296,48 @@ function connect(args: Args, attempt = 0): void {
     let body = "";
     res.on("data", (c: Buffer) => (body += c.toString()));
     res.on("end", () => {
-      process.stdout.write((body || "The service refused this machine.") + "\n");
+      logger.write((body || "The service refused this machine.") + "\n");
+      updateState({ state: "exited", detail: "service refused this machine (403)" });
+      logger.close();
       process.exit(2);
     });
   });
 
   ws.on("open", async () => {
-    attempt = 0;
+    // C-1: this used to reset `attempt` to 0 right here, unconditionally. Every cycle
+    // in the reported 1006 loop DID reach "open" — pairing succeeded every time — so
+    // that reset fired every time too, and the exponential backoff below never grew: it
+    // is the reason "reconnecting in 1s" repeated for half an hour. `attempt` now only
+    // resets once this connection has proven itself open for STABLE_MS (see retry()).
+
+    // A ping the far end must answer, not merely a socket object that has not yet
+    // reported an error. `terminate()` forces a close (and so a loud, logged retry) as
+    // soon as a pong is missed, instead of leaving a half-open connection undetected.
+    let alive = true;
+    ws.on("pong", () => {
+      alive = true;
+    });
+    const heartbeat = setInterval(() => {
+      if (!alive) {
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+      // A live, idle connection with nothing to say still proves it is alive every
+      // heartbeat, so `status` never has to guess whether "connected, updated 40
+      // minutes ago" means healthy-and-quiet or actually-dead-and-nobody-noticed.
+      updateState({});
+    }, HEARTBEAT_INTERVAL_MS);
+    ws.on("close", () => clearInterval(heartbeat));
+
     // A fresh Pro licence on every connection, and every six hours while connected: a
     // person who is still allowed never sees it expire, and a revoked code stops Pro
     // within a week whether or not the connector is ever restarted.
     const refresh = async () => {
       const ent = await refreshEntitlement(args.url, args.token, m);
-      if (!ent.ok) process.stdout.write("NOTE: " + ent.message + "\n");
-      else if (args.verbose) process.stdout.write(ent.message + "\n");
+      if (!ent.ok) logger.write("NOTE: " + ent.message + "\n");
+      else if (args.verbose) logger.write(ent.message + "\n");
     };
     void refresh();
     const refreshTimer = setInterval(refresh, 6 * 3600_000);
@@ -261,7 +350,7 @@ function connect(args: Args, attempt = 0): void {
       // behind that describes a bridge which never ran.
       d = (await bridgeAlive(found)) ? found : null;
       if (!d) {
-        process.stdout.write(
+        logger.write(
           "A Unity Editor was found on record, but its Mosaic Bridge is not answering.\n" +
             "  Usually the project is still importing, or the package failed to compile.\n" +
             "  Check the Unity Console for errors, then leave this running.\n"
@@ -270,19 +359,58 @@ function connect(args: Args, attempt = 0): void {
     } catch {
       /* reported below as a waiting state, not as a failure */
     }
+
+    // A-1: watches the discovery file for a bridge that restarted underneath this
+    // connection (a domain reload tears down and restarts the bridge's HTTP server,
+    // same or different pid, always a new started_unix_seconds). The message handler
+    // below already re-reads the file on every RPC, so a call arriving after a restart
+    // mostly self-heals on its own — but if nothing arrives from the cloud during the
+    // gap, nothing here ever SAID the bridge came back, and the last printed line stayed
+    // "connector ready" for an Editor that had, for a while, actually gone (compounding
+    // C-2). This polls independently of any RPC traffic so that reconnection is
+    // observed and announced, not merely eventually true.
+    let known: Discovery | null = d;
+    const watchDiscovery = setInterval(async () => {
+      try {
+        const found = findDiscovery(args.discoveryFile);
+        if (!discoveryChanged(known, found)) return;
+        const stillAlive = await bridgeAlive(found);
+        known = found;
+        if (stillAlive) {
+          logger.write(`bridge restarted (Unity ${found.unity_version ?? "?"} on port ${found.port}) — re-paired\n`);
+          updateState({ state: "connected", unityVersion: found.unity_version, port: found.port, detail: "re-paired after bridge restart" });
+        } else {
+          logger.write("the Unity Editor's Mosaic Bridge went away; waiting for it to come back.\n");
+          updateState({ state: "waiting_for_editor", detail: "bridge stopped answering" });
+        }
+      } catch {
+        // findDiscovery throws when nothing is on record at all (e.g. the Editor fully
+        // closed, not just reloaded); treat that the same as "went away" once, not on
+        // every tick.
+        if (known !== null) {
+          known = null;
+          logger.write("the Unity Editor's Mosaic Bridge went away; waiting for it to come back.\n");
+          updateState({ state: "waiting_for_editor", detail: "bridge no longer on record" });
+        }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+    ws.on("close", () => clearInterval(watchDiscovery));
+
     if (d) {
-      process.stdout.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
+      logger.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
+      updateState({ state: "connected", unityVersion: d.unity_version, port: d.port, detail: "connector ready" });
     } else {
       // Do not say "ready" when there is no Editor: the previous version printed the
       // problem and "connector ready" one line apart, and a person reasonably read
       // the second line and stopped. It also blamed a closed project when the real
       // cause is usually a project without the Mosaic Bridge package.
-      process.stdout.write(
+      logger.write(
         "connected to the service, waiting for a Unity Editor.\n" +
           "  Open a Unity project that has the Mosaic Bridge package installed.\n" +
           "  If it is already open, that project may not have the package: run\n" +
           "  mosaic-connector add <project path>, then reopen it in Unity.\n"
       );
+      updateState({ state: "waiting_for_editor" });
       // Keep looking, so the state resolves itself when the Editor appears rather
       // than requiring the person to restart something.
       const poll = setInterval(async () => {
@@ -290,7 +418,9 @@ function connect(args: Args, attempt = 0): void {
           const found = findDiscovery(args.discoveryFile);
           if (!(await bridgeAlive(found))) return; // recorded, but not answering yet
           clearInterval(poll);
-          process.stdout.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
+          known = found;
+          logger.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
+          updateState({ state: "connected", unityVersion: found.unity_version, port: found.port, detail: "connector ready" });
         } catch {
           /* still waiting */
         }
@@ -307,11 +437,11 @@ function connect(args: Args, attempt = 0): void {
       return;
     }
     if (msg.type === "hello") {
-      if (args.verbose) process.stdout.write(`authenticated as ${msg.user}\n`);
+      if (args.verbose) logger.write(`authenticated as ${msg.user}\n`);
       return;
     }
     if (!msg.id || !msg.route) return;
-    if (args.verbose) process.stdout.write(`-> ${msg.route}\n`);
+    if (args.verbose) logger.write(`-> ${msg.route}\n`);
     try {
       const d = findDiscovery(args.discoveryFile);
       const result = await callBridge(d, msg.route, msg.params, 120_000);
@@ -333,22 +463,32 @@ function connect(args: Args, attempt = 0): void {
     // 401 on the upgrade means the code is wrong; reconnecting every two seconds for
     // ever just hides that behind a scrolling log.
     if (/\b401\b/.test(why)) {
-      process.stdout.write(
+      logger.write(
         "The service rejected this access code. It may have been mistyped or replaced.\n" +
           "Run: mosaic-connector setup   with the correct code.\n"
       );
+      updateState({ state: "exited", detail: "access code rejected (401)" });
+      logger.close();
       process.exit(2);
     }
     // 4000 means the service accepted a newer connector for this user: another
     // process took the slot. Reconnecting would start a fight neither side wins,
     // so this one steps aside instead.
     if (code === 4000) {
-      process.stdout.write("another connector took over this token; exiting\n");
+      logger.write("another connector took over this token; exiting\n");
+      updateState({ state: "exited", detail: "evicted by another connector (4000)" });
+      logger.close();
       process.exit(0);
     }
-    const wait = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
-    process.stdout.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
-    setTimeout(() => connect(args, attempt + 1), wait);
+    // C-1: `wasStable` is true only once this connection survived at least STABLE_MS —
+    // "connector ready" printing is not enough on its own, since the 1006 loop reached
+    // that every cycle. An un-stable connection keeps growing the backoff instead of
+    // being handed a fresh 1s wait just because it briefly opened.
+    const wasStable = Date.now() - openedAt >= STABLE_MS;
+    const wait = computeBackoffMs(attempt);
+    logger.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
+    updateState({ state: "disconnected", detail: why });
+    setTimeout(() => connect(args, nextAttempt(attempt, wasStable), logger, updateState), wait);
   };
   ws.on("close", (code) => retry(`connection closed (${code})`, code));
   ws.on("error", (err) => {

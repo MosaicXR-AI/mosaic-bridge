@@ -116,6 +116,21 @@ namespace Mosaic.Bridge.Core.Server
         /// Signals the listen loop to stop, halts the <see cref="HttpListener"/>, and waits
         /// up to 2 seconds for the loop thread to exit.
         /// </summary>
+        /// <remarks>
+        /// M-1: every domain reload replaces this whole object — <see cref="Mosaic.Bridge.Core.Bootstrap.BridgeBootstrap"/>
+        /// constructs a brand new <see cref="BridgeServer"/> (and therefore a new
+        /// <see cref="HttpListener"/>) rather than reusing the old one. <c>HttpListener.Stop()</c>
+        /// alone does not release the listener's underlying native resources — that only happens
+        /// on <c>Close()</c>/Dispose, or whenever the finalizer eventually runs. Calling only
+        /// <c>Stop()</c> here left the pre-reload listener's port genuinely still bound until GC
+        /// caught up, which is not guaranteed to happen before the restarting bridge tries to
+        /// rebind its preferred port. Confirmed in the field: `netstat` after a reload showed the
+        /// SAME process still LISTENING on the old port as well as the new one it walked to
+        /// (8282 orphaned, 8283 live) — an orphan that reproduces on every single domain reload,
+        /// walking the port up by one each time. <c>Close()</c> both stops and fully releases the
+        /// listener, so the preferred port is actually free by the time <see cref="Start"/> is
+        /// called again.
+        /// </remarks>
         public void Stop()
         {
             IsRunning = false;
@@ -123,8 +138,13 @@ namespace Mosaic.Bridge.Core.Server
             try
             {
                 _listener?.Stop();
+                _listener?.Close();
             }
             catch { }
+            finally
+            {
+                _listener = null;
+            }
 
             _loopThread?.Join(2000);
 

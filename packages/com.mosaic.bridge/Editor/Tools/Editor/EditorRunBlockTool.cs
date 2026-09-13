@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -10,6 +11,26 @@ namespace Mosaic.Bridge.Tools.EditorOps
 {
     // ── Submit ────────────────────────────────────────────────────────────────
 
+    /// <remarks>
+    /// H-2: the generated block schedules its own execution via
+    /// <c>EditorApplication.delayCall</c>, which fires on a future Editor tick. An unfocused
+    /// Editor window does not tick on its own — see the identical problem, root-caused and
+    /// solved, on <c>editor/play-mode</c> (<c>EditorPlayModeTool</c>'s <c>PumpSeconds</c>/
+    /// <c>Pump</c>). Confirmed on Windows: a submitted block that never ran, ran immediately
+    /// once the Editor window was given OS-level focus (SetForegroundWindow), with zero code
+    /// changes in between. Without a fix, the tool's own advice — "resubmit once the Editor is
+    /// idle" — asks a bridge-driven caller to fix a Windows quirk it cannot control.
+    ///
+    /// The fix reuses play-mode's exact mechanism: hook <c>EditorApplication.update</c> and call
+    /// <c>QueuePlayerLoopUpdate()</c> on every tick to force the Editor to keep advancing while a
+    /// job is pending, regardless of focus. It differs from play-mode in one way that matters:
+    /// this pump must survive the domain reload that follows compilation, because that reload is
+    /// exactly when the generated class registers its delayCall. A plain field-based pump does
+    /// not survive a reload (static state resets). So the pump here is re-armed by
+    /// <c>[InitializeOnLoad]</c> on EVERY load — including the one right after the reload — by
+    /// checking a small EditorPrefs-persisted list of still-pending job ids.
+    /// </remarks>
+    [InitializeOnLoad]
     public static class EditorRunBlockTool
     {
         private const string TempFolderParent = "Assets";
@@ -17,6 +38,26 @@ namespace Mosaic.Bridge.Tools.EditorOps
         private const string TempFolder       = "Assets/Editor";
         private const string ClassPrefix      = "MosaicBridge_RunBlock_";
         private const string PrefPrefix       = "MosaicBridgeRunBlock_";
+        private const string ActiveJobsKey    = PrefPrefix + "ActiveJobs";
+
+        /// <summary>
+        /// After this many seconds with no result and no active compilation, a poll gives up and
+        /// reports a timeout (see <see cref="EditorRunBlockPollTool"/>). Also the pump's own
+        /// budget: there is no point driving Editor ticks past the point a caller has stopped
+        /// waiting for them.
+        /// </summary>
+        internal const int PendingTimeoutSeconds = 20;
+
+        private static double _pumpUntil;
+        private static bool _hooked;
+
+        /// <summary>Test hook: whether the pump is currently subscribed to EditorApplication.update.</summary>
+        internal static bool IsPumping => _hooked;
+
+        static EditorRunBlockTool()
+        {
+            RearmPumpForPendingJobs();
+        }
 
         [MosaicTool("editor/run-block",
                     "Submits a multi-statement C# code block for execution inside the Unity Editor. " +
@@ -64,9 +105,15 @@ namespace Mosaic.Bridge.Tools.EditorOps
             long submitted = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             EditorPrefs.SetString(PrefPrefix + jobId + "_scriptPath",  scriptPath);
             EditorPrefs.SetString(PrefPrefix + jobId + "_submitted",   submitted.ToString());
+            AddActiveJobId(jobId);
 
             // Trigger compilation
             AssetDatabase.ImportAsset(scriptPath, ImportAssetOptions.ForceSynchronousImport);
+
+            // H-2: keep driving Editor ticks until the job finishes or times out, so the
+            // generated class's delayCall fires even if this window never gets focus. Re-armed
+            // by the static constructor after the domain reload the compile above triggers.
+            StartPump(PendingTimeoutSeconds);
 
             return ToolResult<RunBlockSubmitResult>.Ok(new RunBlockSubmitResult
             {
@@ -75,6 +122,107 @@ namespace Mosaic.Bridge.Tools.EditorOps
                 Message = "Script submitted. Unity is compiling (expect 3-10 seconds + domain reload). " +
                           "Call editor/run-block-poll with this JobId to get the result."
             });
+        }
+
+        // ── Pump (H-2) ────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Re-arms the pump for every job that was submitted but hadn't finished before this
+        /// load — including the load immediately after the domain reload triggered by
+        /// compiling the temp script, which is exactly when the generated class registers its
+        /// delayCall. Drops jobs from the active list once they're done or have exceeded
+        /// <see cref="PendingTimeoutSeconds"/> (poll's own timeout path takes over from there).
+        /// </summary>
+        internal static void RearmPumpForPendingJobs()
+        {
+            var ids = GetActiveJobIds();
+            if (ids.Count == 0) return;
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var stillPending = new List<string>();
+            foreach (var id in ids)
+            {
+                if (EditorPrefs.GetBool(PrefPrefix + id + "_done", false))
+                    continue; // finished — drop it
+
+                var submittedStr = EditorPrefs.GetString(PrefPrefix + id + "_submitted", "0");
+                long submitted = long.TryParse(submittedStr, out long ts) ? ts : 0;
+                if (now - submitted >= PendingTimeoutSeconds)
+                    continue; // timed out — leave it for editor/run-block-poll to report
+
+                stillPending.Add(id);
+            }
+
+            SetActiveJobIds(stillPending);
+            if (stillPending.Count > 0)
+                StartPump(PendingTimeoutSeconds);
+        }
+
+        /// <summary>Same mechanism as EditorPlayModeTool's PumpSeconds: subscribe to
+        /// EditorApplication.update and force a player-loop tick on every callback, which is
+        /// what actually drives the Editor forward — including delayCall dispatch — when the
+        /// window has no focus.</summary>
+        internal static void StartPump(double timeoutSeconds)
+        {
+            var until = EditorApplication.timeSinceStartup + timeoutSeconds;
+            if (until > _pumpUntil) _pumpUntil = until;
+            if (_hooked) return;
+            EditorApplication.update += Pump;
+            _hooked = true;
+        }
+
+        internal static void StopPump()
+        {
+            _pumpUntil = 0;
+            if (!_hooked) return;
+            EditorApplication.update -= Pump;
+            _hooked = false;
+        }
+
+        private static void Pump()
+        {
+            if (EditorApplication.timeSinceStartup >= _pumpUntil || GetActiveJobIds().Count == 0)
+            {
+                StopPump();
+                return;
+            }
+            EditorApplication.QueuePlayerLoopUpdate();
+        }
+
+        // ── Active-job bookkeeping ────────────────────────────────────────────
+        // EditorPrefs exposes no key-enumeration API, so the set of pending job ids has to be
+        // tracked explicitly under one fixed key to be discoverable again after a domain reload.
+
+        internal static void AddActiveJobId(string jobId)
+        {
+            var ids = GetActiveJobIds();
+            if (!ids.Contains(jobId)) ids.Add(jobId);
+            SetActiveJobIds(ids);
+        }
+
+        internal static void RemoveActiveJobId(string jobId)
+        {
+            var ids = GetActiveJobIds();
+            if (ids.Remove(jobId))
+                SetActiveJobIds(ids);
+        }
+
+        internal static List<string> GetActiveJobIds()
+        {
+            var raw = EditorPrefs.GetString(ActiveJobsKey, "");
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(raw)) return list;
+            foreach (var id in raw.Split(','))
+                if (!string.IsNullOrEmpty(id)) list.Add(id);
+            return list;
+        }
+
+        private static void SetActiveJobIds(List<string> ids)
+        {
+            if (ids.Count == 0)
+                EditorPrefs.DeleteKey(ActiveJobsKey);
+            else
+                EditorPrefs.SetString(ActiveJobsKey, string.Join(",", ids));
         }
 
         // ── Script builder ────────────────────────────────────────────────────
@@ -174,6 +322,7 @@ namespace Mosaic.Bridge.Tools.EditorOps
             EditorPrefs.DeleteKey(p + "_error");
             EditorPrefs.DeleteKey(p + "_scriptPath");
             EditorPrefs.DeleteKey(p + "_submitted");
+            RemoveActiveJobId(jobId);
         }
     }
 
@@ -183,8 +332,10 @@ namespace Mosaic.Bridge.Tools.EditorOps
     {
         private const string PrefPrefix = "MosaicBridgeRunBlock_";
 
-        // After this many seconds with no result and no active compilation → assume compile error
-        private const int CompileErrorTimeoutSeconds = 20;
+        // After this many seconds with no result and no active compilation → assume compile
+        // error. Shared with EditorRunBlockTool's own pump budget (H-2) so the two agree on how
+        // long a job is worth still driving Editor ticks for.
+        private const int CompileErrorTimeoutSeconds = EditorRunBlockTool.PendingTimeoutSeconds;
 
         [MosaicTool("editor/run-block-poll",
                     "Polls for the result of a previously submitted editor/run-block job. " +
@@ -287,10 +438,13 @@ namespace Mosaic.Bridge.Tools.EditorOps
                     : $"Job timed out after {elapsed}s — the script COMPILED, but the block never "
                       + "ran. No compile errors were logged against it. The generated class is "
                       + "[InitializeOnLoad] and schedules itself via delayCall, so this means the "
-                      + "domain reload did not deliver that callback — typically another reload, a "
-                      + "play-mode change or a second compile landing on top of it. Do NOT go "
-                      + "looking for compile errors; there are none. Resubmit once the Editor is "
-                      + "idle."
+                      + "domain reload did not deliver that callback. editor/run-block already "
+                      + "drives Editor ticks itself while a job is pending, so an unfocused window "
+                      + "should not be the cause — the likelier culprit is another reload, a "
+                      + "play-mode change, or a second compile landing on top of this one and "
+                      + "stopping the pump early. Do NOT go looking for compile errors; there are "
+                      + "none. Resubmit; avoid triggering another compile or play-mode change while "
+                      + "the job is pending."
             });
         }
 

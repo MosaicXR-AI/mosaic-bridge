@@ -126,7 +126,7 @@ export function machineHeaders(m: MachineIdentity): Record<string, string> {
 /** Printed by `version` and at the top of `help`. An acceptance round spent a page
  *  reporting connector behaviour as unfixed because the machine was running a build from
  *  before the fix, and nothing on it could say which build that was. */
-export const CONNECTOR_VERSION = "0.11.1";
+export const CONNECTOR_VERSION = "0.12.0";
 
 const BRIDGE_PKG = "com.mosaic.bridge";
 /** Where the Bridge comes from when the service cannot be asked. Every install failure in

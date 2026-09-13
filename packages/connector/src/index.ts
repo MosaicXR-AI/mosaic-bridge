@@ -14,18 +14,21 @@
  */
 import WebSocket from "ws";
 import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, refreshEntitlement, CONNECTOR_VERSION } from "./cli.js";
-import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
+import { findDiscovery, bridgeAlive, discoveryChanged, type Discovery } from "./discovery.js";
 import { computeBackoffMs, nextAttempt, STABLE_MS } from "./backoff.js";
 import { RunLogger, writeRunState, readRunState, collidesWithRunningInstance, formatLiveStatus, type RunState } from "./runlog.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
-/** How often the connector pings the tunnel while connected.
+/** How often the connector pings the tunnel while connected, and — same interval — how
+ *  often it re-checks the discovery file for a bridge that restarted underneath it.
  *
  *  C-1's reported 1006 loop is what an abnormal close with no close frame usually means
  *  happened on the OTHER end already — a dead intermediary, or a proxy that timed the
  *  connection out — invisibly, for however long nothing here was watching. A ping the
  *  far end must answer converts that into a clean, promptly-detected close instead of a
- *  socket that looks open until some unrelated write eventually fails. */
+ *  socket that looks open until some unrelated write eventually fails. A-1 is the same
+ *  gap on the bridge side: nothing polled for a domain reload finishing, so nothing
+ *  said so until the next RPC happened to arrive. */
 const HEARTBEAT_INTERVAL_MS = 20_000;
 
 interface Args {
@@ -356,6 +359,43 @@ function connect(args: Args, attempt: number, logger: RunLogger, updateState: (p
     } catch {
       /* reported below as a waiting state, not as a failure */
     }
+
+    // A-1: watches the discovery file for a bridge that restarted underneath this
+    // connection (a domain reload tears down and restarts the bridge's HTTP server,
+    // same or different pid, always a new started_unix_seconds). The message handler
+    // below already re-reads the file on every RPC, so a call arriving after a restart
+    // mostly self-heals on its own — but if nothing arrives from the cloud during the
+    // gap, nothing here ever SAID the bridge came back, and the last printed line stayed
+    // "connector ready" for an Editor that had, for a while, actually gone (compounding
+    // C-2). This polls independently of any RPC traffic so that reconnection is
+    // observed and announced, not merely eventually true.
+    let known: Discovery | null = d;
+    const watchDiscovery = setInterval(async () => {
+      try {
+        const found = findDiscovery(args.discoveryFile);
+        if (!discoveryChanged(known, found)) return;
+        const stillAlive = await bridgeAlive(found);
+        known = found;
+        if (stillAlive) {
+          logger.write(`bridge restarted (Unity ${found.unity_version ?? "?"} on port ${found.port}) — re-paired\n`);
+          updateState({ state: "connected", unityVersion: found.unity_version, port: found.port, detail: "re-paired after bridge restart" });
+        } else {
+          logger.write("the Unity Editor's Mosaic Bridge went away; waiting for it to come back.\n");
+          updateState({ state: "waiting_for_editor", detail: "bridge stopped answering" });
+        }
+      } catch {
+        // findDiscovery throws when nothing is on record at all (e.g. the Editor fully
+        // closed, not just reloaded); treat that the same as "went away" once, not on
+        // every tick.
+        if (known !== null) {
+          known = null;
+          logger.write("the Unity Editor's Mosaic Bridge went away; waiting for it to come back.\n");
+          updateState({ state: "waiting_for_editor", detail: "bridge no longer on record" });
+        }
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+    ws.on("close", () => clearInterval(watchDiscovery));
+
     if (d) {
       logger.write(`connector ready (Unity ${d.unity_version ?? "?"} on port ${d.port})\n`);
       updateState({ state: "connected", unityVersion: d.unity_version, port: d.port, detail: "connector ready" });
@@ -378,6 +418,7 @@ function connect(args: Args, attempt: number, logger: RunLogger, updateState: (p
           const found = findDiscovery(args.discoveryFile);
           if (!(await bridgeAlive(found))) return; // recorded, but not answering yet
           clearInterval(poll);
+          known = found;
           logger.write(`connector ready (Unity ${found.unity_version ?? "?"} on port ${found.port})\n`);
           updateState({ state: "connected", unityVersion: found.unity_version, port: found.port, detail: "connector ready" });
         } catch {

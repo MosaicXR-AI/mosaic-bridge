@@ -12,6 +12,42 @@ export interface Discovery {
   secret_base64: string;
   unity_project_path?: string;
   unity_version?: string;
+  /** Written by the bridge (DiscoveryFileData, schema 1.2+) — the OS process id and the
+   *  moment that process started. A domain reload restarts the bridge's HTTP listener
+   *  in the same Unity process (same pid), but a full Editor restart is a new pid; either
+   *  way `started_unix_seconds` moves. Both are optional because older bridge builds may
+   *  not have written them yet — absence is "cannot tell", not "unchanged". */
+  process_id?: number;
+  started_unix_seconds?: number;
+}
+
+/** Whether `next` describes a different running bridge than `prev` — a new process, the
+ *  same process restarted (domain reload rewrites started_unix_seconds even when the pid
+ *  is unchanged), a different port, or a rotated secret. Any of these means whatever the
+ *  connector last announced about `prev` is no longer true.
+ *
+ *  A-1: a domain reload tears down and restarts the bridge's HTTP server. The connector
+ *  already re-reads the discovery file on every RPC it forwards, so a call arriving after
+ *  the restart mostly self-heals — but nothing noticed or said so, and if the cloud sent
+ *  nothing during the gap the connector's last printed line stayed "connector ready" for
+ *  an Editor that was, for a while, not there (compounding C-2). This lets a poll loop
+ *  notice the change on its own and announce it, rather than only ever finding out
+ *  reactively on the next tool call. */
+export function discoveryChanged(prev: Discovery | null, next: Discovery): boolean {
+  if (!prev) return true;
+  if (prev.port !== next.port) return true;
+  if (prev.secret_base64 !== next.secret_base64) return true;
+  if (prev.process_id !== undefined && next.process_id !== undefined && prev.process_id !== next.process_id) {
+    return true;
+  }
+  if (
+    prev.started_unix_seconds !== undefined &&
+    next.started_unix_seconds !== undefined &&
+    prev.started_unix_seconds !== next.started_unix_seconds
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function sharedBase(): string {

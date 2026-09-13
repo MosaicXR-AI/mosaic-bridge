@@ -15,7 +15,17 @@
 import WebSocket from "ws";
 import { setup, readConfig, writeConfig, addProject, statusReport, usage, servicePackages, AccessCodeRejected, MachineLimitReached, machineIdentity, refreshEntitlement, CONNECTOR_VERSION } from "./cli.js";
 import { findDiscovery, bridgeAlive, type Discovery } from "./discovery.js";
+import { computeBackoffMs, nextAttempt, STABLE_MS } from "./backoff.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+
+/** How often the connector pings the tunnel while connected.
+ *
+ *  C-1's reported 1006 loop is what an abnormal close with no close frame usually means
+ *  happened on the OTHER end already — a dead intermediary, or a proxy that timed the
+ *  connection out — invisibly, for however long nothing here was watching. A ping the
+ *  far end must answer converts that into a clean, promptly-detected close instead of a
+ *  socket that looks open until some unrelated write eventually fails. */
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 interface Args {
   url: string;
@@ -114,7 +124,7 @@ async function main(argv: string[]): Promise<void> {
     await setup();
     return;
   }
-  connect(parseArgs(argv.filter((a) => a !== "run")));
+  connect(parseArgs(argv.filter((a) => a !== "run")), 0);
 }
 
 /** The bridge authenticates every request with an HMAC over a canonical string.
@@ -202,7 +212,7 @@ async function callBridge(d: Discovery, route: string, params: unknown, timeoutM
   return bridgeRequest(d, "POST", "/execute", { tool, parameters: params ?? {} }, timeoutMs);
 }
 
-function connect(args: Args, attempt = 0): void {
+function connect(args: Args, attempt: number): void {
   // Who is dialling in, not just with which code. The service keeps the list of
   // machines per code and refuses one too many.
   const m = machineIdentity(readConfig());
@@ -211,6 +221,7 @@ function connect(args: Args, attempt = 0): void {
   });
   const target = `${args.url}${args.url.includes("?") ? "&" : "?"}${q.toString()}`;
   const ws = new WebSocket(target);
+  const openedAt = Date.now();
 
   // A 403 carries the reason in its body — which machines already hold this code —
   // and reconnecting would only repeat it. Print it, and stop. A 401 marked "expired"
@@ -241,7 +252,29 @@ function connect(args: Args, attempt = 0): void {
   });
 
   ws.on("open", async () => {
-    attempt = 0;
+    // C-1: this used to reset `attempt` to 0 right here, unconditionally. Every cycle
+    // in the reported 1006 loop DID reach "open" — pairing succeeded every time — so
+    // that reset fired every time too, and the exponential backoff below never grew: it
+    // is the reason "reconnecting in 1s" repeated for half an hour. `attempt` now only
+    // resets once this connection has proven itself open for STABLE_MS (see retry()).
+
+    // A ping the far end must answer, not merely a socket object that has not yet
+    // reported an error. `terminate()` forces a close (and so a loud, logged retry) as
+    // soon as a pong is missed, instead of leaving a half-open connection undetected.
+    let alive = true;
+    ws.on("pong", () => {
+      alive = true;
+    });
+    const heartbeat = setInterval(() => {
+      if (!alive) {
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, HEARTBEAT_INTERVAL_MS);
+    ws.on("close", () => clearInterval(heartbeat));
+
     // A fresh Pro licence on every connection, and every six hours while connected: a
     // person who is still allowed never sees it expire, and a revoked code stops Pro
     // within a week whether or not the connector is ever restarted.
@@ -346,9 +379,14 @@ function connect(args: Args, attempt = 0): void {
       process.stdout.write("another connector took over this token; exiting\n");
       process.exit(0);
     }
-    const wait = Math.min(30_000, 1000 * 2 ** Math.min(attempt, 5));
+    // C-1: `wasStable` is true only once this connection survived at least STABLE_MS —
+    // "connector ready" printing is not enough on its own, since the 1006 loop reached
+    // that every cycle. An un-stable connection keeps growing the backoff instead of
+    // being handed a fresh 1s wait just because it briefly opened.
+    const wasStable = Date.now() - openedAt >= STABLE_MS;
+    const wait = computeBackoffMs(attempt);
     process.stdout.write(`${why}; reconnecting in ${Math.round(wait / 1000)}s\n`);
-    setTimeout(() => connect(args, attempt + 1), wait);
+    setTimeout(() => connect(args, nextAttempt(attempt, wasStable)), wait);
   };
   ws.on("close", (code) => retry(`connection closed (${code})`, code));
   ws.on("error", (err) => {

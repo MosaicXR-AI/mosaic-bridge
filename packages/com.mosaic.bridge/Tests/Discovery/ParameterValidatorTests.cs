@@ -149,5 +149,85 @@ namespace Mosaic.Bridge.Tests.Discovery
             var result = ParameterValidator.Bind<SimpleParams>("{\"RequiredField\":\"hello\"}");
             Assert.IsTrue(result.IsValid, result.ErrorMessage);
         }
+
+        // ── Nested array-of-objects (H-1) ───────────────────────────────────────
+        // Found on meta/batch/execute (`calls:[{stopOnError:true}]`) and
+        // animation/transition (`conditions:[{hasExitTime:false}]`): an unknown key on an item
+        // inside an array-of-objects parameter was validated against the PARENT route's own
+        // property names instead of the item's own schema, so the error rejected a key while
+        // its own "accepts" list named it. These fixtures mirror that exact shape.
+
+        private class BatchCallFixture
+        {
+            [RequiredAttribute] public string ToolName { get; set; }
+            public Newtonsoft.Json.Linq.JObject Arguments { get; set; }
+        }
+
+        private class BatchExecuteParamsFixture
+        {
+            [RequiredAttribute] public System.Collections.Generic.List<BatchCallFixture> Calls { get; set; }
+            public bool StopOnError { get; set; }
+        }
+
+        private class ConditionFixture
+        {
+            public string ParameterName { get; set; }
+            public string Mode { get; set; }
+        }
+
+        private class TransitionParamsFixture
+        {
+            [RequiredAttribute] public string Action { get; set; }
+            public ConditionFixture[] Conditions { get; set; }
+        }
+
+        [Test]
+        public void Bind_UnknownKeyInsideArrayOfObjects_NamesTheItemsOwnAcceptedKeys_NotTheParents()
+        {
+            // "stopOnError" is a real key — but on the PARENT (BatchExecuteParamsFixture), not on
+            // the array item (BatchCallFixture) where it was actually written.
+            var result = ParameterValidator.Bind<BatchExecuteParamsFixture>(
+                "{\"Calls\":[{\"ToolName\":\"x\",\"stopOnError\":true}]}");
+
+            Assert.IsFalse(result.IsValid);
+            StringAssert.Contains("stopOnError", result.ErrorMessage);
+            // Must list the ITEM type's own keys (toolName, arguments) — not the parent's
+            // (calls, stopOnError), which is what a scope-confused validator would report, and
+            // which is self-contradictory: it would reject 'stopOnError' while listing it as
+            // accepted.
+            StringAssert.Contains("toolName (required)", result.ErrorMessage);
+            StringAssert.Contains("arguments", result.ErrorMessage);
+            Assert.IsFalse(result.ErrorMessage.Contains("calls,"),
+                "must not fall back to the parent's own property list");
+        }
+
+        [Test]
+        public void Bind_UnknownKeyOnArrayOfObjectsUsingArrayType_NamesTheItemsOwnAcceptedKeys()
+        {
+            // Same shape as animation/transition's `conditions:[{hasExitTime:false}]`, but with
+            // a real C# array (T[]) instead of List<T> — the other common collection shape.
+            var result = ParameterValidator.Bind<TransitionParamsFixture>(
+                "{\"Action\":\"add\",\"Conditions\":[{\"hasExitTime\":false}]}");
+
+            Assert.IsFalse(result.IsValid);
+            StringAssert.Contains("hasExitTime", result.ErrorMessage);
+            StringAssert.Contains("parameterName", result.ErrorMessage);
+            StringAssert.Contains("mode", result.ErrorMessage);
+        }
+
+        [Test]
+        public void Bind_UnknownTopLevelParameter_StillNamesTheTopLevelAcceptedKeys()
+        {
+            // The narrowing to the item's own schema must not regress the ordinary, non-nested
+            // case: an unknown key on the route's own top-level object still lists the route's
+            // own accepted keys.
+            var result = ParameterValidator.Bind<BatchExecuteParamsFixture>(
+                "{\"Calls\":[],\"bogus\":1}");
+
+            Assert.IsFalse(result.IsValid);
+            StringAssert.Contains("bogus", result.ErrorMessage);
+            StringAssert.Contains("calls (required)", result.ErrorMessage);
+            StringAssert.Contains("stopOnError", result.ErrorMessage);
+        }
     }
 }

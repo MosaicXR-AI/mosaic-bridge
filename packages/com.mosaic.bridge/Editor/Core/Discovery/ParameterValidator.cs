@@ -84,6 +84,16 @@ namespace Mosaic.Bridge.Core.Discovery
         /// tells the caller what is wrong but not what to write instead, and the whole reason this
         /// error exists is that the caller believed a name that does not exist.
         /// </summary>
+        /// <remarks>
+        /// H-1: for a nested array-of-objects parameter (e.g. `calls: [{stopOnError: true}]` on
+        /// meta/batch/execute, or `conditions: [{hasExitTime: false}]` on animation/transition),
+        /// Newtonsoft's exception is raised while binding the ITEM type (`BatchCall`,
+        /// `TransitionConditionInput`), not the route's own top-level params type
+        /// (`BatchExecuteParams`, `AnimationTransitionParams`). Building the "accepts" list from
+        /// <paramref name="targetType"/> unconditionally reported the PARENT route's own property
+        /// names — rejecting the very key its own message claimed to accept. The accepted-names
+        /// list must come from whichever type Newtonsoft was actually binding into.
+        /// </remarks>
         private static string UnknownParameterMessage(JsonSerializationException ex, Type targetType)
         {
             string bad = null;
@@ -94,8 +104,10 @@ namespace Mosaic.Bridge.Core.Discovery
                 if (close > open) bad = ex.Message.Substring(open + 1, close - open - 1);
             }
 
+            var scopeType = ResolveMemberScopeType(ex.Message, targetType) ?? targetType;
+
             var names = new System.Collections.Generic.List<string>();
-            foreach (var prop in targetType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (var prop in scopeType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 var jp = prop.GetCustomAttribute<JsonPropertyAttribute>();
                 var name = jp?.PropertyName ?? char.ToLowerInvariant(prop.Name[0]) + prop.Name.Substring(1);
@@ -106,6 +118,83 @@ namespace Mosaic.Bridge.Core.Discovery
             return $"Unknown parameter '{bad ?? "?"}'. This tool accepts: {string.Join(", ", names)}. " +
                    "Unknown parameters are rejected rather than ignored, because a silently dropped " +
                    "parameter produces a result that looks correct and is not.";
+        }
+
+        /// <summary>
+        /// Newtonsoft's "Could not find member 'x' on object of type 'Y'" names Y by its short,
+        /// non-namespaced type name only — it can't be resolved with <c>Type.GetType</c>. Instead,
+        /// walk <paramref name="root"/>'s own property graph (properties, array/list item types,
+        /// recursively) looking for a type whose name matches: Y is always reachable that way,
+        /// since it is the exact type Newtonsoft was binding into when it hit the unknown member.
+        /// Returns null (caller falls back to <paramref name="root"/>) if the name can't be parsed
+        /// out of the message, or isn't found anywhere in the graph.
+        /// </summary>
+        private static Type ResolveMemberScopeType(string exceptionMessage, Type root)
+        {
+            const string marker = "on object of type '";
+            var start = exceptionMessage.IndexOf(marker, StringComparison.Ordinal);
+            if (start < 0) return null;
+            start += marker.Length;
+            var end = exceptionMessage.IndexOf('\'', start);
+            if (end < 0) return null;
+            var typeName = exceptionMessage.Substring(start, end - start);
+
+            if (root.Name == typeName) return root;
+
+            return FindTypeByName(root, typeName, new System.Collections.Generic.HashSet<Type>());
+        }
+
+        private static Type FindTypeByName(Type type, string name, System.Collections.Generic.HashSet<Type> visited)
+        {
+            if (type == null || !visited.Add(type))
+                return null;
+
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var itemType = UnwrapItemType(prop.PropertyType);
+                if (itemType == null || !IsWalkable(itemType))
+                    continue;
+
+                if (itemType.Name == name)
+                    return itemType;
+
+                var found = FindTypeByName(itemType, name, visited);
+                if (found != null)
+                    return found;
+            }
+
+            return null;
+        }
+
+        /// <summary>The array element type, or the T in List&lt;T&gt; / IEnumerable&lt;T&gt;; the
+        /// type itself for anything else (plain object properties).</summary>
+        private static Type UnwrapItemType(Type propType)
+        {
+            if (propType.IsArray)
+                return propType.GetElementType();
+
+            if (propType.IsGenericType)
+            {
+                var args = propType.GetGenericArguments();
+                if (args.Length == 1 && typeof(System.Collections.IEnumerable).IsAssignableFrom(propType))
+                    return args[0];
+            }
+
+            return propType;
+        }
+
+        /// <summary>Only descend into plain POCOs — not strings, value types, or dynamic JSON
+        /// containers like JObject/JToken (those accept arbitrary keys by design, so they can
+        /// never be the source of an "unknown member" error).</summary>
+        private static bool IsWalkable(Type type)
+        {
+            if (!type.IsClass || type == typeof(string))
+                return false;
+            if (typeof(JToken).IsAssignableFrom(type))
+                return false;
+            if (type.Namespace != null && type.Namespace.StartsWith("System", StringComparison.Ordinal))
+                return false;
+            return true;
         }
 
         /// <summary>Convenience overload for a known type.</summary>

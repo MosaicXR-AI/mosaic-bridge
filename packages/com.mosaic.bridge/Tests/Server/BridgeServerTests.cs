@@ -69,6 +69,38 @@ namespace Mosaic.Bridge.Tests.Server
             _server.Start();
         }
 
+        [Test]
+        public void Stop_ThenNewServerRebindsToSamePort_ImmediatelySucceeds()
+        {
+            // M-1: BridgeBootstrap constructs a brand new BridgeServer (and HttpListener) on
+            // every domain reload rather than reusing the old one, after calling Stop() on the
+            // pre-reload instance. If Stop() alone doesn't fully release the old listener's
+            // native resources, the preferred port stays bound until GC eventually finalizes the
+            // abandoned listener — timing this test does not control and the real bootstrap
+            // cannot wait on — and the restarting bridge walks to the next port instead. Proven
+            // in the field: the same PID showed as LISTENING on both the old and new port after
+            // a reload, with the port drifting up by one on every single reload after that.
+            var boundPort = _server.Port;
+            _server.Stop();
+
+            var second = new BridgeServer(_authenticator, _logger);
+            try
+            {
+                second.Start(boundPort);
+                Assert.AreEqual(boundPort, second.Port,
+                    "the old listener's port must be free immediately after Stop() — rebinding " +
+                    "must not depend on GC timing to reclaim it");
+            }
+            finally
+            {
+                second.Stop();
+            }
+
+            // Prevent TearDown from double-stopping the original _server.
+            _server = new BridgeServer(_authenticator, _logger);
+            _server.Start();
+        }
+
         // ── Authentication ─────────────────────────────────────────────────────
 
         [Test]

@@ -1,16 +1,22 @@
+using System;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using Newtonsoft.Json.Linq;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Assets;
 
 namespace Mosaic.Bridge.Tools.ScriptableObjects
 {
     public static class ScriptableObjectSetFieldTool
     {
         [MosaicTool("scriptableobject/set-field",
-                    "Sets a serialized field value on a ScriptableObject asset",
+                    "Sets a serialized field value on a ScriptableObject asset. For an ObjectReference field, " +
+                    "pass Value as an asset path string, optionally with '#subAssetName' (e.g. " +
+                    "'Assets/sheet.png#Run_03') — resolved against the field's own type, failing with a specific " +
+                    "reason on a type mismatch rather than reporting success.",
                     isReadOnly: false)]
         public static ToolResult<ScriptableObjectSetFieldResult> Execute(ScriptableObjectSetFieldParams p)
         {
@@ -68,6 +74,18 @@ namespace Mosaic.Bridge.Tools.ScriptableObjects
                         ca[0].Value<float>(), ca[1].Value<float>(),
                         ca[2].Value<float>(), ca[3].Value<float>());
                     break;
+                case SerializedPropertyType.ObjectReference:
+                    var refPath = value as string;
+                    if (string.IsNullOrEmpty(refPath))
+                        return ToolResult<ScriptableObjectSetFieldResult>.Fail(
+                            "ObjectReference field requires Value to be an asset path string, optionally with " +
+                            "'#subAssetName' (e.g. 'Assets/sheet.png#Run_03').",
+                            ErrorCodes.INVALID_PARAM);
+                    var fieldType = ObjectReferenceResolver.ResolveFieldType(prop, ResolveType);
+                    if (!ObjectReferenceResolver.TryResolveAsset(refPath, fieldType, out var resolvedObj, out var refError))
+                        return ToolResult<ScriptableObjectSetFieldResult>.Fail(refError, ErrorCodes.NOT_FOUND);
+                    prop.objectReferenceValue = resolvedObj;
+                    break;
                 default:
                     return ToolResult<ScriptableObjectSetFieldResult>.Fail(
                         $"Unsupported property type: {prop.propertyType}", ErrorCodes.TYPE_MISMATCH);
@@ -105,8 +123,19 @@ namespace Mosaic.Bridge.Tools.ScriptableObjects
                     return new float[] { prop.vector2Value.x, prop.vector2Value.y };
                 case SerializedPropertyType.Color:
                     return new float[] { prop.colorValue.r, prop.colorValue.g, prop.colorValue.b, prop.colorValue.a };
+                case SerializedPropertyType.ObjectReference:
+                    return prop.objectReferenceValue == null ? null : prop.objectReferenceValue.name;
                 default: return prop.type;
             }
+        }
+
+        private static Type ResolveType(string typeName)
+        {
+            var t = Type.GetType(typeName);
+            if (t != null) return t;
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
+                .FirstOrDefault(x => x.Name == typeName || x.FullName == typeName);
         }
     }
 }

@@ -5,6 +5,7 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Assets;
 
 namespace Mosaic.Bridge.Tools.Components
 {
@@ -17,7 +18,11 @@ namespace Mosaic.Bridge.Tools.Components
                     "(e.g. 'Knots[0].Position'), and automatically tries the Unity " +
                     "'m_' prefix convention, so both 'Lens.FieldOfView' and 'm_Lens.m_FieldOfView' work. " +
                     "Provide TargetObjectPath for object references, or FloatValue/IntValue/BoolValue/StringValue/" +
-                    "ColorValue/VectorValue for primitive fields.",
+                    "ColorValue/VectorValue for primitive fields. TargetObjectPath is resolved against the field's " +
+                    "own type: a sub-asset can be addressed as 'Assets/sheet.png#Run_03', a Sprite field pointed " +
+                    "at its texture picks the first sub-sprite, and a GameObject/prefab path or scene name whose " +
+                    "field wants a Component resolves via GetComponent. Fails with a specific reason on a type " +
+                    "mismatch rather than reporting success.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ComponentSetReferenceResult> Execute(ComponentSetReferenceParams p)
         {
@@ -76,10 +81,9 @@ namespace Mosaic.Bridge.Tools.Components
                         "Use FloatValue / IntValue / BoolValue / StringValue / ColorValue / VectorValue for this property.",
                         ErrorCodes.INVALID_PARAM);
 
-                var resolvedTarget = ResolveTarget(p.TargetObjectPath, p.TargetType);
-                if (resolvedTarget == null)
-                    return ToolResult<ComponentSetReferenceResult>.Fail(
-                        $"Target object not found: '{p.TargetObjectPath}'", ErrorCodes.NOT_FOUND);
+                var fieldType = ObjectReferenceResolver.ResolveFieldType(prop, ResolveType);
+                if (!ResolveTarget(p.TargetObjectPath, p.TargetType, fieldType, out var resolvedTarget, out var resolveError))
+                    return ToolResult<ComponentSetReferenceResult>.Fail(resolveError, ErrorCodes.NOT_FOUND);
 
                 prop.objectReferenceValue = resolvedTarget;
                 assignedValue = resolvedTarget.name;
@@ -267,31 +271,66 @@ namespace Mosaic.Bridge.Tools.Components
             return current;
         }
 
-        private static UnityEngine.Object ResolveTarget(string targetPath, string targetType)
+        /// <summary>O4 §3.1: resolves TargetObjectPath against the field's own expected type
+        /// (read off the SerializedProperty) instead of loading whatever happens to be at the path
+        /// and assigning it regardless — a scene GameObject whose field wants a Component now
+        /// resolves via GetComponent, and an asset path goes through ObjectReferenceResolver, which
+        /// supports #subAsset addressing and fails with a specific reason on a type mismatch rather
+        /// than silently handing back the wrong kind of Object.</summary>
+        private static bool ResolveTarget(string targetPath, string targetType, Type fieldType,
+            out UnityEngine.Object resolved, out string error)
         {
+            resolved = null;
+            error = null;
             bool tryAsset      = string.IsNullOrEmpty(targetType) || targetType == "Asset";
             bool tryGameObject = string.IsNullOrEmpty(targetType) || targetType == "GameObject";
-            UnityEngine.Object result = null;
+            string assetError = null;
 
             if (tryAsset)
             {
-                result = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(targetPath);
-                if (result == null && targetPath.StartsWith("Assets/"))
+                if (ObjectReferenceResolver.TryResolveAsset(targetPath, fieldType, out resolved, out assetError))
+                    return true;
+
+                // A just-written asset may not have a cached GUID yet — one forced refresh and
+                // retry before giving up, same as the previous behavior.
+                if (targetPath.StartsWith("Assets/", StringComparison.Ordinal))
                 {
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-                    result = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(targetPath);
-                }
-                if (result == null && targetPath.StartsWith("Assets/"))
-                {
-                    var all = AssetDatabase.LoadAllAssetsAtPath(targetPath);
-                    if (all != null && all.Length > 0) result = all[0];
+                    if (ObjectReferenceResolver.TryResolveAsset(targetPath, fieldType, out resolved, out assetError))
+                        return true;
                 }
             }
 
-            if (result == null && tryGameObject)
-                result = GameObject.Find(targetPath);
+            if (tryGameObject)
+            {
+                var go = GameObject.Find(targetPath);
+                if (go != null)
+                {
+                    if (fieldType == null || fieldType.IsInstanceOfType(go))
+                    {
+                        resolved = go;
+                        return true;
+                    }
+                    if (typeof(Component).IsAssignableFrom(fieldType))
+                    {
+                        var comp = go.GetComponent(fieldType);
+                        if (comp != null)
+                        {
+                            resolved = comp;
+                            return true;
+                        }
+                        error = $"Scene object '{targetPath}' has no component of type '{fieldType.Name}'.";
+                        return false;
+                    }
+                    error = $"Scene object '{targetPath}' is a GameObject, not compatible with the expected type '{fieldType.Name}'.";
+                    return false;
+                }
+            }
 
-            return result;
+            // Neither branch resolved anything concrete enough to explain — prefer the asset
+            // error when both were tried, since a bare "not found" hides why (e.g. a wrong type).
+            error = tryAsset && !string.IsNullOrEmpty(assetError) ? assetError : $"Target object not found: '{targetPath}'";
+            return false;
         }
 
         private static Type ResolveType(string typeName)

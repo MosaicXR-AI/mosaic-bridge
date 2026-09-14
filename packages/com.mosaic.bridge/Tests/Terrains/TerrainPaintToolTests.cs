@@ -1,0 +1,112 @@
+using NUnit.Framework;
+using UnityEngine;
+using UnityEditor;
+using Mosaic.Bridge.Tools.Terrains;
+using Mosaic.Bridge.Contracts.Compat;
+
+namespace Mosaic.Bridge.Tests.Terrains
+{
+    /// <summary>
+    /// L14: terrain/paint add-layer used to mint a brand-new .terrainlayer asset on every call,
+    /// named after the calling terrain — so a course's terrain/grid (many adjacent Terrain tiles)
+    /// ended up with one duplicate layer asset per tile instead of one shared layer, and painting
+    /// one tile never matched its neighbors.
+    /// </summary>
+    [TestFixture]
+    [Category("Terrain")]
+    public class TerrainPaintToolTests
+    {
+        private GameObject _terrainA;
+        private GameObject _terrainB;
+        private string _terrainDataPathA;
+        private string _terrainDataPathB;
+        private const string TexturePath = "Assets/MosaicTerrainPaintTestTexture.png";
+        private const string LayerPath = "Assets/TerrainData/MosaicTerrainPaintTestTexture.terrainlayer";
+
+        [SetUp]
+        public void SetUp()
+        {
+            var a = TerrainCreateTool.Execute(new TerrainCreateParams
+            {
+                Name = "TestTerrain_PaintA", Width = 50f, Length = 50f, Height = 20f, HeightmapResolution = 33
+            });
+            Assert.IsTrue(a.Success, a.Error);
+            _terrainA = UnityIds.Resolve(a.Data.InstanceId) as GameObject;
+            _terrainDataPathA = a.Data.TerrainDataAssetPath;
+
+            var b = TerrainCreateTool.Execute(new TerrainCreateParams
+            {
+                Name = "TestTerrain_PaintB", Width = 50f, Length = 50f, Height = 20f, HeightmapResolution = 33,
+                Position = new[] { 50f, 0f, 0f }
+            });
+            Assert.IsTrue(b.Success, b.Error);
+            _terrainB = UnityIds.Resolve(b.Data.InstanceId) as GameObject;
+            _terrainDataPathB = b.Data.TerrainDataAssetPath;
+
+            var tex = new Texture2D(4, 4);
+            System.IO.File.WriteAllBytes(
+                System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Application.dataPath), TexturePath),
+                ImageConversion.EncodeToPNG(tex));
+            Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(TexturePath, ImportAssetOptions.ForceSynchronousImport);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (_terrainA != null) Object.DestroyImmediate(_terrainA);
+            if (_terrainB != null) Object.DestroyImmediate(_terrainB);
+            if (!string.IsNullOrEmpty(_terrainDataPathA) && AssetDatabase.AssetPathExists(_terrainDataPathA))
+                AssetDatabase.DeleteAsset(_terrainDataPathA);
+            if (!string.IsNullOrEmpty(_terrainDataPathB) && AssetDatabase.AssetPathExists(_terrainDataPathB))
+                AssetDatabase.DeleteAsset(_terrainDataPathB);
+            if (AssetDatabase.AssetPathExists(TexturePath)) AssetDatabase.DeleteAsset(TexturePath);
+            if (AssetDatabase.AssetPathExists(LayerPath)) AssetDatabase.DeleteAsset(LayerPath);
+        }
+
+        [Test]
+        public void AddLayer_SameTextureOnTwoTerrains_SharesOneLayerAsset()
+        {
+            var first = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath
+            });
+            Assert.IsTrue(first.Success, first.Error);
+
+            var second = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintB", Action = "add-layer", TexturePath = TexturePath
+            });
+            Assert.IsTrue(second.Success, second.Error);
+
+            var terrainA = _terrainA.GetComponent<Terrain>();
+            var terrainB = _terrainB.GetComponent<Terrain>();
+            Assert.AreEqual(1, terrainA.terrainData.terrainLayers.Length);
+            Assert.AreEqual(1, terrainB.terrainData.terrainLayers.Length);
+            Assert.AreSame(terrainA.terrainData.terrainLayers[0], terrainB.terrainData.terrainLayers[0],
+                "both terrains must reference the SAME TerrainLayer asset, not two duplicates");
+
+            var onDisk = new System.Collections.Generic.List<string>(
+                AssetDatabase.FindAssets("t:TerrainLayer", new[] { "Assets/TerrainData" }));
+            Assert.AreEqual(1, onDisk.Count, "exactly one .terrainlayer asset should exist for this texture");
+        }
+
+        [Test]
+        public void AddLayer_CalledTwiceOnSameTerrain_IsIdempotent()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath
+            });
+            var second = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath
+            });
+
+            Assert.IsTrue(second.Success, second.Error);
+            Assert.AreEqual(1, _terrainA.GetComponent<Terrain>().terrainData.terrainLayers.Length,
+                "adding the same texture twice must not duplicate the layer on the terrain");
+            Assert.AreEqual(0, second.Data.LayerIndex);
+        }
+    }
+}

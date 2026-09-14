@@ -18,6 +18,10 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             if (_created != null)
                 Object.DestroyImmediate(_created);
             _created = null;
+
+            const string dir = "Assets/Generated/ParticleMaterials";
+            if (UnityEditor.AssetDatabase.IsValidFolder(dir))
+                UnityEditor.AssetDatabase.DeleteAsset(dir);
         }
 
         // ── particle/create ─────────────────────────────────────────────────
@@ -168,6 +172,53 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             });
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        // ── particle/set-renderer ────────────────────────────────────────────
+
+        // L12: `new Material(shader)` alone is a pure in-memory object never written to disk —
+        // it reads back as pink/missing the moment the project reloads. It must be a real asset.
+        [Test]
+        public void SetRenderer_UseUrpParticlesMaterial_SavesARealAsset()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "UrpMatPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+            {
+                Name = "UrpMatPS", UseUrpParticlesMaterial = true
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var renderer = _created.GetComponent<ParticleSystemRenderer>();
+            Assert.IsNotNull(renderer.sharedMaterial);
+            var assetPath = UnityEditor.AssetDatabase.GetAssetPath(renderer.sharedMaterial);
+            Assert.IsFalse(string.IsNullOrEmpty(assetPath),
+                "the material must be a real project asset, not an unsaved in-memory Material");
+            Assert.IsTrue(assetPath.EndsWith(".mat"));
+        }
+
+        [Test]
+        public void SetRenderer_UseUrpParticlesMaterial_CalledTwice_ReusesTheSameAsset()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "UrpMatPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+            {
+                Name = "UrpMatPS2", UseUrpParticlesMaterial = true
+            });
+            var firstMat = _created.GetComponent<ParticleSystemRenderer>().sharedMaterial;
+
+            ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+            {
+                Name = "UrpMatPS2", UseUrpParticlesMaterial = true
+            });
+            var secondMat = _created.GetComponent<ParticleSystemRenderer>().sharedMaterial;
+
+            Assert.AreSame(firstMat, secondMat, "repeated calls must not create duplicate assets");
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────

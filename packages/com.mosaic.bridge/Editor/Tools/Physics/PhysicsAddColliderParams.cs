@@ -18,5 +18,10 @@ namespace Mosaic.Bridge.Tools.Physics
         public float[] Size { get; set; }
         /// <summary>When true, also adds a Rigidbody if one is not already present.</summary>
         public bool? AddRigidbody { get; set; }
+        /// <summary>Mesh collider only. Unity REQUIRES this to be true when the GameObject has (or
+        /// will have, via AddRigidbody) a non-kinematic Rigidbody — a concave MeshCollider on a
+        /// dynamic Rigidbody is invalid and silently produces no collision. Default false, matching
+        /// MeshCollider's own default.</summary>
+        public bool Convex { get; set; }
     }
 }

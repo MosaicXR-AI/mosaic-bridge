@@ -64,25 +64,56 @@ namespace Mosaic.Bridge.Tools.Terrains
                         $"Normal map not found at '{p.NormalMapPath}'", ErrorCodes.NOT_FOUND);
             }
 
-            var layer = new TerrainLayer
+            // L14: this used to mint a brand-new .terrainlayer asset on every call, named after
+            // the CALLING terrain — so a course's terrain/grid (many adjacent Terrain tiles)
+            // ended up with one duplicate layer asset per tile for what should be a single shared
+            // layer, and painting one tile never matched its neighbors. The default path is now
+            // derived from the texture itself (not the terrain), so repeated add-layer calls with
+            // the same TexturePath across different terrains converge on ONE asset, reused rather
+            // than recreated.
+            string layerPath = !string.IsNullOrEmpty(p.LayerAssetPath)
+                ? p.LayerAssetPath
+                : $"Assets/TerrainData/{texture.name}.terrainlayer";
+
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(layerPath);
+            bool reused = layer != null;
+            if (!reused)
             {
-                diffuseTexture = texture,
-                normalMapTexture = normalMap,
-                tileSize = p.TileSize != null && p.TileSize.Length == 2
-                    ? new Vector2(p.TileSize[0], p.TileSize[1])
-                    : new Vector2(15f, 15f)
-            };
+                layer = new TerrainLayer
+                {
+                    diffuseTexture = texture,
+                    normalMapTexture = normalMap,
+                    tileSize = p.TileSize != null && p.TileSize.Length == 2
+                        ? new Vector2(p.TileSize[0], p.TileSize[1])
+                        : new Vector2(15f, 15f)
+                };
 
-            // Save layer as asset
-            string layerPath = $"Assets/TerrainData/{terrain.gameObject.name}_Layer{data.terrainLayers.Length}.terrainlayer";
-            string dir = System.IO.Path.GetDirectoryName(layerPath);
-            if (!AssetDatabase.IsValidFolder(dir))
-                AssetDatabase.CreateFolder("Assets", "TerrainData");
-            AssetDatabase.CreateAsset(layer, layerPath);
+                string dir = System.IO.Path.GetDirectoryName(layerPath);
+                if (!string.IsNullOrEmpty(dir) && !AssetDatabase.IsValidFolder(dir))
+                    System.IO.Directory.CreateDirectory(
+                        System.IO.Path.Combine(Application.dataPath, "..", dir));
+                AssetDatabase.CreateAsset(layer, layerPath);
+            }
 
-            var layers = new List<TerrainLayer>(data.terrainLayers);
-            layers.Add(layer);
-            data.terrainLayers = layers.ToArray();
+            int existingIndex = System.Array.IndexOf(data.terrainLayers, layer);
+            int layerIndex;
+            string message;
+            if (existingIndex >= 0)
+            {
+                // Already on this specific terrain — idempotent, not a duplicate add.
+                layerIndex = existingIndex;
+                message = $"Terrain already has layer '{layerPath}' at index {existingIndex} (no change)";
+            }
+            else
+            {
+                var layers = new List<TerrainLayer>(data.terrainLayers);
+                layers.Add(layer);
+                data.terrainLayers = layers.ToArray();
+                layerIndex = data.terrainLayers.Length - 1;
+                message = reused
+                    ? $"Attached existing terrain layer '{layerPath}' (index {layerIndex})"
+                    : $"Added terrain layer from '{p.TexturePath}' (index {layerIndex})";
+            }
 
             return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
             {
@@ -90,7 +121,8 @@ namespace Mosaic.Bridge.Tools.Terrains
                 InstanceId = UnityIds.Of(terrain.gameObject),
                 Name       = terrain.gameObject.name,
                 LayerCount = data.terrainLayers.Length,
-                Message    = $"Added terrain layer from '{p.TexturePath}' (index {data.terrainLayers.Length - 1})"
+                LayerIndex = layerIndex,
+                Message    = message
             });
         }
 

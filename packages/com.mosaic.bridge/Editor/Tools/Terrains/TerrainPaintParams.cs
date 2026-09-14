@@ -21,6 +21,14 @@ namespace Mosaic.Bridge.Tools.Terrains
         /// <summary>Tile size for add-layer.</summary>
         public float[] TileSize { get; set; } // [x,y] defaults to [15,15]
 
+        /// <summary>add-layer only: explicit asset path for the .terrainlayer. If an asset already
+        /// exists there, it is REUSED (added to this terrain, not overwritten) instead of a new
+        /// duplicate .terrainlayer being created — the fix for a course's terrain/grid tiles each
+        /// minting their own layer asset for what should be one shared layer. Defaults to a path
+        /// derived from the texture's own name, so repeated calls with the same TexturePath (the
+        /// common terrain/grid case) converge on one asset without this needing to be passed.</summary>
+        public string LayerAssetPath { get; set; }
+
         /// <summary>Normalized X position on the terrain (0..1) for paint.</summary>
         public float X { get; set; } = 0.5f;
 

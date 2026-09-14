@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using UnityEngine;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
@@ -89,9 +90,24 @@ namespace Mosaic.Bridge.Tools.Particles
                         "Ensure a render pipeline package (URP/HDRP) or Particle shaders are installed.",
                         ErrorCodes.NOT_FOUND);
 
-                var mat = new Material(particleShader);
-                if (mat.HasProperty("_Surface"))
-                    mat.SetFloat("_Surface", 1f); // Transparent where supported
+                // L12: `new Material(...)` alone is a pure in-memory object with no asset behind
+                // it — it reads back as a missing/pink material the moment the project reloads,
+                // because nothing ever wrote it to disk. Save it as a real asset (reusing one
+                // already there so repeated calls with the same shader don't create duplicates).
+                string safeShaderName = particleShader.name.Replace('/', '-').Replace('\\', '-');
+                string matAssetPath = $"Assets/Generated/ParticleMaterials/{safeShaderName}.mat";
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(matAssetPath);
+                if (mat == null)
+                {
+                    mat = new Material(particleShader);
+                    if (mat.HasProperty("_Surface"))
+                        mat.SetFloat("_Surface", 1f); // Transparent where supported
+                    var matDir = Path.GetDirectoryName(matAssetPath);
+                    if (!string.IsNullOrEmpty(matDir) && !AssetDatabase.IsValidFolder(matDir))
+                        Directory.CreateDirectory(Path.Combine(Application.dataPath, "..", matDir));
+                    AssetDatabase.CreateAsset(mat, matAssetPath);
+                    AssetDatabase.SaveAssets();
+                }
                 renderer.sharedMaterial = mat;
             }
             else if (!string.IsNullOrEmpty(p.MaterialPath))

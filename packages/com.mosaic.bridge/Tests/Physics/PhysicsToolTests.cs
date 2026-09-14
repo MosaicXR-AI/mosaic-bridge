@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace Mosaic.Bridge.Tests.Physics
@@ -137,6 +138,20 @@ namespace Mosaic.Bridge.Tests.Physics
             Assert.IsFalse(result.Success);
         }
 
+        // L9: Undo.AddComponent<Rigidbody> returns null when one already exists, and every field
+        // access on that null used to throw NullReferenceException instead of a clean error.
+        [Test]
+        public void AddRigidbody_AlreadyPresent_ReturnsCleanErrorNotException()
+        {
+            Undo.AddComponent<Rigidbody>(_testGo);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams { Name = "PhysicsTestCube" });
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("already has a Rigidbody", result.Error);
+        }
+
         // ── Add Collider ────────────────────────────────────────────────────
 
         [Test]
@@ -187,6 +202,64 @@ namespace Mosaic.Bridge.Tests.Physics
             var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(p);
 
             Assert.IsFalse(result.Success);
+        }
+
+        // L11: a concave MeshCollider on a dynamic Rigidbody is invalid in Unity and silently
+        // produces no collision — this must be rejected up front, not shipped broken.
+        [Test]
+        public void AddCollider_ConcaveMeshWithDynamicRigidbody_ReturnsError()
+        {
+            Undo.AddComponent<Rigidbody>(_testGo); // non-kinematic by default
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Mesh", Convex = false
+                });
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("Convex", result.Error);
+            Assert.IsNull(_testGo.GetComponent<MeshCollider>(),
+                "no MeshCollider should have been left behind on the rejected combination");
+        }
+
+        [Test]
+        public void AddCollider_ConvexMeshWithDynamicRigidbody_Succeeds()
+        {
+            Undo.AddComponent<Rigidbody>(_testGo);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Mesh", Convex = true
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(_testGo.GetComponent<MeshCollider>().convex);
+        }
+
+        // L11: renderer.bounds is a world-space AABB, already inflated for a rotated object —
+        // mapping that back through the inverse rotation does not undo the inflation. Using the
+        // mesh's own local-space bounds (MeshFilter.sharedMesh.bounds) is rotation-independent.
+        [Test]
+        public void AddCollider_Box_OnRotatedObject_IsNotOversized()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+            _testGo.transform.rotation = Quaternion.Euler(37f, 51f, 19f);
+            var localMeshBounds = _testGo.GetComponent<MeshFilter>().sharedMesh.bounds;
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Box"
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var box = _testGo.GetComponent<BoxCollider>();
+            Assert.AreEqual(localMeshBounds.size.x, box.size.x, 0.001f);
+            Assert.AreEqual(localMeshBounds.size.y, box.size.y, 0.001f);
+            Assert.AreEqual(localMeshBounds.size.z, box.size.z, 0.001f);
         }
 
         // ── Overlap ─────────────────────────────────────────────────────────
@@ -308,6 +381,71 @@ namespace Mosaic.Bridge.Tests.Physics
             {
                 Object.DestroyImmediate(bareGo);
             }
+        }
+
+        // L10: DynamicFriction/StaticFriction/Bounciness were non-nullable floats, so omitting
+        // them meant "force to 0" — an icy floor by accident — instead of keeping Unity's own
+        // PhysicsMaterial defaults (0.6 / 0.6 / 0).
+        [Test]
+        public void SetPhysicsMaterial_OmittedFields_KeepUnityDefaults()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams { Name = "PhysicsTestCube" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(0.6f, result.Data.DynamicFriction, 0.001f);
+            Assert.AreEqual(0.6f, result.Data.StaticFriction, 0.001f);
+            Assert.AreEqual(0f, result.Data.Bounciness, 0.001f);
+        }
+
+        // L10: there was no way to point two colliders at the SAME PhysicsMaterial asset.
+        [Test]
+        public void SetPhysicsMaterial_ReuseExisting_SharesTheSameAsset()
+        {
+            const string path = "Assets/MosaicPhysicsMaterialReuseTest.physicMaterial";
+            var other = new GameObject("PhysicsMaterialReuseOther");
+            try
+            {
+                var first = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams
+                    {
+                        Name = "PhysicsTestCube", DynamicFriction = 0.2f, AssetPath = path
+                    });
+                Assert.IsTrue(first.Success, first.Error);
+
+                other.AddComponent<BoxCollider>();
+                var second = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams
+                    {
+                        Name = "PhysicsMaterialReuseOther", ReuseExisting = true, AssetPath = path
+                    });
+                Assert.IsTrue(second.Success, second.Error);
+
+                Assert.AreSame(
+                    _testGo.GetComponent<Collider>().sharedMaterial,
+                    other.GetComponent<Collider>().sharedMaterial,
+                    "ReuseExisting must attach the SAME asset, not a new one");
+            }
+            finally
+            {
+                Object.DestroyImmediate(other);
+                if (AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(path) != null)
+                    AssetDatabase.DeleteAsset(path);
+            }
+        }
+
+        [Test]
+        public void SetPhysicsMaterial_ReuseExisting_MissingAsset_ReturnsError()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams
+                {
+                    Name = "PhysicsTestCube", ReuseExisting = true,
+                    AssetPath = "Assets/MosaicNoSuchPhysicsMaterial_zzz.physicsMaterial"
+                });
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("No PhysicsMaterial asset found", result.Error);
         }
     }
 }

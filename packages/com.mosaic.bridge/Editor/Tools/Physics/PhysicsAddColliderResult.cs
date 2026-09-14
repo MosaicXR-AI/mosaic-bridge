@@ -9,5 +9,7 @@ namespace Mosaic.Bridge.Tools.Physics
         public float[] Center         { get; set; }
         public float[] Size           { get; set; }
         public bool   RigidbodyAdded  { get; set; }
+        /// <summary>Set only for a Mesh collider — echoes what Convex was actually applied.</summary>
+        public bool?  Convex          { get; set; }
     }
 }

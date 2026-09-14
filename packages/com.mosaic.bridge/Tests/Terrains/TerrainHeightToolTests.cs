@@ -65,5 +65,43 @@ namespace Mosaic.Bridge.Tests.Terrains
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
+
+        // L13: SetHeightsDelayLOD requires an explicit TerrainData.SyncHeightmap() call afterward
+        // — without it, a DelayLod batch's final non-delayed call could still leave a stale
+        // TerrainCollider even though the visible heightmap looked correct. Verified end-to-end:
+        // raise the terrain via a DelayLod write, flush with a non-delayed call, then raycast
+        // against the actual TerrainCollider and confirm it reports the new height.
+        [Test]
+        public void Array_WithDelayLod_ThenFlush_UpdatesColliderHeight()
+        {
+            var terrain = _createdGo.GetComponent<UnityEngine.Terrain>();
+            int res = terrain.terrainData.heightmapResolution;
+            var heights = new float[res * res];
+            for (int i = 0; i < heights.Length; i++) heights[i] = 0.8f;
+
+            var delayed = TerrainHeightTool.Execute(new TerrainHeightParams
+            {
+                Name = "TestTerrain_Height", Action = "array",
+                Heights = heights, Width = res, HeightCells = res,
+                ArrayX = 0, ArrayY = 0, DelayLod = true
+            });
+            Assert.IsTrue(delayed.Success, delayed.Error);
+
+            var flush = TerrainHeightTool.Execute(new TerrainHeightParams
+            {
+                Name = "TestTerrain_Height", Action = "array",
+                Heights = heights, Width = res, HeightCells = res,
+                ArrayX = 0, ArrayY = 0, DelayLod = false
+            });
+            Assert.IsTrue(flush.Success, flush.Error);
+
+            UnityEngine.Physics.SyncTransforms();
+            Assert.IsNotNull(_createdGo.GetComponent<TerrainCollider>());
+            bool hit = UnityEngine.Physics.Raycast(
+                new Vector3(50f, 200f, 50f), Vector3.down, out var hitInfo, 500f);
+            Assert.IsTrue(hit, "raycast against the terrain collider must hit after SyncHeightmap+Flush");
+            Assert.Greater(hitInfo.point.y, 30f,
+                "collider height must reflect the raised heightmap (~40), not a stale default (~0)");
+        }
     }
 }

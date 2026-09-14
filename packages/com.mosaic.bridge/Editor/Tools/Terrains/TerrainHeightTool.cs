@@ -68,7 +68,17 @@ namespace Mosaic.Bridge.Tools.Terrains
 
             // DelayLod skips immediate collider rebuild. Caller is responsible for
             // a final non-delayed call (or subsequent action that flushes).
-            if (!p.DelayLod) terrain.Flush();
+            // L13: SetHeightsDelayLOD requires an explicit SyncHeightmap() call afterward — Unity
+            // does not do this on its own, and Terrain.Flush() does not substitute for it either
+            // (Flush refreshes the live Terrain component's render/LOD cache; SyncHeightmap is
+            // what actually reconciles the TerrainData's own heightmap/collider state after a
+            // delayed write). Without it, a DelayLod batch's final non-delayed call could still
+            // leave a stale collider even though the visible terrain looked correct.
+            if (!p.DelayLod)
+            {
+                data.SyncHeightmap();
+                terrain.Flush();
+            }
 
             return ToolResult<TerrainHeightResult>.Ok(new TerrainHeightResult
             {

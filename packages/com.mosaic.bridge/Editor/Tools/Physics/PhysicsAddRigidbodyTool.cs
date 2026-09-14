@@ -20,6 +20,12 @@ namespace Mosaic.Bridge.Tools.Physics
                     $"GameObject '{p.Name ?? p.InstanceId?.ToString()}' not found",
                     ErrorCodes.NOT_FOUND);
 
+            // L9: Undo.AddComponent<T> returns null when the GameObject already has a component
+            // of that type — every field access below would have thrown NullReferenceException.
+            if (go.GetComponent<Rigidbody>() != null)
+                return ToolResult<PhysicsAddRigidbodyResult>.Fail(
+                    $"GameObject '{go.name}' already has a Rigidbody component.", ErrorCodes.CONFLICT);
+
             var rb = Undo.AddComponent<Rigidbody>(go);
 
             if (p.Mass.HasValue)       rb.mass        = p.Mass.Value;

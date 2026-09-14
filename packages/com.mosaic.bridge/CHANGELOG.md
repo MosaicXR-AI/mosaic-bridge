@@ -5,6 +5,15 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.27] — 2026-09-14
+
+Re-published beta.26 under a new version number. The `.meta`-file fix landed as a patch
+to beta.26's own files without a version bump, so the registry kept serving a package
+tagged `1.0.0-beta.26` whose bytes had changed underneath it — exactly what semantic
+versioning exists to prevent, and precisely why a real customer's Unity kept re-resolving
+the same, still-broken version after a full cache clear: nothing told it a newer version
+existed to fetch. No further code changes; this version tag is the actual fix.
+
 ## [1.0.0-beta.26] — 2026-09-14
 
 New extension point: `Mosaic.Bridge.Core.Extensibility.ObjectCreationHooks`, an empty, optional

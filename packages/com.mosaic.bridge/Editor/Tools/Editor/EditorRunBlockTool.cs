@@ -81,11 +81,26 @@ namespace Mosaic.Bridge.Tools.EditorOps
         /// </summary>
         internal const int HardTimeoutSeconds = 300;
 
+        /// <summary>
+        /// O-1 (field report): the orphan sweep ran once per domain reload — fine for a session
+        /// with ongoing activity, but a job that finishes successfully and is simply never
+        /// polled has no reason to trigger another reload on its own, so its script could sit
+        /// in the project indefinitely in an otherwise-idle Editor. This is the interval a
+        /// second, independent hook re-runs the same sweep on, so cleanup no longer depends on
+        /// something else happening to cause a reload.
+        /// </summary>
+        internal const double PeriodicSweepIntervalSeconds = 60.0;
+
         private static double _pumpUntil;
         private static bool _hooked;
+        private static double _nextPeriodicSweepAt;
 
         /// <summary>Test hook: whether the pump is currently subscribed to EditorApplication.update.</summary>
         internal static bool IsPumping => _hooked;
+
+        /// <summary>Test hook: forces the next PeriodicSweepTick to actually run, rather than a
+        /// test's pass/fail depending on how long this Editor session has been open.</summary>
+        internal static void ForcePeriodicSweepDueForTests() => _nextPeriodicSweepAt = 0;
 
         static EditorRunBlockTool()
         {
@@ -96,6 +111,22 @@ namespace Mosaic.Bridge.Tools.EditorOps
             // import into an inconsistent state. The sweep is housekeeping — nothing waits on it,
             // so the next tick is soon enough.
             EditorApplication.delayCall += () => SweepOrphanedTempScripts();
+
+            // O-1: a permanent, lightweight hook so the sweep also runs on a timer, not only on
+            // the next domain reload — which may never come in an Editor that is otherwise idle
+            // after a job's temp script stopped being polled. Unlike the pump above, this one is
+            // never unsubscribed; per-tick cost is one double comparison until the interval is due.
+            _nextPeriodicSweepAt = EditorApplication.timeSinceStartup + PeriodicSweepIntervalSeconds;
+            EditorApplication.update += PeriodicSweepTick;
+        }
+
+        /// <summary>Internal for the O-1 regression test — exercises the same code path
+        /// EditorApplication.update drives, without waiting real time for the interval.</summary>
+        internal static void PeriodicSweepTick()
+        {
+            if (EditorApplication.timeSinceStartup < _nextPeriodicSweepAt) return;
+            _nextPeriodicSweepAt = EditorApplication.timeSinceStartup + PeriodicSweepIntervalSeconds;
+            SweepOrphanedTempScripts();
         }
 
         [MosaicTool("editor/run-block",
@@ -603,6 +634,22 @@ namespace Mosaic.Bridge.Tools.EditorOps
             // this is not the beta.23 regression — genuinely just slow. Keep waiting, but say so
             // more plainly now that "a moment longer" has become "a while".
             if (elapsed < EditorRunBlockTool.HardTimeoutSeconds)
+            {
+                // O-2 (field report): this tier was reached once with a job that never went on
+                // to finish, and nothing recorded that it happened — it was visible only to
+                // whoever was watching the poll responses at the time. One log line per job (not
+                // per poll, which would spam every 5 seconds) gives the next report the exact
+                // job id and elapsed time regardless of who was watching.
+                var warnedKey = PrefPrefix + jobId + "_warnedUnusual";
+                if (!EditorPrefs.GetBool(warnedKey, false))
+                {
+                    EditorPrefs.SetBool(warnedKey, true);
+                    UnityEngine.Debug.LogWarning(
+                        $"[Mosaic.Bridge] editor/run-block job {jobId} has been executing for {elapsed}s with " +
+                        "no compile errors — past the point a slow compile explains (see O-2). Still polling; " +
+                        "logged here so a hang that outlasts the caller's patience is not only visible to " +
+                        "whoever happened to be watching.");
+                }
                 return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
                 {
                     JobId   = jobId,
@@ -610,6 +657,7 @@ namespace Mosaic.Bridge.Tools.EditorOps
                     Message = $"Still executing after {elapsed}s with no compile errors. Unusual, but not "
                         + "yet abandoned — keep polling every 5 seconds. Do NOT resubmit."
                 });
+            }
 
             // O-2: past even the hard ceiling with no result and no compile errors, the job is
             // genuinely stuck — most likely an infinite loop or a blocking wait in the submitted

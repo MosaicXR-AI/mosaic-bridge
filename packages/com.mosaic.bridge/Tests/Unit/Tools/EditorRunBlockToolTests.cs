@@ -269,6 +269,33 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
         }
 
         [Test]
+        public void PeriodicSweepTick_AlsoCleansUpAnOldOrphan()
+        {
+            // O-1: cleanup used to depend entirely on a future domain reload happening at all —
+            // which a job that finished successfully and was simply never polled again gives no
+            // reason to trigger. PeriodicSweepTick is the independent, timer-driven path that
+            // does not need one; this exercises the exact call EditorApplication.update makes.
+            const string orphan = "unittestptck";
+            var path = WriteFakeTempScript(orphan);
+            Backdate(path, EditorRunBlockTool.MinOrphanAgeSeconds + 5);
+            try
+            {
+                Assert.IsTrue(System.IO.File.Exists(path), "fixture did not write");
+
+                EditorRunBlockTool.ForcePeriodicSweepDueForTests();
+                EditorRunBlockTool.PeriodicSweepTick();
+
+                Assert.IsFalse(System.IO.File.Exists(path),
+                    "the periodic tick must reach the same orphan the reload-triggered sweep would");
+            }
+            finally
+            {
+                EditorRunBlockTool.ClearJobPrefs(orphan);
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        [Test]
         public void DeleteScriptFile_RemovesTheFileAndItsMeta()
         {
             const string id = "unittestdel0";

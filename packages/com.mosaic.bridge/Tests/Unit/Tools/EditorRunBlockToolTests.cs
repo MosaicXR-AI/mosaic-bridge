@@ -108,16 +108,37 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
         }
 
         [Test]
-        public void RearmPump_JobTimedOut_DropsItAndDoesNotPump()
+        public void RearmPump_PastPendingTimeoutButUnderOrphanAge_StaysActiveAndPumping()
         {
-            var longAgo = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (EditorRunBlockTool.PendingTimeoutSeconds + 5);
+            // The regression, isolated: a job merely slow to compile (past the 20s messaging
+            // threshold, nowhere near actually abandoned) must not be dropped here. Dropping it
+            // stopped the pump on the very reload it most needed it, and let the orphan sweep
+            // treat "not currently active" as "safe to delete" — deleting a script whose class
+            // had not yet had the chance to run.
+            var slowButAlive = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (EditorRunBlockTool.PendingTimeoutSeconds + 5);
+            EditorPrefs.SetString("MosaicBridgeRunBlock_" + TestJobId + "_submitted", slowButAlive.ToString());
+            EditorRunBlockTool.AddActiveJobId(TestJobId);
+
+            EditorRunBlockTool.RearmPumpForPendingJobs();
+
+            CollectionAssert.Contains(EditorRunBlockTool.GetActiveJobIds(), TestJobId,
+                "past PendingTimeoutSeconds is not past MinOrphanAgeSeconds — a large project's " +
+                "compile can legitimately take longer than the 20s messaging threshold");
+            Assert.IsTrue(EditorRunBlockTool.IsPumping,
+                "the job still needs ticks driven to ever get its delayCall dispatched");
+        }
+
+        [Test]
+        public void RearmPump_PastOrphanAge_DropsItAndDoesNotPump()
+        {
+            var longAgo = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (EditorRunBlockTool.MinOrphanAgeSeconds + 5);
             EditorPrefs.SetString("MosaicBridgeRunBlock_" + TestJobId + "_submitted", longAgo.ToString());
             EditorRunBlockTool.AddActiveJobId(TestJobId);
 
             EditorRunBlockTool.RearmPumpForPendingJobs();
 
             CollectionAssert.DoesNotContain(EditorRunBlockTool.GetActiveJobIds(), TestJobId,
-                "a job past the timeout is editor/run-block-poll's problem to report, not the pump's to keep driving");
+                "past MinOrphanAgeSeconds with no result is actually abandoned");
             Assert.IsFalse(EditorRunBlockTool.IsPumping);
         }
 
@@ -160,11 +181,18 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
             return path;
         }
 
+        private static void Backdate(string path, double secondsAgo)
+        {
+            var t = DateTime.UtcNow.AddSeconds(-secondsAgo);
+            System.IO.File.SetLastWriteTimeUtc(path, t);
+        }
+
         [Test]
-        public void Sweep_DeletesAScriptNoLiveJobOwns()
+        public void Sweep_DeletesAScriptThatIsBothInactiveAndOld()
         {
             const string orphan = "unittestorph";
             var path = WriteFakeTempScript(orphan);
+            Backdate(path, EditorRunBlockTool.MinOrphanAgeSeconds + 5);
             try
             {
                 Assert.IsTrue(System.IO.File.Exists(path), "fixture did not write");
@@ -172,7 +200,8 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
                 EditorRunBlockTool.SweepOrphanedTempScripts();
 
                 Assert.IsFalse(System.IO.File.Exists(path),
-                    "a generated script with no job still tracking it must not survive the load");
+                    "a generated script nobody is tracking, old enough that nothing could still be " +
+                    "compiling it, must not survive the load");
             }
             finally
             {
@@ -200,6 +229,30 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
             }
             finally
             {
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void Sweep_LeavesAFreshScriptEvenWhenNotInTheActiveList()
+        {
+            // The regression, isolated at the sweep's own boundary: a job can fall out of the
+            // active list (a slow compile, or any bookkeeping gap) while its script is seconds
+            // old and its class has not run yet. "Not active" alone must never be sufficient —
+            // age is the independent signal that a bookkeeping mistake elsewhere cannot defeat.
+            const string fresh = "unittestfrsh";
+            var path = WriteFakeTempScript(fresh);
+            try
+            {
+                EditorRunBlockTool.SweepOrphanedTempScripts();
+
+                Assert.IsTrue(System.IO.File.Exists(path),
+                    "a script written moments ago cannot be presumed abandoned merely because " +
+                    "it is not (or no longer) in the active-job list");
+            }
+            finally
+            {
+                EditorRunBlockTool.ClearJobPrefs(fresh);
                 if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
             }
         }

@@ -5,6 +5,34 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.24] — 2026-09-14
+
+A P0 regression in beta.23 (N-1), confirmed live: `editor/run-block` went from
+occasionally flaky to 0 of 6 executions in one reported session, with the exact message
+`"Job timed out after 20-24s — the script COMPILED, but the block never ran."`
+
+### Fixed
+
+- **Three places shared one wrong assumption: "not done 20 seconds after submission"
+  means abandoned.** For a project this size (the bridge's own 300+ tools, the
+  education/Pro packages, and the customer's own scripts all recompiling together),
+  compile and reload routinely take longer than that — the job was still genuinely in
+  flight, not abandoned. All three call sites deleted the generated script on that
+  basis, which is what turned "slow" into "can never run": removing the .cs forces
+  another compile, another domain reload, and that reload discards the `delayCall`
+  the generated class's own static constructor had already registered, before it
+  ever fired.
+  - `editor/run-block-poll`'s timeout branch — the confirmed, directly observed
+    cause — now only deletes and reports failure once a much larger
+    `MinOrphanAgeSeconds` (120s) has passed with no compile errors; before that it
+    reports `pending` and asks the caller to keep polling. A real compile error is
+    unaffected and still reported immediately, as before.
+  - `RearmPumpForPendingJobs` no longer drops a job from the active list (and so
+    stops pumping it) at the 20-second mark — only past `MinOrphanAgeSeconds`.
+  - The orphan sweep (N-1) now also requires the file to be older than
+    `MinOrphanAgeSeconds`, not merely absent from the active list, before deleting it.
+
+1.0.0-beta.24.
 ## [1.0.0-beta.23] — 2026-09-14
 
 Two fixes landed on `main` AFTER beta.22's version was set, so they were never published —

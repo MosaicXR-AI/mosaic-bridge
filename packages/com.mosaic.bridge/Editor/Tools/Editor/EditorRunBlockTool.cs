@@ -48,6 +48,27 @@ namespace Mosaic.Bridge.Tools.EditorOps
         /// </summary>
         internal const int PendingTimeoutSeconds = 20;
 
+        /// <summary>
+        /// H-2 regression (beta.23, live): a job whose compile+reload genuinely takes longer
+        /// than <see cref="PendingTimeoutSeconds"/> — a large project's assembly, this bridge's
+        /// own ~300+ tools, and the education/Pro packages all recompiling together — was
+        /// indistinguishable from an abandoned one at the 20-second mark, and THREE separate
+        /// places treated "not done at 20s, no compile errors" as "gone for good": Poll deleted
+        /// the script and reported a terminal error even though the block had compiled and was
+        /// simply slow to run; RearmPumpForPendingJobs dropped the job from the active list on
+        /// the very reload it most needed the pump for; and the orphan sweep (N-1) then deleted
+        /// a script whose class had not had its chance to execute yet. Deleting mid-flight is
+        /// what turned "slow" into "provably can never run": removing the .cs forces another
+        /// compile, which is another domain reload, which discards the delayCall the generated
+        /// class's OWN static constructor had already registered.
+        ///
+        /// This is the actual line between "still plausibly compiling" and "abandoned." It is
+        /// deliberately far larger than PendingTimeoutSeconds — that constant governs polling
+        /// cadence messages, not deletion — and the three sites below all defer to it before
+        /// destroying anything.
+        /// </summary>
+        internal const int MinOrphanAgeSeconds = 120;
+
         private static double _pumpUntil;
         private static bool _hooked;
 
@@ -137,7 +158,9 @@ namespace Mosaic.Bridge.Tools.EditorOps
         /// load — including the load immediately after the domain reload triggered by
         /// compiling the temp script, which is exactly when the generated class registers its
         /// delayCall. Drops jobs from the active list once they're done or have exceeded
-        /// <see cref="PendingTimeoutSeconds"/> (poll's own timeout path takes over from there).
+        /// <see cref="MinOrphanAgeSeconds"/> — a large project's compile can comfortably outlast
+        /// <see cref="PendingTimeoutSeconds"/> without being abandoned, and pruning it here stops
+        /// the very pump it still needs.
         /// </summary>
         internal static void RearmPumpForPendingJobs()
         {
@@ -153,8 +176,11 @@ namespace Mosaic.Bridge.Tools.EditorOps
 
                 var submittedStr = EditorPrefs.GetString(PrefPrefix + id + "_submitted", "0");
                 long submitted = long.TryParse(submittedStr, out long ts) ? ts : 0;
-                if (now - submitted >= PendingTimeoutSeconds)
-                    continue; // timed out — leave it for editor/run-block-poll to report
+                // NOT PendingTimeoutSeconds: that is a polling-message threshold, and a job
+                // whose compile is merely slow crosses it while genuinely still in flight — the
+                // regression this method caused by pruning (and so un-pumping) exactly here.
+                if (now - submitted >= MinOrphanAgeSeconds)
+                    continue; // actually abandoned — editor/run-block-poll's own floor agrees
 
                 stillPending.Add(id);
             }
@@ -184,9 +210,11 @@ namespace Mosaic.Bridge.Tools.EditorOps
         /// project that had 7. They would also ship inside a course project handed to learners.
         ///
         /// Runs on every load, AFTER <see cref="RearmPumpForPendingJobs"/> has pruned the
-        /// active-job list, so "still in that list" means "genuinely in flight" and its script is
-        /// left alone — deleting it would guarantee the job could never run. Everything else has
-        /// no owner that will ever come back for it.
+        /// active-job list. A file is only ever removed once it is BOTH absent from that list
+        /// AND older than <see cref="MinOrphanAgeSeconds"/> — the list alone was proven
+        /// insufficient (a live regression: a slow compile fell out of it while the job was
+        /// still genuinely in flight, and deleting its script on that basis alone guaranteed it
+        /// could never run). Age is the independent check that survives a bookkeeping mistake.
         /// </remarks>
         internal static int SweepOrphanedTempScripts()
         {
@@ -213,6 +241,15 @@ namespace Mosaic.Bridge.Tools.EditorOps
                     ? name.Substring(ClassPrefix.Length)
                     : "";
                 if (jobId.Length == 0 || live.Contains(jobId)) continue;
+
+                // "Not in the active list" is not, by itself, proof of abandonment — that list
+                // is exactly what a slow compile can fall out of (see MinOrphanAgeSeconds). The
+                // file's own age is the independent signal: nothing this bridge generates is
+                // still mid-flight two minutes after its last write.
+                double ageSeconds;
+                try { ageSeconds = (DateTime.UtcNow - File.GetLastWriteTimeUtc(full)).TotalSeconds; }
+                catch (Exception) { continue; } // unreadable timestamp: leave it, next load retries
+                if (ageSeconds < MinOrphanAgeSeconds) continue;
 
                 if (DeleteScriptFile(TempFolder + "/" + Path.GetFileName(full)))
                     removed++;
@@ -506,46 +543,63 @@ namespace Mosaic.Bridge.Tools.EditorOps
                               "Try again in 2 seconds."
                 });
 
-            // Timed out — compile errors most likely.
-            //
-            // Harvest the errors BEFORE deleting the script. The temp file has to go (a broken
-            // script in Assets/Editor keeps the whole project from compiling), but deleting it and
-            // then saying "call console/get-errors" sent the caller after a file that no longer
-            // exists: the console names Assets/Editor/MosaicBridge_RunBlock_<id>.cs, and by the
-            // time they look, the bridge has removed it. Two round trips to learn something this
-            // call already had in hand.
+            // Real compile errors mean the job is genuinely dead — a broken script in
+            // Assets/Editor never runs, and it also keeps the whole project from compiling, so it
+            // has to go now regardless of how little time has passed. Harvest the errors BEFORE
+            // deleting: sending the caller to console/get-errors for a file the bridge has already
+            // removed is two round trips to learn something this call already had in hand.
             string scriptPath = EditorPrefs.GetString(prefBase + "_scriptPath", "");
             string compileErrors = CollectCompileErrors(jobId);
-            DeleteTempScript(jobId, scriptPath);
-
-            // Two different failures wear the same timeout, and they have different fixes.
-            //
-            // Reporting both as "the script did not compile" sent people to console/get-errors for
-            // errors that did not exist — after a poll had just said "compilation done, execution
-            // pending", which is the opposite claim. The presence of compile errors for THIS job's
-            // script is the discriminator, and this method already has it in hand.
             bool didNotCompile = !string.IsNullOrEmpty(compileErrors);
 
+            if (didNotCompile)
+            {
+                DeleteTempScript(jobId, scriptPath);
+                return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
+                {
+                    JobId   = jobId,
+                    Status  = "error",
+                    Error   = compileErrors,
+                    Message = $"Job timed out after {elapsed}s — the script did not compile. The errors are "
+                        + "in Error, below. Fix the code and resubmit. NOTE: the temp script has been "
+                        + "deleted, so the file the console names no longer exists — the line numbers "
+                        + "refer to the block you submitted, offset by the generated header."
+                });
+            }
+
+            // No compile errors: the script compiled and is simply slow to run, which is exactly
+            // what a large project's assembly (this bridge's own ~300+ tools, education/Pro, and
+            // the customer's own scripts, all recompiling together) produces past the 20-second
+            // mark this branch used to give up at. That mark was wrong: it was the confirmed cause
+            // of a live regression where a job that would have completed a few seconds later was
+            // deleted here instead, on every submission, because deleting it forces ANOTHER
+            // compile — another domain reload — which discards the delayCall the generated class's
+            // own static constructor had already registered, before it ever got to fire. Compile
+            // errors would already have been caught above, so patience here has nothing to lose.
+            if (elapsed < EditorRunBlockTool.MinOrphanAgeSeconds)
+                return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
+                {
+                    JobId   = jobId,
+                    Status  = "pending",
+                    Message = $"Compilation done ({elapsed}s ago), execution still pending. No compile "
+                        + "errors — a large project's assembly can take longer than usual to finish "
+                        + "reloading. Try again in 3 seconds. Do NOT resubmit; a second job racing the "
+                        + "first is the one thing that can still make this fail."
+                });
+
+            // Past even the generous window with no result and no compile errors: something is
+            // genuinely stuck (an infinite loop in the submitted code is the likeliest cause), not
+            // merely slow. Only now is deleting it the right call.
+            DeleteTempScript(jobId, scriptPath);
             return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
             {
                 JobId   = jobId,
                 Status  = "error",
-                Error   = didNotCompile ? compileErrors : null,
-                Message = didNotCompile
-                    ? $"Job timed out after {elapsed}s — the script did not compile. The errors are "
-                      + "in Error, below. Fix the code and resubmit. NOTE: the temp script has been "
-                      + "deleted, so the file the console names no longer exists — the line numbers "
-                      + "refer to the block you submitted, offset by the generated header."
-                    : $"Job timed out after {elapsed}s — the script COMPILED, but the block never "
-                      + "ran. No compile errors were logged against it. The generated class is "
-                      + "[InitializeOnLoad] and schedules itself via delayCall, so this means the "
-                      + "domain reload did not deliver that callback. editor/run-block already "
-                      + "drives Editor ticks itself while a job is pending, so an unfocused window "
-                      + "should not be the cause — the likelier culprit is another reload, a "
-                      + "play-mode change, or a second compile landing on top of this one and "
-                      + "stopping the pump early. Do NOT go looking for compile errors; there are "
-                      + "none. Resubmit; avoid triggering another compile or play-mode change while "
-                      + "the job is pending."
+                Error   = null,
+                Message = $"Job timed out after {elapsed}s with no result and no compile errors — well "
+                    + "past the time a normal compile, however large the project, should ever take. "
+                    + "The likeliest cause is the submitted code itself hanging (an infinite loop, a "
+                    + "blocking wait). Resubmit something that returns."
             });
         }
 

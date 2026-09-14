@@ -267,6 +267,30 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.AreEqual(50, (int)vcam.Priority.Value);
         }
 
+        // L4: setting FieldOfView used to rebuild LensSettings from just 4 fields, silently
+        // resetting Dutch, ModeOverride and the entire PhysicalProperties block to their
+        // zero-values. This drives Dutch to a distinctive non-default value first, then sets
+        // FOV, and asserts Dutch (and OrthographicSize, also not requested) survived untouched.
+        [Test]
+        public void SetProperties_FieldOfView_PreservesOtherLensFields()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+            var vcam = GameObject.Find("TestVCam").GetComponent<CinemachineCamera>();
+            var lens = vcam.Lens;
+            lens.Dutch = 12.5f;
+            lens.OrthographicSize = 7.25f;
+            vcam.Lens = lens;
+
+            var result = Tools.Cinemachine.CinemachineSetPropertiesTool.Execute(
+                new Tools.Cinemachine.CinemachineSetPropertiesParams { VCamName = "TestVCam", FieldOfView = 45f });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(45f, vcam.Lens.FieldOfView, 0.001f);
+            Assert.AreEqual(12.5f, vcam.Lens.Dutch, 0.001f, "Dutch must survive a FieldOfView-only update");
+            Assert.AreEqual(7.25f, vcam.Lens.OrthographicSize, 0.001f, "OrthographicSize must survive too");
+        }
+
         [Test]
         public void SetProperties_NonExistentVCam_ReturnsFail()
         {

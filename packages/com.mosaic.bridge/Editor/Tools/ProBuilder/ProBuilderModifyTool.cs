@@ -129,12 +129,11 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                 }
                 case "triangulate":
                 {
-                    var faces = pb.faces.ToArray();
-                    foreach (var face in faces)
-                    {
-                        // Triangulate by subdividing each face
-                    }
-                    ConnectElements.Connect(pb, pb.faces);
+                    // L1: ConnectElements.Connect is Subdivide, not Triangulate — it was
+                    // inserting new vertices/edges rather than splitting existing n-gon faces
+                    // into triangles. SurfaceTopology.ToTriangles is ProBuilder's actual
+                    // triangulate operation.
+                    SurfaceTopology.ToTriangles(pb, pb.faces);
                     break;
                 }
                 case "bevel":

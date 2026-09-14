@@ -1,4 +1,5 @@
 #if MOSAIC_HAS_PROBUILDER
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Tools.ProBuilder;
@@ -12,7 +13,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
         [TearDown]
         public void TearDown()
         {
-            foreach (var name in new[] { "PB_Cube", "PB_Sphere", "PB_Stairs", "PB_Modify" })
+            foreach (var name in new[] { "PB_Cube", "PB_Sphere", "PB_Stairs", "PB_Modify", "PB_Cylinder" })
             {
                 var go = GameObject.Find(name);
                 if (go != null) Object.DestroyImmediate(go);
@@ -64,6 +65,45 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
             Assert.IsFalse(result.Success);
         }
 
+        // L2: "quad", "disc", "disk", "hemisphere", "pyramid", "wedge" used to pass the
+        // known-shapes guard (they were listed as valid) but aren't real ShapeType members and
+        // had no explicit switch case — they failed later at Enum.TryParse with a confusing
+        // "Unknown Shape" message instead of the guard's own helpful redirect to
+        // scene/create-object. They're no longer advertised as known, so they get that redirect.
+        [Test]
+        public void Create_RemovedNonExistentShapeName_ReturnsHelpfulGuardMessage()
+        {
+            var result = ProBuilderCreateTool.Create(new ProBuilderCreateParams
+            {
+                Shape = "Quad", Name = "PB_Bad"
+            });
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("scene/create-object", result.Error);
+        }
+
+        // L2: GenerateCylinder's trailing smoothing argument was hardcoded to 0 (hard-shaded,
+        // faceted sides) instead of using the method's own default — every cylinder this tool
+        // ever created had faceted sides regardless of what the ProBuilder Editor UI itself
+        // would produce for the same shape.
+        [Test]
+        public void Create_Cylinder_SidesAreNotHardcodedToSmoothingGroupZero()
+        {
+            var create = ProBuilderCreateTool.Create(new ProBuilderCreateParams
+            {
+                Shape = "Cylinder", Name = "PB_Cylinder"
+            });
+            Assert.IsTrue(create.Success, create.Error);
+
+            var info = ProBuilderInfoTool.Info(new ProBuilderInfoParams
+            {
+                GameObjectName = "PB_Cylinder", Detail = "faces"
+            });
+            Assert.IsTrue(info.Success, info.Error);
+            Assert.IsTrue(info.Data.Meshes[0].Faces.Any(f => f.SmoothingGroup != 0),
+                "at least one face must carry a real smoothing group — 0 on every face means the " +
+                "hardcoded value regressed");
+        }
+
         [Test]
         public void Info_NoMeshes_ReturnsEmptyList()
         {
@@ -90,6 +130,29 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 GameObjectName = "PB_Modify", Operation = "subdivide"
             });
             Assert.IsTrue(result.Success, result.Error);
+        }
+
+        // L1: "triangulate" called ConnectElements.Connect (Subdivide, not Triangulate),
+        // preceded by a dead foreach loop that did nothing. Subdividing a cube's 6 quad faces
+        // would produce 24 quads (each split into 4); triangulating them produces 12 triangles —
+        // the face count is what actually distinguishes the two operations.
+        [Test]
+        public void Modify_Triangulate_ConvertsQuadsToTriangles()
+        {
+            var create = ProBuilderCreateTool.Create(new ProBuilderCreateParams
+            {
+                Shape = "Cube", Name = "PB_Modify"
+            });
+            Assert.IsTrue(create.Success, create.Error);
+
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
+            {
+                GameObjectName = "PB_Modify", Operation = "triangulate"
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(12, result.Data.FaceCount,
+                "a cube's 6 quads must become 12 triangles — 24 would mean Subdivide ran instead");
         }
 
         [Test]

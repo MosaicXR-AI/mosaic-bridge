@@ -18,6 +18,14 @@ namespace Mosaic.Bridge.Tools.Splines
                     category: "spline")]
         public static ToolResult<SplineCreateResult> Execute(SplineCreateParams p)
         {
+            // A spline needs at least 2 knots to have any shape or length at all — a single knot
+            // silently created a degenerate, zero-length SplineContainer with no error telling
+            // the caller why later operations (e.g. cinemachine/create-dolly) saw nothing usable.
+            if (p.Knots != null && p.Knots.Length < 2)
+                return ToolResult<SplineCreateResult>.Fail(
+                    $"At least 2 knots are required to create a spline (got {p.Knots.Length}).",
+                    ErrorCodes.INVALID_PARAM);
+
             var go = new GameObject(p.Name);
             var container = go.AddComponent<SplineContainer>();
             var spline = container.Spline;

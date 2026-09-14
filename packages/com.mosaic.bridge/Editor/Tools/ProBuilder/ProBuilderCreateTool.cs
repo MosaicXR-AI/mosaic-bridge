@@ -31,13 +31,18 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                 "dragon", "monster", "creature"
             };
 
-        // Known ProBuilder primitive shape names — anything outside this list is a complex object
+        // Known ProBuilder primitive shape names — anything outside this list is a complex object.
+        // L2: "hemisphere", "pyramid", "wedge", "quad", "disc", "disk" used to be advertised here
+        // too, but none of them is a real UnityEngine.ProBuilder.ShapeType member (the actual set
+        // is Cube, Stair, CurvedStair, Prism, Cylinder, Plane, Door, Pipe, Cone, Sprite, Arch,
+        // Sphere, Torus) and none has its own explicit switch case below either — they passed
+        // this guard only to fail later at Enum.TryParse with a confusing "Unknown Shape" error,
+        // even though this same list is what told the caller the shape was valid.
         private static readonly System.Collections.Generic.HashSet<string> s_KnownShapes =
             new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase)
             {
                 "cube", "box", "prism", "cylinder", "stairs", "stair", "curvedstair", "arch",
-                "door", "plane", "pipe", "cone", "icosahedron", "sphere", "torus", "hemisphere",
-                "pyramid", "wedge", "quad", "disc", "disk"
+                "door", "plane", "pipe", "cone", "icosahedron", "sphere", "torus"
             };
 
         [MosaicTool("probuilder/create",
@@ -134,7 +139,11 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     float radius = p.Radius > 0f ? p.Radius : 0.5f;
                     float height = p.Height > 0f ? p.Height : 1f;
                     int axisDivisions = p.AxisDivisions > 2 ? p.AxisDivisions : 8;
-                    mesh = ShapeGenerator.GenerateCylinder(PivotLocation.Center, axisDivisions, radius, height, 1, 0);
+                    // L2: the hardcoded trailing 0 forced smoothingGroup=0 (hard-shaded, faceted
+                    // sides) on every cylinder this tool ever created. Omitting it uses
+                    // GenerateCylinder's own default (-1), matching what the ProBuilder Editor's
+                    // own GameObject > ProBuilder > Cylinder menu command produces.
+                    mesh = ShapeGenerator.GenerateCylinder(PivotLocation.Center, axisDivisions, radius, height, 1);
                     break;
                 }
 

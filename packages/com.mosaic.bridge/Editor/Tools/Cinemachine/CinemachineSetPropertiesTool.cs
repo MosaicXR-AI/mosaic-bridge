@@ -37,33 +37,18 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                 propsSet.Add("Priority");
             }
 
-            if (p.FieldOfView.HasValue)
+            // L4: constructing a brand-new LensSettings from just these four fields silently
+            // reset every other field on the struct — ModeOverride, Dutch, and the entire
+            // PhysicalProperties block (sensor size, ISO, aperture, shutter speed, etc.) — to
+            // their zero-values whenever FOV or clip planes were touched. Mutating a copy of the
+            // existing struct in place preserves everything not explicitly requested.
+            if (p.FieldOfView.HasValue || p.NearClip.HasValue || p.FarClip.HasValue)
             {
-                vcam.Lens = new LensSettings
-                {
-                    FieldOfView = p.FieldOfView.Value,
-                    NearClipPlane = p.NearClip ?? vcam.Lens.NearClipPlane,
-                    FarClipPlane = p.FarClip ?? vcam.Lens.FarClipPlane,
-                    OrthographicSize = vcam.Lens.OrthographicSize
-                };
-                propsSet.Add("FieldOfView");
-                if (p.NearClip.HasValue) propsSet.Add("NearClip");
-                if (p.FarClip.HasValue) propsSet.Add("FarClip");
-            }
-            else
-            {
-                if (p.NearClip.HasValue || p.FarClip.HasValue)
-                {
-                    vcam.Lens = new LensSettings
-                    {
-                        FieldOfView = vcam.Lens.FieldOfView,
-                        NearClipPlane = p.NearClip ?? vcam.Lens.NearClipPlane,
-                        FarClipPlane = p.FarClip ?? vcam.Lens.FarClipPlane,
-                        OrthographicSize = vcam.Lens.OrthographicSize
-                    };
-                    if (p.NearClip.HasValue) propsSet.Add("NearClip");
-                    if (p.FarClip.HasValue) propsSet.Add("FarClip");
-                }
+                var lens = vcam.Lens;
+                if (p.FieldOfView.HasValue) { lens.FieldOfView = p.FieldOfView.Value; propsSet.Add("FieldOfView"); }
+                if (p.NearClip.HasValue) { lens.NearClipPlane = p.NearClip.Value; propsSet.Add("NearClip"); }
+                if (p.FarClip.HasValue) { lens.FarClipPlane = p.FarClip.Value; propsSet.Add("FarClip"); }
+                vcam.Lens = lens;
             }
 
             if (!string.IsNullOrEmpty(p.FollowTarget))

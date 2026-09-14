@@ -63,6 +63,19 @@ namespace Mosaic.Bridge.Tools.Animations
             var transition = sourceState.AddTransition(destState);
             transition.hasExitTime = p.HasExitTime;
             transition.duration = p.TransitionDuration;
+
+            // Conditions are optional here (a transition can legitimately have none), but if
+            // supplied they must actually be applied -- this call used to read HasExitTime and
+            // TransitionDuration and stop there, so a caller who supplied `conditions` on 'add'
+            // got success:true and ConditionCount:0 with no error at all, indistinguishable from
+            // conditions that were never asked for. An invalid mode inside that array went
+            // unvalidated for the same reason: nothing ever looked at it.
+            if (p.Conditions != null && p.Conditions.Length > 0)
+            {
+                var conditionError = ApplyConditions(transition, p.Conditions);
+                if (conditionError != null) return conditionError;
+            }
+
             EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
 
@@ -177,25 +190,8 @@ namespace Mosaic.Bridge.Tools.Animations
             while (transition.conditions.Length > 0)
                 transition.RemoveCondition(transition.conditions[0]);
 
-            foreach (var c in p.Conditions)
-            {
-                UnityEditor.Animations.AnimatorConditionMode mode;
-                switch (c.Mode?.ToLowerInvariant())
-                {
-                    case "if":        mode = UnityEditor.Animations.AnimatorConditionMode.If;        break;
-                    case "ifnot":     mode = UnityEditor.Animations.AnimatorConditionMode.IfNot;     break;
-                    case "greater":   mode = UnityEditor.Animations.AnimatorConditionMode.Greater;   break;
-                    case "less":      mode = UnityEditor.Animations.AnimatorConditionMode.Less;      break;
-                    case "equals":    mode = UnityEditor.Animations.AnimatorConditionMode.Equals;    break;
-                    case "notequal":  mode = UnityEditor.Animations.AnimatorConditionMode.NotEqual;  break;
-                    default:
-                        return ToolResult<AnimationTransitionResult>.Fail(
-                            $"Unknown condition mode '{c.Mode}'. Valid modes: If, IfNot, Greater, Less, Equals, NotEqual",
-                            ErrorCodes.INVALID_PARAM);
-                }
-
-                transition.AddCondition(mode, c.Threshold, c.ParameterName);
-            }
+            var conditionError = ApplyConditions(transition, p.Conditions);
+            if (conditionError != null) return conditionError;
 
             EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
@@ -214,6 +210,38 @@ namespace Mosaic.Bridge.Tools.Animations
                 TransitionDuration   = transition.duration,
                 ConditionCount       = transition.conditions.Length
             });
+        }
+
+        /// <summary>
+        /// Adds each of <paramref name="conditions"/> to <paramref name="transition"/>. Returns a
+        /// Fail result on the first unrecognised mode (so the caller learns which entry is wrong
+        /// rather than getting a result that looks correct and is not), or null once every
+        /// condition applied cleanly. Shared by 'add' (conditions optional, applied at creation)
+        /// and 'set-conditions' (conditions required, replacing whatever the transition already had).
+        /// </summary>
+        private static ToolResult<AnimationTransitionResult> ApplyConditions(
+            UnityEditor.Animations.AnimatorStateTransition transition, TransitionConditionInput[] conditions)
+        {
+            foreach (var c in conditions)
+            {
+                UnityEditor.Animations.AnimatorConditionMode mode;
+                switch (c.Mode?.ToLowerInvariant())
+                {
+                    case "if":        mode = UnityEditor.Animations.AnimatorConditionMode.If;        break;
+                    case "ifnot":     mode = UnityEditor.Animations.AnimatorConditionMode.IfNot;     break;
+                    case "greater":   mode = UnityEditor.Animations.AnimatorConditionMode.Greater;   break;
+                    case "less":      mode = UnityEditor.Animations.AnimatorConditionMode.Less;      break;
+                    case "equals":    mode = UnityEditor.Animations.AnimatorConditionMode.Equals;    break;
+                    case "notequal":  mode = UnityEditor.Animations.AnimatorConditionMode.NotEqual;  break;
+                    default:
+                        return ToolResult<AnimationTransitionResult>.Fail(
+                            $"Unknown condition mode '{c.Mode}'. Valid modes: If, IfNot, Greater, Less, Equals, NotEqual",
+                            ErrorCodes.INVALID_PARAM);
+                }
+
+                transition.AddCondition(mode, c.Threshold, c.ParameterName);
+            }
+            return null;
         }
     }
 }

@@ -119,17 +119,24 @@ namespace Mosaic.Bridge.Core.Server
         /// <remarks>
         /// M-1: every domain reload replaces this whole object — <see cref="Mosaic.Bridge.Core.Bootstrap.BridgeBootstrap"/>
         /// constructs a brand new <see cref="BridgeServer"/> (and therefore a new
-        /// <see cref="HttpListener"/>) rather than reusing the old one. <c>HttpListener.Stop()</c>
-        /// alone does not release the listener's underlying native resources — that only happens
-        /// on <c>Close()</c>/Dispose, or whenever the finalizer eventually runs. Calling only
-        /// <c>Stop()</c> here left the pre-reload listener's port genuinely still bound until GC
-        /// caught up, which is not guaranteed to happen before the restarting bridge tries to
-        /// rebind its preferred port. Confirmed in the field: `netstat` after a reload showed the
-        /// SAME process still LISTENING on the old port as well as the new one it walked to
-        /// (8282 orphaned, 8283 live) — an orphan that reproduces on every single domain reload,
-        /// walking the port up by one each time. <c>Close()</c> both stops and fully releases the
-        /// listener, so the preferred port is actually free by the time <see cref="Start"/> is
-        /// called again.
+        /// <see cref="HttpListener"/>) rather than reusing the old one, so the preferred port must
+        /// actually be free by the time the next <see cref="Start"/> runs.
+        ///
+        /// First attempt called <c>Stop()</c> then <c>Close()</c> — a real improvement (bare
+        /// <c>Stop()</c> alone never releases native resources at all) but re-verified on Windows
+        /// as still insufficient: the very first reload still leaked the old port. Root cause,
+        /// from .NET's own documented behaviour: <see cref="ListenLoop"/> is blocked in a
+        /// *synchronous* <c>_listener.GetContext()</c> call on its own thread, and <c>Close()</c>
+        /// blocks the CALLING thread until that pending <c>GetContext()</c> unblocks and returns —
+        /// i.e. the two calls can wait on each other rather than one cleanly interrupting the
+        /// other, and whether the underlying OS/http.sys registration is actually released before
+        /// <c>Close()</c> returns is exactly the part that varied by platform in the field.
+        /// <c>Abort()</c> is documented to terminate immediately and unconditionally: "causes
+        /// existing calls to blocking methods such as GetContext to throw ObjectDisposedException"
+        /// — no waiting for a graceful handoff with the blocked thread. For a loopback-only,
+        /// internal-use listener there is nothing graceful to preserve (no in-flight response ever
+        /// matters after the caller has already been told the bridge is reloading), so the
+        /// forceful, immediate release is strictly what this needs.
         /// </remarks>
         public void Stop()
         {
@@ -137,8 +144,7 @@ namespace Mosaic.Bridge.Core.Server
 
             try
             {
-                _listener?.Stop();
-                _listener?.Close();
+                _listener?.Abort();
             }
             catch { }
             finally

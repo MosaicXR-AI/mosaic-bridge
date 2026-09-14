@@ -1,3 +1,4 @@
+using Mosaic.Bridge.Contracts.Compat;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Core.Extensibility;
@@ -20,7 +21,7 @@ namespace Mosaic.Bridge.Tests.GameObjects
         public void TearDown()
         {
             ObjectCreationHooks.Provider = null;
-            foreach (var go in GameObject.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            foreach (var go in UnityIds.FindAll<GameObject>())
                 if (go.name.StartsWith("MosaicQaGate")) Object.DestroyImmediate(go);
         }
 

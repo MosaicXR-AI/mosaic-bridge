@@ -138,5 +138,92 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
             EditorRunBlockTool.StopPump();
             Assert.IsFalse(EditorRunBlockTool.IsPumping);
         }
+
+        // ── Orphan sweep (N-1) ───────────────────────────────────────────────
+        //
+        // Cleanup used to run only inside run-block-poll, on a job reaching a terminal state, so
+        // a block nobody polled to completion left its generated [InitializeOnLoad] script in the
+        // project permanently — six were found stranded in one field session, successes and
+        // failures alike, because what predicted it was never the outcome but whether anyone
+        // polled. These write the generated files directly rather than through Submit(), which
+        // triggers a real compile + domain reload and is unsafe from a Unit test.
+
+        private const string SweepFolder = "Assets/Editor";
+        private const string SweepPrefix = "MosaicBridge_RunBlock_";
+
+        private static string WriteFakeTempScript(string jobId)
+        {
+            var dir = System.IO.Path.GetFullPath(SweepFolder);
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, SweepPrefix + jobId + ".cs");
+            System.IO.File.WriteAllText(path, "// placeholder for a run-block temp script\n");
+            return path;
+        }
+
+        [Test]
+        public void Sweep_DeletesAScriptNoLiveJobOwns()
+        {
+            const string orphan = "unittestorph";
+            var path = WriteFakeTempScript(orphan);
+            try
+            {
+                Assert.IsTrue(System.IO.File.Exists(path), "fixture did not write");
+
+                EditorRunBlockTool.SweepOrphanedTempScripts();
+
+                Assert.IsFalse(System.IO.File.Exists(path),
+                    "a generated script with no job still tracking it must not survive the load");
+            }
+            finally
+            {
+                EditorRunBlockTool.ClearJobPrefs(orphan);
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void Sweep_LeavesAScriptWhoseJobIsStillInFlight()
+        {
+            // Deleting an in-flight job's script would guarantee the job could never run — the
+            // generated class is the thing the pending domain reload is waiting to execute.
+            var path = WriteFakeTempScript(TestJobId);
+            try
+            {
+                EditorPrefs.SetString("MosaicBridgeRunBlock_" + TestJobId + "_submitted",
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString());
+                EditorRunBlockTool.AddActiveJobId(TestJobId);
+
+                EditorRunBlockTool.SweepOrphanedTempScripts();
+
+                Assert.IsTrue(System.IO.File.Exists(path),
+                    "a job still in the active list has not run yet; its script must be left alone");
+            }
+            finally
+            {
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void DeleteScriptFile_RemovesTheFileAndItsMeta()
+        {
+            const string id = "unittestdel0";
+            var path = WriteFakeTempScript(id);
+            System.IO.File.WriteAllText(path + ".meta", "fileFormatVersion: 2\n");
+            try
+            {
+                var ok = EditorRunBlockTool.DeleteScriptFile(SweepFolder + "/" + SweepPrefix + id + ".cs");
+
+                Assert.IsTrue(ok, "delete reported failure for a file that was plainly there");
+                Assert.IsFalse(System.IO.File.Exists(path));
+                Assert.IsFalse(System.IO.File.Exists(path + ".meta"),
+                    "a left-behind .meta is how Unity re-creates the asset entry on the next refresh");
+            }
+            finally
+            {
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+                if (System.IO.File.Exists(path + ".meta")) System.IO.File.Delete(path + ".meta");
+            }
+        }
     }
 }

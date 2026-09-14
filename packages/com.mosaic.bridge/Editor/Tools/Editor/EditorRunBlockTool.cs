@@ -57,6 +57,12 @@ namespace Mosaic.Bridge.Tools.EditorOps
         static EditorRunBlockTool()
         {
             RearmPumpForPendingJobs();
+
+            // Deferred, not called straight from here: this constructor runs during the domain
+            // reload, and AssetDatabase mutations at that point are the documented way to get an
+            // import into an inconsistent state. The sweep is housekeeping — nothing waits on it,
+            // so the next tick is soon enough.
+            EditorApplication.delayCall += () => SweepOrphanedTempScripts();
         }
 
         [MosaicTool("editor/run-block",
@@ -156,6 +162,101 @@ namespace Mosaic.Bridge.Tools.EditorOps
             SetActiveJobIds(stillPending);
             if (stillPending.Count > 0)
                 StartPump(PendingTimeoutSeconds);
+        }
+
+        // ── Orphan sweep (N-1) ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Deletes generated run-block scripts in <see cref="TempFolder"/> that no live job owns.
+        /// Returns how many were removed.
+        /// </summary>
+        /// <remarks>
+        /// Cleanup used to happen in exactly one place: <c>editor/run-block-poll</c>, once a job
+        /// reached a terminal state. A caller who submitted a block and never polled it to
+        /// completion — or gave up while it still said "compiling" — left its script in the
+        /// project permanently. That is why a field session found six stranded at once with
+        /// successes and failures alike among them: the predictor was never the job's outcome, it
+        /// was whether anyone polled it to the end.
+        ///
+        /// They do not sit there inertly. Each is an <c>[InitializeOnLoad]</c> class, so every one
+        /// recompiles and runs on every subsequent domain reload, and they are counted as project
+        /// scripts by the course tooling — one report had the build gate reading 13 scripts in a
+        /// project that had 7. They would also ship inside a course project handed to learners.
+        ///
+        /// Runs on every load, AFTER <see cref="RearmPumpForPendingJobs"/> has pruned the
+        /// active-job list, so "still in that list" means "genuinely in flight" and its script is
+        /// left alone — deleting it would guarantee the job could never run. Everything else has
+        /// no owner that will ever come back for it.
+        /// </remarks>
+        internal static int SweepOrphanedTempScripts()
+        {
+            if (!AssetDatabase.IsValidFolder(TempFolder)) return 0;
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(Path.GetFullPath(TempFolder),
+                                           ClassPrefix + "*.cs", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception)
+            {
+                return 0; // an unreadable folder is not worth failing a domain reload over
+            }
+            if (files.Length == 0) return 0;
+
+            var live = new HashSet<string>(GetActiveJobIds());
+            int removed = 0;
+            foreach (var full in files)
+            {
+                string name  = Path.GetFileNameWithoutExtension(full);
+                string jobId = name.Length > ClassPrefix.Length
+                    ? name.Substring(ClassPrefix.Length)
+                    : "";
+                if (jobId.Length == 0 || live.Contains(jobId)) continue;
+
+                if (DeleteScriptFile(TempFolder + "/" + Path.GetFileName(full)))
+                    removed++;
+                ClearJobPrefs(jobId);
+            }
+
+            if (removed > 0)
+                UnityEngine.Debug.Log($"[Mosaic.Bridge] Removed {removed} orphaned editor/run-block " +
+                                      $"temp script(s) from {TempFolder}.");
+            return removed;
+        }
+
+        /// <summary>Deletes a generated script and its .meta — through the AssetDatabase where
+        /// that works, directly where it does not. True if the script is gone afterwards.</summary>
+        /// <remarks>
+        /// <c>AssetDatabase.DeleteAsset</c> RETURNS false rather than throwing when it cannot
+        /// delete, which it does during compilation among other times. The old cleanup only
+        /// guarded against exceptions, so a returned false read as success — a script reported
+        /// cleaned up and still sitting in the project. That is the second half of N-1, and it is
+        /// the half that makes the failure silent.
+        /// </remarks>
+        internal static bool DeleteScriptFile(string assetPath)
+        {
+            try
+            {
+                if (AssetDatabase.DeleteAsset(assetPath)) return true;
+            }
+            catch (Exception)
+            {
+                // fall through — the direct delete below is the point of this method
+            }
+
+            try
+            {
+                string full = Path.GetFullPath(assetPath);
+                bool gone = false;
+                if (File.Exists(full)) { File.Delete(full); gone = true; }
+                if (File.Exists(full + ".meta")) File.Delete(full + ".meta");
+                return gone || !File.Exists(full);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>Same mechanism as EditorPlayModeTool's PumpSeconds: subscribe to
@@ -492,14 +593,11 @@ namespace Mosaic.Bridge.Tools.EditorOps
             string full = Path.GetFullPath(scriptPath);
             if (!File.Exists(full)) return;
 
-            try
-            {
-                AssetDatabase.DeleteAsset(scriptPath);
-            }
-            catch
-            {
-                // best-effort: if delete fails, leave the file; it's harmless after _done is cleared
-            }
+            // Not best-effort any more: a failure here leaves an [InitializeOnLoad] class in the
+            // user's project that recompiles on every reload and is counted as one of their own
+            // scripts (N-1). EditorRunBlockTool's sweep catches whatever still slips through on
+            // the next load, but the delete itself has to actually try.
+            EditorRunBlockTool.DeleteScriptFile(scriptPath);
         }
     }
 

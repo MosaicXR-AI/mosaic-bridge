@@ -5,6 +5,34 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.23] — 2026-09-14
+
+Two fixes landed on `main` AFTER beta.22's version was set, so they were never published —
+every machine kept resolving beta.22 and kept the old code. A field revalidation then
+reported both as "still failing", which was true of what was installed and not of what was
+written. The lesson beta.22's own note states is the one this release exists to correct:
+**the version bump is the delivery, and a fix merged after it has not shipped.**
+
+### Fixed
+
+- **`animation/transition`'s `add` actually applies its conditions** (H-1b). `Add()` never
+  read `p.Conditions` at all — the route returned `success: true` with `ConditionCount: 0`,
+  which is worse than the schema error it replaced, because it reports work it did not do.
+  Merged as `2c19b27`, unpublished until now.
+- **`Abort()`, not `Stop()` + `Close()`, releases the port** (M-1). `Close()` blocks on a
+  pending synchronous `GetContext()`, so the listener outlived the reload and the bridge
+  drifted 8282 → 8283 with the old socket orphaned. Merged as `5c3ea0d`, unpublished
+  until now.
+- **`editor/run-block` no longer strands its temp scripts** (N-1). Cleanup lived in exactly
+  one place — `run-block-poll`, on reaching a terminal state — so a block nobody polled to
+  completion left its generated script in the project for good. A field session found six at
+  once, successes and failures alike, because the predictor was never the outcome but whether
+  anyone polled. Each is an `[InitializeOnLoad]` class that recompiles on every domain reload,
+  counts as one of the user's own scripts (a build gate read 13 where the project had 7), and
+  would ship inside a course project handed to learners. Now swept on every load — skipping
+  jobs genuinely in flight — and the delete itself no longer treats
+  `AssetDatabase.DeleteAsset` returning `false` as success.
+
 ## [1.0.0-beta.22] — 2026-09-14
 
 Three fixes found by driving a real Editor, not by reading code. Published as a new

@@ -113,6 +113,166 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsNotNull(go.GetComponent<GraphicRaycaster>());
         }
 
+        // O4 L6: a hardcoded StandaloneInputModule silently does nothing in an Input System
+        // project. InputModuleComponentFactory.AddInputModule (the "auto" default) is Unity's own
+        // public factory — the same one its Component menu uses — and picks correctly based on
+        // what's actually installed.
+
+        [Test]
+        public void CreateCanvas_DefaultInputModule_UsesFactoryNotHardcodedStandalone()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams());
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            Assert.IsTrue(result.Data.EventSystemCreated);
+            Assert.IsNotNull(result.Data.InputModuleType,
+                "InputModuleComponentFactory.AddInputModule must report back what it actually added");
+            var eventSystemGo = UnityIds.FindAll<EventSystem>().First().gameObject;
+            Assert.IsNotNull(eventSystemGo.GetComponent<BaseInputModule>(),
+                "the factory must have added SOME BaseInputModule, whichever this environment resolves to");
+        }
+
+        [Test]
+        public void CreateCanvas_InputModuleStandalone_ForcesStandaloneInputModule()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { InputModule = "standalone" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            Assert.AreEqual(nameof(StandaloneInputModule), result.Data.InputModuleType);
+            var eventSystemGo = UnityIds.FindAll<EventSystem>().First().gameObject;
+            Assert.IsNotNull(eventSystemGo.GetComponent<StandaloneInputModule>());
+        }
+
+        [Test]
+        public void CreateCanvas_InputModuleInputSystem_FailsCleanlyWhenPackageAbsent()
+        {
+            // This test environment has no com.unity.inputsystem package — exercises the "fails
+            // with a clear message" path, the one InputModule=inputsystem exists to guarantee
+            // instead of a stack trace when forced but the package isn't there.
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { InputModule = "inputsystem" });
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("com.unity.inputsystem", result.Error);
+        }
+
+        [Test]
+        public void CreateCanvas_InvalidInputModule_Fails()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { InputModule = "NotAModule" });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void CreateCanvas_ExistingEventSystem_InputModuleParamIsIgnored()
+        {
+            var existingEventSystemGo = new GameObject("PreExistingEventSystem");
+            existingEventSystemGo.AddComponent<EventSystem>();
+            _created.Add(existingEventSystemGo);
+
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { InputModule = "inputsystem" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            Assert.IsFalse(result.Data.EventSystemCreated);
+        }
+
+        // ── ui/create_canvas: CanvasScaler / Canvas extension params ──────────
+
+        [Test]
+        public void CreateCanvas_ScaleWithScreenSize_SetsScalerFields()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams
+                {
+                    ScaleMode = "ScaleWithScreenSize",
+                    ReferenceResolution = new[] { 1920f, 1080f },
+                    MatchWidthOrHeight = 0.5f,
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var scaler = (UnityIds.Resolve(result.Data.InstanceId) as GameObject).GetComponent<CanvasScaler>();
+            Assert.AreEqual(CanvasScaler.ScaleMode.ScaleWithScreenSize, scaler.uiScaleMode);
+            Assert.AreEqual(new Vector2(1920f, 1080f), scaler.referenceResolution);
+            Assert.AreEqual(0.5f, scaler.matchWidthOrHeight, 0.001f);
+        }
+
+        [Test]
+        public void CreateCanvas_SortingOrderAndPixelPerfect_AreApplied()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { SortingOrder = 7, PixelPerfect = true });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var canvas = (UnityIds.Resolve(result.Data.InstanceId) as GameObject).GetComponent<Canvas>();
+            Assert.AreEqual(7, canvas.sortingOrder);
+            Assert.IsTrue(canvas.pixelPerfect);
+        }
+
+        [Test]
+        public void CreateCanvas_WorldSpaceWithWorldSize_SetsRectTransformSizeDelta()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams
+                {
+                    RenderMode = "WorldSpace", WorldSize = new[] { 4f, 3f },
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var rect = (UnityIds.Resolve(result.Data.InstanceId) as GameObject).GetComponent<RectTransform>();
+            Assert.AreEqual(new Vector2(4f, 3f), rect.sizeDelta);
+        }
+
+        [Test]
+        public void CreateCanvas_ExplicitWorldCamera_OverridesCameraMain()
+        {
+            var camGo = new GameObject("MyUICamera");
+            camGo.AddComponent<UnityEngine.Camera>();
+            _created.Add(camGo);
+
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { RenderMode = "Camera", WorldCamera = "MyUICamera" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var canvas = (UnityIds.Resolve(result.Data.InstanceId) as GameObject).GetComponent<Canvas>();
+            Assert.AreEqual(camGo.GetComponent<UnityEngine.Camera>(), canvas.worldCamera);
+        }
+
+        [Test]
+        public void CreateCanvas_Parent_ReparentsUnderGivenGameObject()
+        {
+            var parentGo = new GameObject("UIParent");
+            _created.Add(parentGo);
+
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { Parent = "UIParent" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var canvasGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
+            Assert.AreSame(parentGo.transform, canvasGo.transform.parent);
+        }
+
+        [Test]
+        public void CreateCanvas_UnknownParent_Fails()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { Parent = "DoesNotExist_12345" });
+
+            Assert.IsFalse(result.Success);
+        }
+
         // ── ui/add_element ───────────────────────────────────────────────────
 
         [Test]

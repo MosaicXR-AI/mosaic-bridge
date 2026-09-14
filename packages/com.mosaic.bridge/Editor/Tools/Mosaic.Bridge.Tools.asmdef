@@ -4,6 +4,7 @@
     "references": [
         "Mosaic.Bridge.Contracts",
         "Mosaic.Bridge.Core",
+        "UnityEditor.UI",
         "Unity.InputSystem",
         "Unity.Timeline",
         "Unity.AI.Navigation",

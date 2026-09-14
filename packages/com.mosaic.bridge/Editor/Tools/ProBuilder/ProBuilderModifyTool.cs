@@ -14,7 +14,12 @@ namespace Mosaic.Bridge.Tools.ProBuilder
     public static class ProBuilderModifyTool
     {
         [MosaicTool("probuilder/modify",
-                    "Applies a mesh operation (merge, subdivide, flip-normals, detach, bridge, triangulate) to a ProBuilder mesh",
+                    "Applies a mesh operation (merge, subdivide, flip-normals, detach, bridge, triangulate, bevel, " +
+                    "delete-faces) to a ProBuilder mesh. Use probuilder/info with Detail='faces'|'edges' first to " +
+                    "get FaceIndices/Edges — ProBuilder has no persistent edge index, so Edges takes literal " +
+                    "[A,B] local vertex-index pairs, exactly as probuilder/info returns them. " +
+                    "bevel: Edges (or FaceIndices to bevel each face's perimeter edges) + Amount (0..1 fraction " +
+                    "of the face, NOT world units). delete-faces: FaceIndices.",
                     isReadOnly: false, category: "probuilder")]
         public static ToolResult<ProBuilderModifyResult> Modify(ProBuilderModifyParams p)
         {
@@ -133,9 +138,77 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     ConnectElements.Connect(pb, pb.faces);
                     break;
                 }
+                case "bevel":
+                {
+                    if (!p.Amount.HasValue)
+                        return ToolResult<ProBuilderModifyResult>.Fail(
+                            "Amount is required for bevel (0..1 fraction of the face, not world units).",
+                            ErrorCodes.INVALID_PARAM);
+
+                    List<Edge> edgesToBevel;
+                    if (p.Edges != null && p.Edges.Length > 0)
+                    {
+                        edgesToBevel = p.Edges.Select(pair =>
+                        {
+                            if (pair == null || pair.Length != 2)
+                                throw new System.ArgumentException("Each Edges entry must be a [A, B] pair");
+                            return new Edge(pair[0], pair[1]);
+                        }).ToList();
+                    }
+                    else if (p.FaceIndices != null && p.FaceIndices.Length > 0)
+                    {
+                        var faceEdges = new HashSet<Edge>();
+                        foreach (var idx in p.FaceIndices)
+                        {
+                            if (idx < 0 || idx >= pb.faces.Count)
+                                return ToolResult<ProBuilderModifyResult>.Fail(
+                                    $"FaceIndices contains out-of-range index {idx} (mesh has {pb.faces.Count} faces).",
+                                    ErrorCodes.INVALID_PARAM);
+                            foreach (var edge in pb.faces[idx].edges) faceEdges.Add(edge);
+                        }
+                        edgesToBevel = faceEdges.ToList();
+                    }
+                    else
+                    {
+                        return ToolResult<ProBuilderModifyResult>.Fail(
+                            "bevel requires Edges ([[a,b],...] pairs) or FaceIndices (bevels each face's perimeter edges).",
+                            ErrorCodes.INVALID_PARAM);
+                    }
+
+                    List<Face> beveled;
+                    try { beveled = Bevel.BevelEdges(pb, edgesToBevel, p.Amount.Value); }
+                    catch (System.ArgumentException e)
+                    {
+                        return ToolResult<ProBuilderModifyResult>.Fail(e.Message, ErrorCodes.INVALID_PARAM);
+                    }
+                    if (beveled == null || beveled.Count == 0)
+                        return ToolResult<ProBuilderModifyResult>.Fail(
+                            "Bevel produced no new faces — the edges may not be valid for beveling.",
+                            ErrorCodes.INVALID_PARAM);
+                    break;
+                }
+                case "delete-faces":
+                {
+                    if (p.FaceIndices == null || p.FaceIndices.Length == 0)
+                        return ToolResult<ProBuilderModifyResult>.Fail(
+                            "delete-faces requires FaceIndices.", ErrorCodes.INVALID_PARAM);
+                    foreach (var idx in p.FaceIndices)
+                        if (idx < 0 || idx >= pb.faces.Count)
+                            return ToolResult<ProBuilderModifyResult>.Fail(
+                                $"FaceIndices contains out-of-range index {idx} (mesh has {pb.faces.Count} faces).",
+                                ErrorCodes.INVALID_PARAM);
+                    if (p.FaceIndices.Length >= pb.faces.Count)
+                        return ToolResult<ProBuilderModifyResult>.Fail(
+                            "delete-faces would remove every face on this mesh — delete the GameObject instead " +
+                            "if that is really the intent.",
+                            ErrorCodes.INVALID_PARAM);
+                    DeleteElements.DeleteFaces(pb, p.FaceIndices.ToList());
+                    break;
+                }
                 default:
                     return ToolResult<ProBuilderModifyResult>.Fail(
-                        $"Invalid Operation '{p.Operation}'. Valid: merge, subdivide, flip-normals, detach, bridge, triangulate",
+                        $"Invalid Operation '{p.Operation}'. Valid: merge, subdivide, flip-normals, detach, bridge, " +
+                        "triangulate, bevel, delete-faces",
                         ErrorCodes.INVALID_PARAM);
             }
 
@@ -155,6 +228,14 @@ namespace Mosaic.Bridge.Tools.ProBuilder
     {
         [Required] public string GameObjectName { get; set; }
         [Required] public string Operation { get; set; }
+
+        /// <summary>bevel: literal ProBuilder Edge(a,b) pairs, e.g. [[0,1],[1,2]] — from probuilder/info's
+        /// Edges detail. Local vertex indices, not a synthetic edge index.</summary>
+        public int[][] Edges { get; set; }
+        /// <summary>bevel (perimeter edges of these faces) or delete-faces.</summary>
+        public int[] FaceIndices { get; set; }
+        /// <summary>bevel only: 0..1 fraction of the face, not world units.</summary>
+        public float? Amount { get; set; }
     }
 
     public sealed class ProBuilderModifyResult

@@ -10,7 +10,11 @@ namespace Mosaic.Bridge.Tools.Terrains
     public static class TerrainCreateTool
     {
         [MosaicTool("terrain/create",
-                    "Creates a new Terrain GameObject with a saved TerrainData asset",
+                    "Creates a real Unity Terrain GameObject (with TerrainCollider and a saved TerrainData asset) " +
+                    "— use this for any Terrain in a scene, not procgen/terrain, which generates a compute-shader " +
+                    "heightfield with no Terrain component at all. Sculpt with terrain/height, paint textures with " +
+                    "terrain/paint, scatter trees/detail with terrain/trees and terrain/detail, tile multiple " +
+                    "terrains with terrain/grid.",
                     isReadOnly: false)]
         public static ToolResult<TerrainCreateResult> Execute(TerrainCreateParams p)
         {

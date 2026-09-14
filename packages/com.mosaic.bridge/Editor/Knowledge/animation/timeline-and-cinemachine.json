@@ -3,7 +3,7 @@
   "id": "animation/timeline-and-cinemachine",
   "title": "Timeline, Playable Director, Cinemachine",
   "version": "1.0.0",
-  "lastUpdated": "2026-04-21",
+  "lastUpdated": "2026-09-14",
   "category": "animation",
 
   "unityVersions": {
@@ -15,17 +15,17 @@
   "summary": "Unity's cinematic stack: a TimelineAsset owns tracks and clips; a PlayableDirector in the scene binds those tracks to actual GameObjects and plays the sequence; Cinemachine contributes virtual cameras that a single CinemachineBrain on the Main Camera blends between by priority or by a Cinemachine Track. Use this whenever any timeline/* or cinemachine/* tool creates assets, tracks, clips, virtual cameras, dollies, or blends — LLMs routinely build a TimelineAsset with tracks but never call SetGenericBinding (timeline runs, nothing plays), stack two CinemachineBrains on one camera, or call CM 2 names (CinemachineVirtualCamera, CinemachinePath) on a Unity 2023+/6 project that ships Cinemachine 3.",
 
   "mosaicTools": [
-    "timeline/create-asset",
+    "timeline/create",
     "timeline/add-track",
     "timeline/add-clip",
-    "timeline/bind-track",
-    "timeline/add-signal",
-    "timeline/play",
+    "timeline/bind",
+    "timeline/set-director",
+    "timeline/info",
     "cinemachine/create-brain",
-    "cinemachine/create-virtual-camera",
-    "cinemachine/set-priority",
-    "cinemachine/add-dolly",
-    "cinemachine/add-to-timeline"
+    "cinemachine/create-vcam",
+    "cinemachine/create-dolly",
+    "cinemachine/set-properties",
+    "cinemachine/info"
   ],
 
   "relatedKb": [
@@ -36,7 +36,7 @@
 
   "llmGuidance": {
     "when_asked_to_build_a_cutscene":
-      "Create a TimelineAsset (timeline/create-asset), add tracks (timeline/add-track), add clips (timeline/add-clip), put a PlayableDirector on a scene GameObject, assign the asset, then bind every track with timeline/bind-track before calling timeline/play. Skipping the bind step is the #1 cause of 'the timeline plays but nothing moves.'",
+      "Create a TimelineAsset (timeline/create), add tracks (timeline/add-track), add clips (timeline/add-clip), put a PlayableDirector on a scene GameObject (timeline/set-director), then bind every track with timeline/bind before playing it (there is no dedicated timeline/play route today — trigger playback via PlayableDirector.Play(), e.g. through component/set_property or run-block). Skipping the bind step is the #1 cause of 'the timeline plays but nothing moves.'",
     "when_adding_an_animation_track":
       "An AnimationTrack needs both a clip (AnimationPlayableAsset referencing an AnimationClip) and a binding to an Animator component. The Animator does not need a controller — Timeline drives it directly — but the GameObject must have one. Raw Transforms with no Animator cannot be driven by an AnimationTrack.",
     "when_adding_an_audio_track":
@@ -97,7 +97,7 @@
       {
         "symptom": "Timeline plays its full duration but objects don't move, audio doesn't fire, camera doesn't cut.",
         "cause": "Tracks have no bindings on the PlayableDirector. The asset was created in isolation and dropped on a director without wiring.",
-        "fix": "After adding each track, call timeline/bind-track (or SetGenericBinding) with the scene object. Verify in inspector: every track row shows a resolved reference, not 'None'."
+        "fix": "After adding each track, call timeline/bind (or SetGenericBinding) with the scene object. Verify in inspector: every track row shows a resolved reference, not 'None'."
       },
       {
         "symptom": "Camera jitters or snaps randomly every frame.",

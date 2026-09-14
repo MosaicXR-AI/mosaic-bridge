@@ -13,8 +13,11 @@ namespace Mosaic.Bridge.Tools.Components
     {
         [MosaicTool("component/set_property",
                     "Sets a serialized property value on a component attached to a GameObject. " +
-                    "IMPORTANT: PropertyName must use Unity's serialized field name with the 'm_' prefix, " +
-                    "NOT the public C# property name. Examples: 'm_Mass' not 'mass', 'm_Enabled' not 'enabled'. " +
+                    "IMPORTANT: PropertyName must use Unity's serialized field name, which is usually but NOT " +
+                    "always 'm_'-prefixed — Rigidbody 'm_Mass' not 'mass', but AudioSource fields like " +
+                    "'OutputAudioMixerGroup'/'Loop'/'Mute'/'Priority' and Camera fields like 'orthographic'/" +
+                    "'orthographic size' have no 'm_' at all. When unsure, check the component's serialized YAML " +
+                    "or a scene file rather than assuming the prefix. " +
                     "Value types: Float=[1.5], Int=[2], Bool=[true], String=['text'], " +
                     "Vector2=[x,y], Vector3=[x,y,z], Vector4=[x,y,z,w], Color=[r,g,b,a], " +
                     "Quaternion=[x,y,z,w], ObjectReference='Assets/path.mat'. " +

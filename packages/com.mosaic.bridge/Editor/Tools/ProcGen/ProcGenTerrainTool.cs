@@ -12,7 +12,10 @@ namespace Mosaic.Bridge.Tools.ProcGen
     public static class ProcGenTerrainTool
     {
         [MosaicTool("procgen/terrain",
-                    "Generates a Perlin noise terrain compute shader and MonoBehaviour manager script",
+                    "Generates a Perlin-noise HEIGHTFIELD as a compute shader + MonoBehaviour script for custom " +
+                    "runtime mesh generation — this creates NO Unity Terrain component and NO scene object by " +
+                    "itself. For an actual Terrain GameObject (sculptable, paintable, with a TerrainCollider), " +
+                    "use terrain/create instead.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ProcGenTerrainResult> Execute(ProcGenTerrainParams p)
         {

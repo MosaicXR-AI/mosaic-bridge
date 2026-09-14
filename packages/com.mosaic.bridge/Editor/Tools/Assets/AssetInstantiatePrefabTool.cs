@@ -4,6 +4,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Core.Extensibility;
 
 namespace Mosaic.Bridge.Tools.Assets
 {
@@ -44,12 +45,19 @@ namespace Mosaic.Bridge.Tools.Assets
 
             Undo.RegisterCreatedObjectUndo(instance, "Mosaic: Instantiate Prefab");
 
+            var qa = ObjectCreationHooks.TryRun(instance, "asset/instantiate_prefab");
+            if (qa != null && qa.Status == "failed")
+                return ToolResult<AssetInstantiatePrefabResult>.Fail(
+                    "Object failed quality checks: " + string.Join("; ", qa.Violations),
+                    ErrorCodes.OBJECT_QA_FAILED);
+
             return ToolResult<AssetInstantiatePrefabResult>.Ok(new AssetInstantiatePrefabResult
             {
                 Name       = instance.name,
                 InstanceId = UnityIds.Of(instance),
                 PrefabPath = p.PrefabPath,
-                Position   = new float[] { position.x, position.y, position.z }
+                Position   = new float[] { position.x, position.y, position.z },
+                QualityCheck = qa
             });
         }
     }

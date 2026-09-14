@@ -5,6 +5,22 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.26] — 2026-09-14
+
+New extension point: `Mosaic.Bridge.Core.Extensibility.ObjectCreationHooks`, an empty, optional
+delegate that `gameobject/create`, `probuilder/create`, and `asset/instantiate_prefab` call right
+after `Undo.RegisterCreatedObjectUndo`. With nothing subscribed (the free Bridge alone) it is a
+no-op and every creation tool behaves exactly as before. Mosaic Pro Core (paid, industrial tier)
+subscribes an object-quality gate: deterministic checks (pivot inside the object's own bounds,
+Rigidbody without a Collider, non-convex MeshCollider on a non-kinematic Rigidbody, collider
+bounds that don't match the visible mesh) run first; if any fail, the creation tool call itself
+fails with the new `OBJECT_QA_FAILED` error code and the object is left in the scene for a human
+or agent to fix or remove. If deterministic checks pass, the tool's result carries a
+`QualityCheck` report with paths to angle screenshots and a `QaId`, for the calling agent to
+visually judge realism/fit — no check inside a synchronous Unity Editor call can make that call
+itself. All three result classes (`GameObjectCreateResult`, `AssetInstantiatePrefabResult`,
+`ProBuilderCreateResult`) gained a nullable `QualityCheck` field.
+
 ## [1.0.0-beta.25] — 2026-09-14
 
 O-2 and half of O-1, both from the same field verification that confirmed beta.24 fixed

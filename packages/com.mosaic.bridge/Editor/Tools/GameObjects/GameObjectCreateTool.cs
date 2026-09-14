@@ -4,6 +4,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Core.Extensibility;
 
 namespace Mosaic.Bridge.Tools.GameObjects
 {
@@ -56,11 +57,19 @@ namespace Mosaic.Bridge.Tools.GameObjects
             // Must be called AFTER setting parent/transform
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Create GameObject");
 
+            // 6. Object-quality gate (Mosaic.Pro.Core only; no-op when not installed)
+            var qa = ObjectCreationHooks.TryRun(go, "gameobject/create");
+            if (qa != null && qa.Status == "failed")
+                return ToolResult<GameObjectCreateResult>.Fail(
+                    "Object failed quality checks: " + string.Join("; ", qa.Violations),
+                    ErrorCodes.OBJECT_QA_FAILED);
+
             return ToolResult<GameObjectCreateResult>.Ok(new GameObjectCreateResult
             {
                 InstanceId    = UnityIds.Of(go),
                 Name          = go.name,
-                HierarchyPath = GetHierarchyPath(go.transform)
+                HierarchyPath = GetHierarchyPath(go.transform),
+                QualityCheck  = qa
             });
         }
 

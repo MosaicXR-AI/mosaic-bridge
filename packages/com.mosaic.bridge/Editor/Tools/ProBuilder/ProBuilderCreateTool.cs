@@ -7,6 +7,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Core.Extensibility;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -250,12 +251,19 @@ namespace Mosaic.Bridge.Tools.ProBuilder
 
             Undo.RegisterCreatedObjectUndo(mesh.gameObject, "Mosaic: ProBuilder Create");
 
+            var qa = ObjectCreationHooks.TryRun(mesh.gameObject, "probuilder/create");
+            if (qa != null && qa.Status == "failed")
+                return ToolResult<ProBuilderCreateResult>.Fail(
+                    "Object failed quality checks: " + string.Join("; ", qa.Violations),
+                    ErrorCodes.OBJECT_QA_FAILED);
+
             return ToolResult<ProBuilderCreateResult>.Ok(new ProBuilderCreateResult
             {
                 Name        = mesh.gameObject.name,
                 InstanceId  = UnityIds.Of(mesh.gameObject),
                 VertexCount = mesh.vertexCount,
-                FaceCount   = mesh.faceCount
+                FaceCount   = mesh.faceCount,
+                QualityCheck = qa
             });
         }
     }
@@ -297,6 +305,9 @@ namespace Mosaic.Bridge.Tools.ProBuilder
         public int InstanceId { get; set; }
         public int VertexCount { get; set; }
         public int FaceCount { get; set; }
+
+        /// <summary>Set only when an object-quality provider (Mosaic.Pro.Core) is installed.</summary>
+        public ObjectQaReport QualityCheck { get; set; }
     }
 }
 #endif

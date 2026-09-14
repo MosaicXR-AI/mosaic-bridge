@@ -102,5 +102,13 @@ namespace Mosaic.Bridge.Contracts.Errors
 
         /// <summary>Unclassified bootstrap failure.</summary>
         public const string BOOTSTRAP_UNKNOWN = "BOOTSTRAP_UNKNOWN";
+
+        // === Object quality (post-creation checks) ===
+
+        /// <summary>An object-quality provider found a deterministic defect (a collider
+        /// that does not match its mesh, a pivot outside the object's own bounds, a
+        /// Rigidbody with no collider). The object itself is left in the scene; only the
+        /// creation tool's success is withheld.</summary>
+        public const string OBJECT_QA_FAILED = "OBJECT_QA_FAILED";
     }
 }

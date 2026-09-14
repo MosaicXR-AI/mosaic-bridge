@@ -57,9 +57,15 @@ namespace Mosaic.Bridge.Tools.TagsLayers
                     "GameObject not found. Provide a valid InstanceId or GameObjectName",
                     ErrorCodes.NOT_FOUND);
 
+            // L20: this list previously omitted ContributeGI (the modern name for what used to
+            // be LightmapStatic) — the underlying parser already accepts any real
+            // StaticEditorFlags member by name via Enum.TryParse, so ContributeGI worked all
+            // along; only this error message's own advertised list was wrong/incomplete.
             if (!TagLayerHelpers.TryParseStaticFlags(p.Flags, out var parsedFlags))
                 return ToolResult<TagLayerStaticResult>.Fail(
-                    $"Invalid static flags '{p.Flags}'. Valid flags: Everything, Nothing, BatchingStatic, OccludeeStatic, OccluderStatic, NavigationStatic, OffMeshLinkGeneration, ReflectionProbeStatic",
+                    $"Invalid static flags '{p.Flags}'. Valid flags: Everything, Nothing, ContributeGI, " +
+                    "BatchingStatic, OccludeeStatic, OccluderStatic, NavigationStatic, OffMeshLinkGeneration, " +
+                    "ReflectionProbeStatic",
                     ErrorCodes.INVALID_PARAM);
 
             Undo.RecordObject(go, "Mosaic: Set Static Flags");

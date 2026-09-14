@@ -117,6 +117,36 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.TagsLayers
             }
         }
 
+        // L20: ContributeGI (the modern name for what used to be LightmapStatic) was accepted by
+        // the underlying Enum.TryParse all along — only the error message's advertised list of
+        // valid flags omitted it, unverified per the doc. Confirms the real behavior, not just
+        // the message text.
+        [Test]
+        public void Set_ContributeGI_AppliesFlag()
+        {
+            var go = new GameObject("StaticSetContributeGiTest");
+            Undo.RegisterCreatedObjectUndo(go, "test");
+
+            try
+            {
+                var result = TagLayerStaticTool.Execute(new TagLayerStaticParams
+                {
+                    Action = "set",
+                    GameObjectName = "StaticSetContributeGiTest",
+                    Flags = "ContributeGI"
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var actual = GameObjectUtility.GetStaticEditorFlags(go);
+                Assert.IsTrue((actual & StaticEditorFlags.ContributeGI) != 0,
+                    "ContributeGI flag should be set");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
         [Test]
         public void Set_Everything_SetsAllFlags()
         {

@@ -11,7 +11,10 @@ namespace Mosaic.Bridge.Tools.Animations
         private const string ValidActions = "add, remove, set-motion, info";
 
         [MosaicTool("animation/state",
-                    "Manages animator states: add, remove, set motion clip, inspect state info",
+                    "Manages animator states: add, remove, set motion clip, inspect state info. " +
+                    "set-motion: for a multi-clip FBX (several takes embedded in one imported file), " +
+                    "ClipPath alone always resolves to the first embedded clip — pass ClipName to pick a " +
+                    "specific take by its own name.",
                     isReadOnly: false)]
         public static ToolResult<AnimationStateResult> Execute(AnimationStateParams p)
         {
@@ -123,10 +126,24 @@ namespace Mosaic.Bridge.Tools.Animations
                 return ToolResult<AnimationStateResult>.Fail(
                     $"State '{p.StateName}' not found in layer {p.LayerIndex}", ErrorCodes.NOT_FOUND);
 
-            var clip = AnimationToolHelpers.LoadClip(p.ClipPath);
+            // L19: without ClipName, a multi-clip FBX (several takes embedded in one imported
+            // file) always resolves to the FIRST embedded clip regardless of which take the
+            // caller actually wants.
+            var clip = AnimationToolHelpers.LoadClip(p.ClipPath, p.ClipName);
             if (clip == null)
+            {
+                if (!string.IsNullOrEmpty(p.ClipName))
+                {
+                    var names = AnimationToolHelpers.ListClipNames(p.ClipPath);
+                    return ToolResult<AnimationStateResult>.Fail(
+                        names.Length == 0
+                            ? $"No AnimationClip found at '{p.ClipPath}'."
+                            : $"No clip named '{p.ClipName}' at '{p.ClipPath}'. Available: {string.Join(", ", names)}",
+                        ErrorCodes.NOT_FOUND);
+                }
                 return ToolResult<AnimationStateResult>.Fail(
                     $"AnimationClip not found at '{p.ClipPath}'", ErrorCodes.NOT_FOUND);
+            }
 
             Undo.RecordObject(state, "Mosaic: Set State Motion");
             state.motion = clip;

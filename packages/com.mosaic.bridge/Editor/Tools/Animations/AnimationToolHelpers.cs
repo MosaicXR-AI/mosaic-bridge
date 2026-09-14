@@ -15,10 +15,29 @@ namespace Mosaic.Bridge.Tools.Animations
             return AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(assetPath);
         }
 
-        /// <summary>Load an AnimationClip asset from an asset path.</summary>
-        internal static AnimationClip LoadClip(string assetPath)
+        /// <summary>Load an AnimationClip asset from an asset path. LoadAssetAtPath&lt;T&gt;
+        /// silently returns the FIRST matching sub-asset — for a multi-clip FBX (several takes
+        /// embedded in one imported file) that is always the same clip regardless of which take
+        /// is actually wanted. Pass clipName to pick a specific one by its own name instead.</summary>
+        internal static AnimationClip LoadClip(string assetPath, string clipName = null)
         {
-            return AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+            if (string.IsNullOrEmpty(clipName))
+                return AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
+
+            foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(assetPath))
+                if (obj is AnimationClip clip && clip.name == clipName)
+                    return clip;
+            return null;
+        }
+
+        /// <summary>Every AnimationClip sub-asset name at assetPath — used to build a helpful
+        /// error when a requested ClipName isn't among them.</summary>
+        internal static string[] ListClipNames(string assetPath)
+        {
+            return AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                .OfType<AnimationClip>()
+                .Select(c => c.name)
+                .ToArray();
         }
 
         /// <summary>

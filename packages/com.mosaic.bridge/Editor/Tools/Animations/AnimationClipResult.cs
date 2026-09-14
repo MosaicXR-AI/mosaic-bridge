@@ -23,6 +23,11 @@ namespace Mosaic.Bridge.Tools.Animations
         public string PropertyName { get; set; }
         public string Type { get; set; }
         public int KeyframeCount { get; set; }
+
+        /// <summary>True for a set-sprite-curve-style PPtr curve (AnimationUtility.
+        /// GetObjectReferenceCurveBindings) — these are invisible to GetCurveBindings, so without
+        /// this flag 'info' would silently omit any sprite flipbook curve entirely.</summary>
+        public bool IsObjectReferenceCurve { get; set; }
     }
 
     public sealed class AnimationEventInfo

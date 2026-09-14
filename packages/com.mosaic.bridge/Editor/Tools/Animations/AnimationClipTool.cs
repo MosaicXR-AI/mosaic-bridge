@@ -6,24 +6,30 @@ using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Assets;
 
 namespace Mosaic.Bridge.Tools.Animations
 {
     public static class AnimationClipTool
     {
-        private const string ValidActions = "create, info, set-curve, add-event";
+        private const string ValidActions = "create, info, set-curve, set-sprite-curve, add-event";
 
         [MosaicTool("animation/clip",
-                    "Manages AnimationClip assets: create, inspect, set curves, add events",
+                    "Manages AnimationClip assets: create, inspect, set curves, add events. set-sprite-curve " +
+                    "(D7 — 'four clips, 64 keyframes had to be scripted') builds a sprite flipbook animation: " +
+                    "Sprites (asset paths, optionally 'Assets/sheet.png#Run_03' sub-addressed) + KeyframeTimes, " +
+                    "ComponentType/PropertyName default to SpriteRenderer/m_Sprite but the same mechanism " +
+                    "drives Image.m_Sprite by overriding them.",
                     isReadOnly: false)]
         public static ToolResult<AnimationClipResult> Execute(AnimationClipParams p)
         {
             switch (p.Action?.ToLowerInvariant())
             {
-                case "create":    return Create(p);
-                case "info":      return Info(p);
-                case "set-curve": return SetCurve(p);
-                case "add-event": return AddEvent(p);
+                case "create":            return Create(p);
+                case "info":              return Info(p);
+                case "set-curve":         return SetCurve(p);
+                case "set-sprite-curve":  return SetSpriteCurve(p);
+                case "add-event":         return AddEvent(p);
                 default:
                     return ToolResult<AnimationClipResult>.Fail(
                         $"Unknown action '{p.Action}'. Valid actions: {ValidActions}",
@@ -89,7 +95,25 @@ namespace Mosaic.Bridge.Tools.Animations
                     Type          = b.type.Name,
                     KeyframeCount = curve != null ? curve.keys.Length : 0
                 };
-            }).ToArray();
+            });
+
+            // GetCurveBindings never returns PPtr curves (set-sprite-curve's own shape) — without
+            // this, 'info' would silently omit every sprite flipbook curve on the clip.
+            var objectRefBindings = AnimationUtility.GetObjectReferenceCurveBindings(clip);
+            var objectRefCurves = objectRefBindings.Select(b =>
+            {
+                var curve = AnimationUtility.GetObjectReferenceCurve(clip, b);
+                return new AnimationCurveInfo
+                {
+                    Path = b.path,
+                    PropertyName = b.propertyName,
+                    Type = b.type.Name,
+                    KeyframeCount = curve != null ? curve.Length : 0,
+                    IsObjectReferenceCurve = true,
+                };
+            });
+
+            var allCurves = curves.Concat(objectRefCurves).ToArray();
 
             var events = AnimationUtility.GetAnimationEvents(clip);
             var eventInfos = events.Select(e => new AnimationEventInfo
@@ -113,9 +137,9 @@ namespace Mosaic.Bridge.Tools.Animations
                 Length     = clip.length,
                 FrameRate  = clip.frameRate,
                 IsLooping  = settings.loopTime,
-                CurveCount = curves.Length,
+                CurveCount = allCurves.Length,
                 EventCount = eventInfos.Length,
-                Curves     = curves,
+                Curves     = allCurves,
                 Events     = eventInfos
             });
         }
@@ -178,6 +202,61 @@ namespace Mosaic.Bridge.Tools.Animations
                 Path      = p.Path,
                 Guid      = guid,
                 ClipName  = clip.name
+            });
+        }
+
+        private static ToolResult<AnimationClipResult> SetSpriteCurve(AnimationClipParams p)
+        {
+            if (string.IsNullOrEmpty(p.Path))
+                return ToolResult<AnimationClipResult>.Fail(
+                    "Path is required for 'set-sprite-curve' action", ErrorCodes.INVALID_PARAM);
+            if (p.KeyframeTimes == null || p.Sprites == null)
+                return ToolResult<AnimationClipResult>.Fail(
+                    "KeyframeTimes and Sprites arrays are required for 'set-sprite-curve' action",
+                    ErrorCodes.INVALID_PARAM);
+            if (p.KeyframeTimes.Length != p.Sprites.Length)
+                return ToolResult<AnimationClipResult>.Fail(
+                    "KeyframeTimes and Sprites must have the same length", ErrorCodes.INVALID_PARAM);
+            if (p.KeyframeTimes.Length == 0)
+                return ToolResult<AnimationClipResult>.Fail(
+                    "KeyframeTimes/Sprites must have at least one entry", ErrorCodes.INVALID_PARAM);
+
+            var clip = AnimationToolHelpers.LoadClip(p.Path);
+            if (clip == null)
+                return ToolResult<AnimationClipResult>.Fail(
+                    $"AnimationClip not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
+
+            var componentTypeName = string.IsNullOrEmpty(p.ComponentType) ? "SpriteRenderer" : p.ComponentType;
+            var componentType = ResolveComponentType(componentTypeName);
+            if (componentType == null)
+                return ToolResult<AnimationClipResult>.Fail(
+                    $"Component type '{componentTypeName}' not found. Use full type name (e.g. 'SpriteRenderer', 'UnityEngine.UI.Image')",
+                    ErrorCodes.INVALID_PARAM);
+            var propertyName = string.IsNullOrEmpty(p.PropertyName) ? "m_Sprite" : p.PropertyName;
+
+            var keyframes = new ObjectReferenceKeyframe[p.KeyframeTimes.Length];
+            for (int i = 0; i < keyframes.Length; i++)
+            {
+                if (!ObjectReferenceResolver.TryResolveAsset(p.Sprites[i], typeof(Sprite), out var resolved, out var error))
+                    return ToolResult<AnimationClipResult>.Fail($"Sprites[{i}]: {error}", ErrorCodes.NOT_FOUND);
+                keyframes[i] = new ObjectReferenceKeyframe { time = p.KeyframeTimes[i], value = resolved };
+            }
+
+            var binding = EditorCurveBinding.PPtrCurve(p.PropertyPath ?? "", componentType, propertyName);
+
+            Undo.RecordObject(clip, "Mosaic: Set Sprite Curve");
+            AnimationUtility.SetObjectReferenceCurve(clip, binding, keyframes);
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssets();
+
+            var guid = AssetDatabase.AssetPathToGUID(p.Path);
+
+            return ToolResult<AnimationClipResult>.Ok(new AnimationClipResult
+            {
+                Action = "set-sprite-curve",
+                Path = p.Path,
+                Guid = guid,
+                ClipName = clip.name,
             });
         }
 

@@ -122,6 +122,123 @@ namespace Mosaic.Bridge.Tests.Animations
             Assert.IsTrue(result.Error.Contains("same length"));
         }
 
+        // ── set-sprite-curve (D7 — "four clips, 64 keyframes had to be scripted") ────
+
+        private string[] CreateTwoTestSprites()
+        {
+            var paths = new[] { TestDir + "/Frame0.png", TestDir + "/Frame1.png" };
+            foreach (var path in paths)
+            {
+                var tex = new UnityEngine.Texture2D(4, 4);
+                var pixels = new UnityEngine.Color32[16];
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = new UnityEngine.Color32(255, 0, 255, 255);
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                System.IO.File.WriteAllBytes(path, UnityEngine.ImageConversion.EncodeToPNG(tex));
+                UnityEngine.Object.DestroyImmediate(tex);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.SaveAndReimport();
+            }
+            return paths;
+        }
+
+        [Test]
+        public void SetSpriteCurve_DefaultsToSpriteRendererMSprite_AndVerifiesViaInfo()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            var sprites = CreateTwoTestSprites();
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-sprite-curve", Path = ClipPath,
+                KeyframeTimes = new float[] { 0f, 0.1f }, Sprites = sprites,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("set-sprite-curve", result.Data.Action);
+
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.IsTrue(info.Success, info.Error);
+            Assert.AreEqual(1, info.Data.CurveCount, "a PPtr curve must show up in info, not just float curves");
+            var curveInfo = info.Data.Curves[0];
+            Assert.IsTrue(curveInfo.IsObjectReferenceCurve);
+            Assert.AreEqual("m_Sprite", curveInfo.PropertyName);
+            Assert.AreEqual("SpriteRenderer", curveInfo.Type);
+            Assert.AreEqual(2, curveInfo.KeyframeCount);
+        }
+
+        [Test]
+        public void SetSpriteCurve_OverridingComponentAndProperty_DrivesImageMSprite()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            var sprites = CreateTwoTestSprites();
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-sprite-curve", Path = ClipPath,
+                ComponentType = "UnityEngine.UI.Image", PropertyName = "m_Sprite",
+                KeyframeTimes = new float[] { 0f, 0.2f }, Sprites = sprites,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.AreEqual("Image", info.Data.Curves[0].Type);
+        }
+
+        [Test]
+        public void SetSpriteCurve_ResolvesRealSpriteValuesOnTheCurve()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            var sprites = CreateTwoTestSprites();
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-sprite-curve", Path = ClipPath,
+                KeyframeTimes = new float[] { 0f, 0.1f }, Sprites = sprites,
+            });
+            Assert.IsTrue(result.Success, result.Error);
+
+            var clip = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimationClip>(ClipPath);
+            var binding = UnityEditor.EditorCurveBinding.PPtrCurve("", typeof(UnityEngine.SpriteRenderer), "m_Sprite");
+            var curve = AnimationUtility.GetObjectReferenceCurve(clip, binding);
+            Assert.IsNotNull(curve);
+            Assert.AreEqual(2, curve.Length);
+            Assert.IsInstanceOf<UnityEngine.Sprite>(curve[0].value);
+            Assert.AreEqual("Frame1", curve[1].value.name);
+        }
+
+        [Test]
+        public void SetSpriteCurve_MismatchedArrayLengths_Fails()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            var sprites = CreateTwoTestSprites();
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-sprite-curve", Path = ClipPath,
+                KeyframeTimes = new float[] { 0f }, Sprites = sprites,
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void SetSpriteCurve_MissingSprite_Fails()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-sprite-curve", Path = ClipPath,
+                KeyframeTimes = new float[] { 0f }, Sprites = new[] { "Assets/DoesNotExist_555.png" },
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
         [Test]
         public void AddEvent_And_VerifyViaInfo()
         {

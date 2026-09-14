@@ -4,7 +4,7 @@ namespace Mosaic.Bridge.Tools.Animations
 {
     public sealed class AnimationClipParams
     {
-        /// <summary>Action to perform: create, info, set-curve, add-event</summary>
+        /// <summary>Action to perform: create, info, set-curve, set-sprite-curve, add-event</summary>
         [Required] public string Action { get; set; }
 
         /// <summary>Asset path for the AnimationClip (e.g. "Assets/Animations/Walk.anim")</summary>
@@ -23,7 +23,9 @@ namespace Mosaic.Bridge.Tools.Animations
         /// <summary>Relative path of the animated GameObject (e.g. "" for root, "Spine/Chest")</summary>
         public string PropertyPath { get; set; }
 
-        /// <summary>Component type name (e.g. "Transform", "SpriteRenderer")</summary>
+        /// <summary>Component type name (e.g. "Transform", "Light"). set-curve only animates
+        /// float-valued properties — a SpriteRenderer example here would mislead, since its one
+        /// commonly-animated field (m_Sprite) is an Object reference; use set-sprite-curve for that.</summary>
         public string ComponentType { get; set; }
 
         /// <summary>Property name (e.g. "localPosition.x", "m_Color.r")</summary>
@@ -34,6 +36,13 @@ namespace Mosaic.Bridge.Tools.Animations
 
         /// <summary>Keyframe values (parallel array with KeyframeTimes)</summary>
         public float[] KeyframeValues { get; set; }
+
+        // -- set-sprite-curve --
+        /// <summary>Sprite asset paths, one per keyframe (parallel array with KeyframeTimes),
+        /// optionally sub-addressed as "Assets/sheet.png#Run_03" (O4 §3.1). ComponentType/
+        /// PropertyName default to "SpriteRenderer"/"m_Sprite" but can be overridden — the same
+        /// PPtr-curve mechanism drives Image.m_Sprite too.</summary>
+        public string[] Sprites { get; set; }
 
         // -- add-event --
         /// <summary>Event time in seconds</summary>

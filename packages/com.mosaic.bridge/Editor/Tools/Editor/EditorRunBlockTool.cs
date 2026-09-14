@@ -69,6 +69,18 @@ namespace Mosaic.Bridge.Tools.EditorOps
         /// </summary>
         internal const int MinOrphanAgeSeconds = 120;
 
+        /// <summary>
+        /// O-2 (beta.24, field report): raising the patience window to
+        /// <see cref="MinOrphanAgeSeconds"/> fixed the false "abandoned" verdict, but Poll's
+        /// "keep waiting" branch had no ceiling at all — a job that compiled cleanly and then
+        /// genuinely never reached <c>_done</c> (observed: a larger block that hung with
+        /// <c>compile-status</c> reporting <c>Settled: true</c>, zero errors, for 70+ seconds
+        /// and counting) waited forever, exactly like O-1's poll-gated cleanup: no terminal
+        /// state, so the script was never released either. This is the actual "genuinely
+        /// stuck" ceiling; MinOrphanAgeSeconds only ever meant "not abandoned yet."
+        /// </summary>
+        internal const int HardTimeoutSeconds = 300;
+
         private static double _pumpUntil;
         private static bool _hooked;
 
@@ -587,9 +599,24 @@ namespace Mosaic.Bridge.Tools.EditorOps
                         + "first is the one thing that can still make this fail."
                 });
 
-            // Past even the generous window with no result and no compile errors: something is
-            // genuinely stuck (an infinite loop in the submitted code is the likeliest cause), not
-            // merely slow. Only now is deleting it the right call.
+            // Past MinOrphanAgeSeconds but under the hard ceiling: still no compile errors, so
+            // this is not the beta.23 regression — genuinely just slow. Keep waiting, but say so
+            // more plainly now that "a moment longer" has become "a while".
+            if (elapsed < EditorRunBlockTool.HardTimeoutSeconds)
+                return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
+                {
+                    JobId   = jobId,
+                    Status  = "pending",
+                    Message = $"Still executing after {elapsed}s with no compile errors. Unusual, but not "
+                        + "yet abandoned — keep polling every 5 seconds. Do NOT resubmit."
+                });
+
+            // O-2: past even the hard ceiling with no result and no compile errors, the job is
+            // genuinely stuck — most likely an infinite loop or a blocking wait in the submitted
+            // code — and will never call home on its own. Report it AND release the script here,
+            // rather than leaving it to a caller that may never poll again: O-1's other half was
+            // exactly this, a job with no terminal state whose temp script sat in the project
+            // indefinitely because nothing but a poll ever cleaned one up.
             DeleteTempScript(jobId, scriptPath);
             return ToolResult<RunBlockPollResult>.Ok(new RunBlockPollResult
             {
@@ -597,7 +624,7 @@ namespace Mosaic.Bridge.Tools.EditorOps
                 Status  = "error",
                 Error   = null,
                 Message = $"Job timed out after {elapsed}s with no result and no compile errors — well "
-                    + "past the time a normal compile, however large the project, should ever take. "
+                    + "past the time any compile, however large the project, should ever take. "
                     + "The likeliest cause is the submitted code itself hanging (an infinite loop, a "
                     + "blocking wait). Resubmit something that returns."
             });

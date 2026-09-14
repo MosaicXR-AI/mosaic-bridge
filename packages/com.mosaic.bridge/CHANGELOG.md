@@ -5,6 +5,28 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.25] — 2026-09-14
+
+O-2 and half of O-1, both from the same field verification that confirmed beta.24 fixed
+the run-block regression (0 of 6 timeouts, 6 of 6 executed).
+
+### Fixed
+
+- **`editor/run-block-poll` waited forever for a job that would never finish.**
+  Widening the patience window to `MinOrphanAgeSeconds` in beta.24 fixed the false
+  "abandoned" verdict, but the "keep waiting" branch had no ceiling at all — a larger
+  block that compiled cleanly and then genuinely never called home hung indefinitely,
+  observed at 70+ seconds and counting, with `editor/compile-status` reporting
+  `Settled: true` and zero errors the whole time. A new `HardTimeoutSeconds` (300s)
+  is the actual "genuinely stuck" ceiling; past it, Poll now reports a real error
+  instead of `pending` forever.
+- **That same hang left its script stranded permanently** (part of O-1): a job with
+  no terminal state was never cleaned up by anything, because cleanup has only ever
+  run on a poll reaching `done` or `error`. Reaching the new hard timeout now also
+  releases the script. The other half of O-1 — a job nobody ever polls again, on a
+  session with no further domain reload to trigger the orphan sweep — remains open.
+
+1.0.0-beta.25.
 ## [1.0.0-beta.24] — 2026-09-14
 
 A P0 regression in beta.23 (N-1), confirmed live: `editor/run-block` went from

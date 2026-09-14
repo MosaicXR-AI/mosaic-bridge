@@ -108,6 +108,17 @@ namespace Mosaic.Bridge.Tests.Unit.Tools
         }
 
         [Test]
+        public void ThreeTimeoutConstants_EachStrictlyLargerThanTheLast()
+        {
+            // O-2: HardTimeoutSeconds exists because MinOrphanAgeSeconds alone had no ceiling —
+            // a job that compiled cleanly and then genuinely never finished waited forever, with
+            // its script never released. If these three ever collapse into each other again, the
+            // corresponding "keep waiting" branch in Poll silently stops existing.
+            Assert.Less(EditorRunBlockTool.PendingTimeoutSeconds, EditorRunBlockTool.MinOrphanAgeSeconds);
+            Assert.Less(EditorRunBlockTool.MinOrphanAgeSeconds, EditorRunBlockTool.HardTimeoutSeconds);
+        }
+
+        [Test]
         public void RearmPump_PastPendingTimeoutButUnderOrphanAge_StaysActiveAndPumping()
         {
             // The regression, isolated: a job merely slow to compile (past the 20s messaging

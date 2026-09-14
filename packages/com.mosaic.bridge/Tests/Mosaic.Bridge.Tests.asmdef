@@ -14,6 +14,7 @@
         "Mosaic.Bridge.Tools.HDRP",
         "Mosaic.Bridge.Tools.Splines",
         "Mosaic.Bridge.Tools.VisualScripting",
+        "Mosaic.Bridge.Tools.Sprite2D",
         "Unity.Cinemachine",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
@@ -72,6 +73,11 @@
             "name": "com.unity.visualscripting",
             "expression": "1.8.0",
             "define": "MOSAIC_HAS_VISUALSCRIPTING"
+        },
+        {
+            "name": "com.unity.2d.sprite",
+            "expression": "1.0.0",
+            "define": "MOSAIC_HAS_2D_SPRITE"
         }
     ],
     "noEngineReferences": false

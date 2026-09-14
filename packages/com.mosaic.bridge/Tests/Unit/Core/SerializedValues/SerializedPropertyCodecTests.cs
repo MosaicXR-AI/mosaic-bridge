@@ -163,8 +163,9 @@ namespace Mosaic.Bridge.Tests.Unit.Core.SerializedValues
         [Test]
         public void Get_StructField_ReturnsNestedObjectWithRealValues()
         {
-            SerializedPropertyCodec.TrySet(Prop("Offset"),
-                JObject.FromObject(new { left = 5, right = 6, top = 7, bottom = 8 }), null, out _);
+            var ok = SerializedPropertyCodec.TrySet(Prop("Offset"),
+                JObject.FromObject(new { Left = 5, Right = 6, Top = 7, Bottom = 8 }), null, out var error);
+            Assert.IsTrue(ok, error);
             _so.ApplyModifiedPropertiesWithoutUndo();
 
             var result = SerializedPropertyCodec.Get(Prop("Offset")) as JObject;
@@ -207,7 +208,11 @@ namespace Mosaic.Bridge.Tests.Unit.Core.SerializedValues
         {
             var value = JObject.FromObject(new
             {
-                colorKeys = new[] { new { color = new[] { 1.0, 0.0, 0.0, 1.0 }, time = 0.0 } },
+                colorKeys = new[]
+                {
+                    new { color = new[] { 1.0, 0.0, 0.0, 1.0 }, time = 0.0 },
+                    new { color = new[] { 0.0, 0.0, 1.0, 1.0 }, time = 1.0 },
+                },
                 alphaKeys = new[] { new { alpha = 1.0, time = 0.0 }, new { alpha = 0.0, time = 1.0 } },
             });
 
@@ -215,9 +220,27 @@ namespace Mosaic.Bridge.Tests.Unit.Core.SerializedValues
 
             Assert.IsTrue(ok, error);
             var gradient = Prop("Fade").gradientValue;
-            Assert.AreEqual(1, gradient.colorKeys.Length);
+            Assert.AreEqual(2, gradient.colorKeys.Length);
             Assert.AreEqual(2, gradient.alphaKeys.Length);
             Assert.AreEqual(1f, gradient.colorKeys[0].color.r, 0.001f);
+        }
+
+        [Test]
+        public void TrySet_GradientSingleColorKey_FailsRatherThanSilentlyDuplicating()
+        {
+            // Confirmed against a real Gradient: Unity pads a single color key to two rather than
+            // keeping the gradient flat at one, so this must fail loudly instead of reporting
+            // success for a gradient that isn't what was actually asked for.
+            var value = JObject.FromObject(new
+            {
+                colorKeys = new[] { new { color = new[] { 1.0, 0.0, 0.0, 1.0 }, time = 0.0 } },
+                alphaKeys = new[] { new { alpha = 1.0, time = 0.0 }, new { alpha = 0.0, time = 1.0 } },
+            });
+
+            var ok = SerializedPropertyCodec.TrySet(Prop("Fade"), value, null, out var error);
+
+            Assert.IsFalse(ok);
+            StringAssert.Contains("at least 2", error);
         }
 
         [Test]

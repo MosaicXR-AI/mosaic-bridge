@@ -251,9 +251,14 @@ namespace Mosaic.Bridge.Core.SerializedValues
             }
             var colorKeysJson = obj["colorKeys"] as JArray;
             var alphaKeysJson = obj["alphaKeys"] as JArray;
-            if (colorKeysJson == null || colorKeysJson.Count == 0)
+            if (colorKeysJson == null || colorKeysJson.Count < 2)
             {
-                error = $"Gradient property '{prop.propertyPath}' requires a non-empty 'colorKeys' array";
+                // Confirmed against a real Gradient at runtime: Unity silently pads a single color
+                // key up to two (duplicating it) rather than keeping the gradient flat at one —
+                // failing loudly here beats reporting success for a gradient that isn't what was asked for.
+                error = $"Gradient property '{prop.propertyPath}' requires at least 2 'colorKeys' " +
+                        "(Unity pads a single key to two rather than keeping a flat gradient, so fewer than 2 " +
+                        "would silently produce a different result than requested)";
                 return false;
             }
             var colorKeys = new GradientColorKey[colorKeysJson.Count];

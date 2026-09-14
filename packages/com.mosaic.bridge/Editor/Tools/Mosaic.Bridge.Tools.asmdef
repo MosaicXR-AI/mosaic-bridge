@@ -8,7 +8,9 @@
         "Unity.InputSystem",
         "Unity.Timeline",
         "Unity.AI.Navigation",
-        "Unity.AI.Navigation.Editor"
+        "Unity.AI.Navigation.Editor",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor"
     ],
     "includePlatforms": [
         "Editor"
@@ -34,6 +36,11 @@
             "name": "com.unity.ai.navigation",
             "expression": "",
             "define": "MOSAIC_HAS_NAVIGATION"
+        },
+        {
+            "name": "com.unity.ugui",
+            "expression": "2.0.0",
+            "define": "MOSAIC_HAS_TMP"
         }
     ],
     "noEngineReferences": false

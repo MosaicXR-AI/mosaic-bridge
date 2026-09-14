@@ -16,6 +16,8 @@
         "Mosaic.Bridge.Tools.VisualScripting",
         "Mosaic.Bridge.Tools.Sprite2D",
         "Unity.Cinemachine",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
@@ -50,8 +52,8 @@
             "define": "MOSAIC_HAS_ADDRESSABLES"
         },
         {
-            "name": "com.unity.textmeshpro",
-            "expression": "3.0.0",
+            "name": "com.unity.ugui",
+            "expression": "2.0.0",
             "define": "MOSAIC_HAS_TMP"
         },
         {

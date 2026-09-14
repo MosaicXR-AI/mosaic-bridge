@@ -63,7 +63,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 GameObjectName = "TMP_Props", Text = "Updated"
             });
             Assert.IsTrue(result.Success, result.Error);
-            Assert.IsTrue(result.Data.AppliedCount > 0);
+            Assert.IsTrue(result.Data.AppliedPropertyCount > 0);
         }
 
         [Test]

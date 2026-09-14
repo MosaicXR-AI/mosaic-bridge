@@ -302,6 +302,88 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsTrue(buttonGo.transform.childCount > 0, "Button should have a Text child");
         }
 
+        // O4 L5: the #if UNITY_2023_1_OR_NEWER && HAS_TMPRO branches never compiled at all
+        // (HAS_TMPRO was defined nowhere) — every text child was legacy Text regardless of intent,
+        // and the Dropdown/InputField TMP branches were literally left as "would require
+        // TMP_Dropdown"/"would require TMP_InputField" comments. This test environment has
+        // com.unity.ugui 2.0.0, so MOSAIC_HAS_TMP is genuinely active here — these assert the real
+        // TMP path, not just that the fallback still compiles.
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
+
+        [Test]
+        public void AddElement_Button_UsesTextMeshProChild_WhenTmpAvailable()
+        {
+            var canvasResult = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { Name = "TestCanvas_TmpButton" });
+            Track(canvasResult.Data.InstanceId);
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddElementTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UIAddElementParams
+                {
+                    ParentInstanceId = canvasResult.Data.InstanceId, ElementType = "button"
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            var buttonGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
+            var tmpChild = buttonGo.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+            Assert.IsNotNull(tmpChild, "MOSAIC_HAS_TMP is active in this environment — the button's " +
+                "label must be TextMeshProUGUI, not legacy Text");
+            Assert.AreEqual("Button", tmpChild.text);
+        }
+
+        [Test]
+        public void AddElement_Dropdown_HasAWorkingTemplateChild()
+        {
+            var canvasResult = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { Name = "TestCanvas_Dropdown" });
+            Track(canvasResult.Data.InstanceId);
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddElementTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UIAddElementParams
+                {
+                    ParentInstanceId = canvasResult.Data.InstanceId, ElementType = "dropdown"
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            Assert.IsTrue(result.Data.Components.Contains("TMP_Dropdown"),
+                "MOSAIC_HAS_TMP is active — this must be a real TMP_Dropdown, not legacy Dropdown");
+
+            var dropdownGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
+            var template = dropdownGo.transform.Find("Template");
+            Assert.IsNotNull(template,
+                "the old hand-rolled dropdown had no Template child at all and could never actually open");
+            Assert.IsNotNull(template.GetComponentInChildren<ScrollRect>(),
+                "a working dropdown template needs a ScrollRect over its item list");
+        }
+
+        [Test]
+        public void AddElement_InputField_WiresRealTmpTextComponentAndPlaceholder()
+        {
+            var canvasResult = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { Name = "TestCanvas_InputField" });
+            Track(canvasResult.Data.InstanceId);
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddElementTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UIAddElementParams
+                {
+                    ParentInstanceId = canvasResult.Data.InstanceId, ElementType = "input-field"
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Track(result.Data.InstanceId);
+            Assert.IsTrue(result.Data.Components.Contains("TMP_InputField"),
+                "MOSAIC_HAS_TMP is active — this must be a real TMP_InputField, not legacy InputField");
+
+            var inputGo = UnityIds.Resolve(result.Data.InstanceId) as GameObject;
+            var tmpInput = inputGo.GetComponent<TMPro.TMP_InputField>();
+            Assert.IsNotNull(tmpInput.textComponent,
+                "the old TMP branch never wired this at all (left as a comment) — a null textComponent means typed text is never shown");
+            Assert.IsNotNull(tmpInput.placeholder);
+        }
+#endif
+
         [Test]
         public void AddElement_Image_CreatesImage()
         {

@@ -127,7 +127,7 @@ namespace Mosaic.Bridge.Tools.UI
             textRect.anchorMax = Vector2.one;
             textRect.sizeDelta = Vector2.zero;
 
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
             var tmp = textGo.AddComponent<TMPro.TextMeshProUGUI>();
             tmp.text = "Button";
             tmp.alignment = TMPro.TextAlignmentOptions.Center;
@@ -148,7 +148,7 @@ namespace Mosaic.Bridge.Tools.UI
         {
             var go = CreateUIGameObject("Text", parent);
 
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
             var tmp = go.AddComponent<TMPro.TextMeshProUGUI>();
             tmp.text = "New Text";
             tmp.color = Color.black;
@@ -247,7 +247,7 @@ namespace Mosaic.Bridge.Tools.UI
 
             // Label
             var labelGo = CreateUIGameObject("Label", go.transform);
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
             var tmp = labelGo.AddComponent<TMPro.TextMeshProUGUI>();
             tmp.text = "Toggle";
             tmp.color = Color.black;
@@ -274,41 +274,18 @@ namespace Mosaic.Bridge.Tools.UI
 
         private static GameObject CreateDropdown(Transform parent, UIAddElementParams p)
         {
-            var go = CreateUIGameObject("Dropdown", parent);
-            var image = go.AddComponent<Image>();
-            image.color = Color.white;
-
-            // Label
-            var labelGo = CreateUIGameObject("Label", go.transform);
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
-            var tmp = labelGo.AddComponent<TMPro.TextMeshProUGUI>();
-            tmp.text = "Option A";
-            tmp.color = Color.black;
+            // O4 L5: the old hand-rolled Dropdown had no Template child at all, so it compiled
+            // but could never actually open — clicking it did nothing, with no error to explain
+            // why. Unity's own DefaultControls/TMP_DefaultControls builders create the full
+            // working hierarchy (Template + Viewport + Content + Item) the Editor's own
+            // "GameObject > UI > Dropdown" menu action uses; hand-building that correctly is not
+            // worth re-deriving when Unity already ships it.
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
+            var go = TMPro.TMP_DefaultControls.CreateDropdown(GetTmpResources());
 #else
-            var labelText = labelGo.AddComponent<Text>();
-            labelText.text = "Option A";
-            labelText.color = Color.black;
+            var go = UnityEngine.UI.DefaultControls.CreateDropdown(GetUguiResources());
 #endif
-            var labelRect = labelGo.GetComponent<RectTransform>();
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            labelRect.sizeDelta = new Vector2(-20, 0);
-            labelRect.anchoredPosition = new Vector2(-5, 0);
-
-            var dropdown = go.AddComponent<Dropdown>();
-            dropdown.targetGraphic = image;
-
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
-            // TMP dropdown captionText assignment would require TMP_Dropdown
-#else
-            dropdown.captionText = labelText;
-#endif
-
-            dropdown.options.Clear();
-            dropdown.options.Add(new Dropdown.OptionData("Option A"));
-            dropdown.options.Add(new Dropdown.OptionData("Option B"));
-            dropdown.options.Add(new Dropdown.OptionData("Option C"));
-
+            go.transform.SetParent(parent, false);
             var rect = go.GetComponent<RectTransform>();
             rect.sizeDelta = new Vector2(160, 30);
             return go;
@@ -316,59 +293,54 @@ namespace Mosaic.Bridge.Tools.UI
 
         private static GameObject CreateInputField(Transform parent, UIAddElementParams p)
         {
-            var go = CreateUIGameObject("InputField", parent);
-            var image = go.AddComponent<Image>();
-            image.color = Color.white;
-
-            // Placeholder
-            var placeholderGo = CreateUIGameObject("Placeholder", go.transform);
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
-            var phTmp = placeholderGo.AddComponent<TMPro.TextMeshProUGUI>();
-            phTmp.text = "Enter text...";
-            phTmp.fontStyle = TMPro.FontStyles.Italic;
-            phTmp.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+            // Same reasoning as CreateDropdown: Unity's own builder wires textComponent/
+            // placeholder correctly for whichever component (InputField/TMP_InputField) actually
+            // matches the text children it creates, which the old code never did for TMP.
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
+            var go = TMPro.TMP_DefaultControls.CreateInputField(GetTmpResources());
 #else
-            var phText = placeholderGo.AddComponent<Text>();
-            phText.text = "Enter text...";
-            phText.fontStyle = FontStyle.Italic;
-            phText.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+            var go = UnityEngine.UI.DefaultControls.CreateInputField(GetUguiResources());
 #endif
-            var phRect = placeholderGo.GetComponent<RectTransform>();
-            phRect.anchorMin = Vector2.zero;
-            phRect.anchorMax = Vector2.one;
-            phRect.sizeDelta = new Vector2(-10, 0);
-
-            // Text child
-            var textGo = CreateUIGameObject("Text", go.transform);
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
-            var txtTmp = textGo.AddComponent<TMPro.TextMeshProUGUI>();
-            txtTmp.text = "";
-            txtTmp.color = Color.black;
-#else
-            var txtText = textGo.AddComponent<Text>();
-            txtText.text = "";
-            txtText.color = Color.black;
-            txtText.supportRichText = false;
-#endif
-            var txtRect = textGo.GetComponent<RectTransform>();
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.sizeDelta = new Vector2(-10, 0);
-
-            var inputField = go.AddComponent<InputField>();
-            inputField.targetGraphic = image;
-
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
-            // TMP input field would require TMP_InputField
-#else
-            inputField.textComponent = txtText;
-            inputField.placeholder = phText;
-#endif
-
+            go.transform.SetParent(parent, false);
             var rect = go.GetComponent<RectTransform>();
             rect.sizeDelta = new Vector2(160, 30);
             return go;
         }
+
+        private static UnityEngine.UI.DefaultControls.Resources s_UguiResources;
+        private static UnityEngine.UI.DefaultControls.Resources GetUguiResources()
+        {
+            if (s_UguiResources.standard == null)
+            {
+                s_UguiResources.standard = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+                s_UguiResources.background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd");
+                s_UguiResources.inputField = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/InputFieldBackground.psd");
+                s_UguiResources.knob = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
+                s_UguiResources.checkmark = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Checkmark.psd");
+                s_UguiResources.dropdown = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/DropdownArrow.psd");
+                s_UguiResources.mask = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UIMask.psd");
+            }
+            return s_UguiResources;
+        }
+
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
+        private static TMPro.TMP_DefaultControls.Resources s_TmpResources;
+        private static TMPro.TMP_DefaultControls.Resources GetTmpResources()
+        {
+            if (s_TmpResources.standard == null)
+            {
+                var ugui = GetUguiResources();
+                s_TmpResources.standard = ugui.standard;
+                s_TmpResources.background = ugui.background;
+                s_TmpResources.inputField = ugui.inputField;
+                s_TmpResources.knob = ugui.knob;
+                s_TmpResources.checkmark = ugui.checkmark;
+                s_TmpResources.dropdown = ugui.dropdown;
+                s_TmpResources.mask = ugui.mask;
+            }
+            return s_TmpResources;
+        }
+#endif
 
         /// <summary>
         /// Creates a new GameObject with a RectTransform (required for all UI elements)

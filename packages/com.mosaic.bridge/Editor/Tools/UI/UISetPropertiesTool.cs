@@ -32,7 +32,7 @@ namespace Mosaic.Bridge.Tools.UI
             // Detect and apply to Text / TMP_Text
             var textComponent = go.GetComponent<Text>();
 
-#if UNITY_2023_1_OR_NEWER && HAS_TMPRO
+#if UNITY_2023_1_OR_NEWER && MOSAIC_HAS_TMP
             var tmpComponent = go.GetComponent<TMPro.TMP_Text>();
             if (tmpComponent != null)
             {

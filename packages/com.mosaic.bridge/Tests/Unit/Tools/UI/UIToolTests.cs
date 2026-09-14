@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Compat;
 
@@ -662,6 +663,213 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
                 c => c.Name == "IntegrationButton");
             Assert.IsNotNull(buttonChild, "Button should appear in Canvas children");
             Assert.IsTrue(buttonChild.ChildCount > 0, "Button should have a Text child");
+        }
+
+        // ── ui/add_listener, ui/remove_listener ───────────────────────────────
+        //
+        // O4 §4.6: "the course wired GameHUD 'via SerializedObject' in a hand-written editor
+        // script" because nothing else added a PERSISTENT listener (the Inspector "+"-button
+        // kind, saved with the scene). UnityEvent.AddListener is runtime-only and would not have
+        // helped even if exposed. These invoke the real event afterward to confirm the listener
+        // actually fires — a persistent listener that was added but never invokes is a much more
+        // dangerous failure than a route that errors outright.
+
+        private ListenerProbe CreateProbe(string name)
+        {
+            var go = new GameObject(name);
+            _created.Add(go);
+            return go.AddComponent<ListenerProbe>();
+        }
+
+        [Test]
+        public void AddListener_ButtonOnClick_VoidMethod_ActuallyInvokes()
+        {
+            var buttonGo = new GameObject("ProbeButton");
+            _created.Add(buttonGo);
+            var button = buttonGo.AddComponent<Button>();
+            var probe = CreateProbe("Probe1");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButton", ComponentType = "Button", EventName = "onClick",
+                TargetGameObjectName = "Probe1", TargetComponentType = "ListenerProbe", MethodName = "OnVoid",
+                CallState = "EditorAndRuntime",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(0, result.Data.ListenerIndex);
+
+            button.onClick.Invoke();
+            Assert.IsTrue(probe.VoidCalled);
+        }
+
+        [Test]
+        public void AddListener_FloatArg_InvokesWithThePresetValueNotTheRuntimeOne()
+        {
+            // The defining behavior of a PERSISTENT listener: Slider.onValueChanged.Invoke(999)
+            // must still call the probe with the PRESET 3.5, not the 999 passed to Invoke.
+            var sliderGo = new GameObject("ProbeSlider");
+            _created.Add(sliderGo);
+            var slider = sliderGo.AddComponent<Slider>();
+            var probe = CreateProbe("Probe2");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeSlider", ComponentType = "Slider", EventName = "onValueChanged",
+                TargetGameObjectName = "Probe2", TargetComponentType = "ListenerProbe", MethodName = "OnFloat",
+                FloatArg = 3.5f, CallState = "EditorAndRuntime",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            slider.onValueChanged.Invoke(999f);
+            Assert.AreEqual(3.5f, probe.FloatArg, 0.001f);
+        }
+
+        [Test]
+        public void AddListener_CallState_ReflectsRequestedValue()
+        {
+            var buttonGo = new GameObject("ProbeButtonState");
+            _created.Add(buttonGo);
+            var button = buttonGo.AddComponent<Button>();
+            var probe = CreateProbe("Probe3");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButtonState", ComponentType = "Button", EventName = "onClick",
+                TargetGameObjectName = "Probe3", TargetComponentType = "ListenerProbe", MethodName = "OnVoid",
+                CallState = "EditorAndRuntime",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(UnityEventCallState.EditorAndRuntime,
+                button.onClick.GetPersistentListenerState(result.Data.ListenerIndex));
+        }
+
+        [Test]
+        public void AddListener_UnknownEventName_Fails()
+        {
+            var buttonGo = new GameObject("ProbeButtonBadEvent");
+            _created.Add(buttonGo);
+            buttonGo.AddComponent<Button>();
+            CreateProbe("Probe4");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButtonBadEvent", ComponentType = "Button", EventName = "notAnEvent",
+                TargetGameObjectName = "Probe4", TargetComponentType = "ListenerProbe", MethodName = "OnVoid",
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void AddListener_UnknownMethod_Fails()
+        {
+            var buttonGo = new GameObject("ProbeButtonBadMethod");
+            _created.Add(buttonGo);
+            buttonGo.AddComponent<Button>();
+            CreateProbe("Probe5");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButtonBadMethod", ComponentType = "Button", EventName = "onClick",
+                TargetGameObjectName = "Probe5", TargetComponentType = "ListenerProbe", MethodName = "NotAMethod",
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void AddListener_TwoArgMethod_RejectedAsUnsupportedArity()
+        {
+            var buttonGo = new GameObject("ProbeButtonTwoArg");
+            _created.Add(buttonGo);
+            buttonGo.AddComponent<Button>();
+            CreateProbe("Probe6");
+
+            var result = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButtonTwoArg", ComponentType = "Button", EventName = "onClick",
+                TargetGameObjectName = "Probe6", TargetComponentType = "ListenerProbe", MethodName = "OnTwoArgs",
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void RemoveListener_RemovesTheListener_AndItNoLongerInvokes()
+        {
+            var buttonGo = new GameObject("ProbeButtonRemove");
+            _created.Add(buttonGo);
+            var button = buttonGo.AddComponent<Button>();
+            var probe = CreateProbe("Probe7");
+
+            var addResult = Mosaic.Bridge.Tools.UI.UIAddListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIAddListenerParams
+            {
+                GameObjectName = "ProbeButtonRemove", ComponentType = "Button", EventName = "onClick",
+                TargetGameObjectName = "Probe7", TargetComponentType = "ListenerProbe", MethodName = "OnVoid",
+                CallState = "EditorAndRuntime",
+            });
+            Assert.IsTrue(addResult.Success, addResult.Error);
+
+            var removeResult = Mosaic.Bridge.Tools.UI.UIRemoveListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIRemoveListenerParams
+            {
+                GameObjectName = "ProbeButtonRemove", ComponentType = "Button", EventName = "onClick",
+                Index = addResult.Data.ListenerIndex,
+            });
+
+            Assert.IsTrue(removeResult.Success, removeResult.Error);
+            Assert.AreEqual(0, removeResult.Data.RemainingListenerCount);
+            button.onClick.Invoke();
+            Assert.IsFalse(probe.VoidCalled, "the listener was removed and must not fire");
+        }
+
+        [Test]
+        public void RemoveListener_OutOfRangeIndex_Fails()
+        {
+            var buttonGo = new GameObject("ProbeButtonRemoveBad");
+            _created.Add(buttonGo);
+            buttonGo.AddComponent<Button>();
+
+            var result = Mosaic.Bridge.Tools.UI.UIRemoveListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIRemoveListenerParams
+            {
+                GameObjectName = "ProbeButtonRemoveBad", ComponentType = "Button", EventName = "onClick", Index = 0,
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        [Test]
+        public void RemoveListener_MissingIndex_Fails()
+        {
+            var buttonGo = new GameObject("ProbeButtonNoIndex");
+            _created.Add(buttonGo);
+            buttonGo.AddComponent<Button>();
+
+            var result = Mosaic.Bridge.Tools.UI.UIRemoveListenerTool.Execute(new Mosaic.Bridge.Tools.UI.UIRemoveListenerParams
+            {
+                GameObjectName = "ProbeButtonNoIndex", ComponentType = "Button", EventName = "onClick",
+            });
+
+            Assert.IsFalse(result.Success);
+        }
+
+        /// <summary>Target for add_listener/remove_listener tests — public methods spanning the
+        /// arities/types persistent listeners must support.</summary>
+        internal class ListenerProbe : MonoBehaviour
+        {
+            public bool VoidCalled;
+            public float FloatArg;
+            public int IntArg;
+            public bool BoolArg;
+            public string StringArg;
+
+            public void OnVoid() => VoidCalled = true;
+            public void OnFloat(float v) => FloatArg = v;
+            public void OnInt(int v) => IntArg = v;
+            public void OnBool(bool v) => BoolArg = v;
+            public void OnString(string v) => StringArg = v;
+            public void OnTwoArgs(int a, int b) { }
         }
     }
 }

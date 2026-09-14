@@ -1,5 +1,3 @@
-using System.Linq;
-using UnityEngine;
 using UnityEngine.Audio;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
@@ -38,26 +36,18 @@ namespace Mosaic.Bridge.Tools.Audio
                 return ToolResult<AudioRouteSourceResult>.Fail(
                     $"AudioMixer not found at '{p.MixerAssetPath}'", ErrorCodes.NOT_FOUND);
 
-            var matches = mixer.FindMatchingGroups(p.GroupPath ?? "");
-            if (matches == null || matches.Length == 0)
-                return ToolResult<AudioRouteSourceResult>.Fail(
-                    $"No group matching '{p.GroupPath}' found in mixer '{mixer.name}'.", ErrorCodes.NOT_FOUND);
-            if (matches.Length > 1)
-                return ToolResult<AudioRouteSourceResult>.Fail(
-                    $"'{p.GroupPath}' matches {matches.Length} groups in '{mixer.name}': " +
-                    $"{string.Join(", ", matches.Select(g => g.name))}. Use a more specific sub-path " +
-                    "(e.g. 'Master/SFX') to disambiguate.",
-                    ErrorCodes.INVALID_PARAM);
+            if (!AudioToolHelpers.TryResolveMixerGroup(mixer, p.GroupPath, out var group, out var groupError))
+                return ToolResult<AudioRouteSourceResult>.Fail(groupError, ErrorCodes.NOT_FOUND);
 
             Undo.RecordObject(source, "Mosaic: Route Audio Source");
-            source.outputAudioMixerGroup = matches[0];
+            source.outputAudioMixerGroup = group;
 
             return ToolResult<AudioRouteSourceResult>.Ok(new AudioRouteSourceResult
             {
                 InstanceId = UnityIds.Of(go),
                 GameObjectName = go.name,
                 MixerName = mixer.name,
-                GroupName = matches[0].name,
+                GroupName = group.name,
             });
         }
     }

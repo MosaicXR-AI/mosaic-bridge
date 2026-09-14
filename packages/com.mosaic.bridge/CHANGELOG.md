@@ -5,6 +5,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.22] — 2026-09-14
+
+Three fixes found by driving a real Editor, not by reading code. Published as a new
+version because the Editor caches a package by version: shipping these under beta.21
+would have meant every machine that already had beta.21 keeping the old code for ever,
+with no symptom beyond a fix that appears not to work.
+
+### Fixed
+
+- **An array item is validated against its own keys, not the parent route's** (H-1).
+  A nested array-of-objects parameter was checked against the enclosing route's schema,
+  so every legitimate key inside it was reported as unknown.
+- **`editor/run-block` drives its own ticks** (H-2), focus or not, the same way
+  `editor/play-mode` does since beta.21. An unfocused Editor ran the block's first frame
+  and then sat there.
+- **The pre-reload listener is closed, not merely stopped** (M-1). A stopped listener
+  keeps the port, so the bridge drifted to a new port on each domain reload and the
+  connector's saved discovery pointed at a socket nothing was serving.
+
 ## [1.0.0-beta.21] — 2026-09-10
 
 From a twelve-hour autonomous course build: the two issues that cost more time than

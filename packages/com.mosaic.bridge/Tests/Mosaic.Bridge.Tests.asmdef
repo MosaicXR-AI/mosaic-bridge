@@ -16,6 +16,7 @@
         "Mosaic.Bridge.Tools.VisualScripting",
         "Mosaic.Bridge.Tools.Sprite2D",
         "Unity.Cinemachine",
+        "Unity.Timeline",
         "Unity.TextMeshPro",
         "Unity.TextMeshPro.Editor",
         "UnityEngine.TestRunner",
@@ -40,6 +41,11 @@
             "name": "com.unity.cinemachine",
             "expression": "3.0.0",
             "define": "MOSAIC_HAS_CINEMACHINE"
+        },
+        {
+            "name": "com.unity.timeline",
+            "expression": "",
+            "define": "MOSAIC_HAS_TIMELINE"
         },
         {
             "name": "com.unity.probuilder",

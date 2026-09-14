@@ -38,10 +38,15 @@ namespace Mosaic.Bridge.Tools.Assets
             if (!string.IsNullOrEmpty(absoluteDir))
                 Directory.CreateDirectory(absoluteDir);
 
-            var prefabAsset = PrefabUtility.SaveAsPrefabAsset(go, p.PrefabPath);
+            // L8: SaveAsPrefabAsset leaves the scene object as a plain GameObject with no
+            // relationship to the new asset. The Editor's own drag-into-Project-window path uses
+            // SaveAsPrefabAssetAndConnect, which turns go into an instance of the prefab it just
+            // created — the behavior a customer actually expects from "save as prefab".
+            var prefabAsset = PrefabUtility.SaveAsPrefabAssetAndConnect(
+                go, p.PrefabPath, InteractionMode.AutomatedAction);
             if (prefabAsset == null)
                 return ToolResult<AssetCreatePrefabResult>.Fail(
-                    $"PrefabUtility.SaveAsPrefabAsset returned null for path '{p.PrefabPath}'",
+                    $"PrefabUtility.SaveAsPrefabAssetAndConnect returned null for path '{p.PrefabPath}'",
                     ErrorCodes.INTERNAL_ERROR);
 
             return ToolResult<AssetCreatePrefabResult>.Ok(new AssetCreatePrefabResult

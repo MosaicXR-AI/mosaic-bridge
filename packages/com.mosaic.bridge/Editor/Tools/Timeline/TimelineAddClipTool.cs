@@ -31,7 +31,11 @@ namespace Mosaic.Bridge.Tools.Timeline
 
             TimelineClip clip;
 
-            // If a clip asset path is provided, load it and create a clip from it
+            // L3: ClipAssetPath used to be silently ignored for every track type except
+            // AnimationTrack — an Audio clip was created empty (plays nothing) and a Control
+            // clip got no prefab, with no error telling the caller why. Wire the loaded asset
+            // onto the clip's PlayableAsset per track type, and fail loudly (not silently) when
+            // the asset's type doesn't match what the track type actually needs.
             if (!string.IsNullOrEmpty(p.ClipAssetPath))
             {
                 var clipAsset = AssetDatabase.LoadAssetAtPath<Object>(p.ClipAssetPath);
@@ -39,14 +43,43 @@ namespace Mosaic.Bridge.Tools.Timeline
                     return ToolResult<TimelineAddClipResult>.Fail(
                         $"Clip asset not found at '{p.ClipAssetPath}'", ErrorCodes.NOT_FOUND);
 
-                // For animation clips on animation tracks
-                if (track is AnimationTrack animTrack && clipAsset is AnimationClip animClip)
+                if (track is AnimationTrack animTrack)
                 {
+                    if (!(clipAsset is AnimationClip animClip))
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            $"ClipAssetPath '{p.ClipAssetPath}' is a {clipAsset.GetType().Name}, not an " +
+                            "AnimationClip — required for a clip on an AnimationTrack.", ErrorCodes.INVALID_PARAM);
                     clip = animTrack.CreateClip(animClip);
+                }
+                else if (track is AudioTrack)
+                {
+                    if (!(clipAsset is AudioClip audioClip))
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            $"ClipAssetPath '{p.ClipAssetPath}' is a {clipAsset.GetType().Name}, not an " +
+                            "AudioClip — required for a clip on an AudioTrack.", ErrorCodes.INVALID_PARAM);
+                    clip = track.CreateDefaultClip();
+                    ((AudioPlayableAsset)clip.asset).clip = audioClip;
+                }
+                else if (track is ControlTrack)
+                {
+                    if (!(clipAsset is GameObject prefabGo))
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            $"ClipAssetPath '{p.ClipAssetPath}' is a {clipAsset.GetType().Name}, not a " +
+                            "prefab GameObject — required for a clip on a ControlTrack.", ErrorCodes.INVALID_PARAM);
+                    clip = track.CreateDefaultClip();
+                    // prefabGameObject (not sourceGameObject, which is an ExposedReference to a
+                    // SCENE object and cannot be resolved from a prefab asset) is the field
+                    // ControlPlayableAsset exposes precisely for "control a prefab, instantiated
+                    // at runtime" — https://docs.unity3d.com/ScriptReference/Timeline.ControlPlayableAsset-prefabGameObject.html
+                    ((ControlPlayableAsset)clip.asset).prefabGameObject = prefabGo;
                 }
                 else
                 {
-                    clip = track.CreateDefaultClip();
+                    return ToolResult<TimelineAddClipResult>.Fail(
+                        $"ClipAssetPath is not supported on track type {track.GetType().Name} — only " +
+                        "AnimationTrack, AudioTrack, and ControlTrack clips can be created from an existing " +
+                        "asset via this tool. Omit ClipAssetPath for a default (empty) clip.",
+                        ErrorCodes.INVALID_PARAM);
                 }
             }
             else

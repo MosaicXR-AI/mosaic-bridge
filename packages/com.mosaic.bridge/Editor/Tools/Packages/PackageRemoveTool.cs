@@ -1,39 +1,34 @@
-using UnityEditor.PackageManager;
-using UnityEditor.PackageManager.Requests;
+using Newtonsoft.Json.Linq;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Jobs;
 
 namespace Mosaic.Bridge.Tools.Packages
 {
     public static class PackageRemoveTool
     {
         [MosaicTool("package/remove",
-                    "Removes an installed Unity package by name",
+                    "Removes an installed Unity package by name. Starts the removal and returns immediately with " +
+                    "a JobId — this never blocks, same reasoning as package/add (L15). Poll job/status with the " +
+                    "JobId for the real outcome.",
                     isReadOnly: false)]
         public static ToolResult<PackageRemoveResult> Execute(PackageRemoveParams p)
         {
-            if (string.IsNullOrWhiteSpace(p.Name))
+            if (string.IsNullOrWhiteSpace(p?.Name))
                 return ToolResult<PackageRemoveResult>.Fail(
                     "Name is required", ErrorCodes.INVALID_PARAM);
 
-            RemoveRequest request = Client.Remove(p.Name);
+            var record = JobRegistry.Start("package/remove", new JObject { ["Name"] = p.Name });
 
-            if (!PackageListTool.WaitForCompletion(request))
-                return ToolResult<PackageRemoveResult>.Fail(
-                    $"Package remove request timed out after 30 seconds for '{p.Name}'",
-                    ErrorCodes.INTERNAL_ERROR);
-
-            if (request.Status == StatusCode.Failure)
-                return ToolResult<PackageRemoveResult>.Fail(
-                    $"Failed to remove package '{p.Name}': {request.Error?.message ?? "Unknown error"}",
-                    ErrorCodes.INTERNAL_ERROR);
+            if (record.Status == JobStatus.Failed)
+                return ToolResult<PackageRemoveResult>.Fail(record.Message, ErrorCodes.INTERNAL_ERROR);
 
             return ToolResult<PackageRemoveResult>.Ok(new PackageRemoveResult
             {
-                Name    = p.Name,
-                Removed = true,
-                Message = $"Successfully removed {p.Name}"
+                JobId = record.JobId,
+                Status = "pending",
+                Message = record.Message ?? $"Removing '{p.Name}'… poll job/status with this JobId.",
             });
         }
     }

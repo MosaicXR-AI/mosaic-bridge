@@ -8,6 +8,7 @@ using UnityEngine.ProBuilder.MeshOperations;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -18,14 +19,12 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     isReadOnly: false, category: "probuilder")]
         public static ToolResult<ProBuilderExtrudeResult> Extrude(ProBuilderExtrudeParams p)
         {
-            if (string.IsNullOrEmpty(p.GameObjectName))
+            if (p.InstanceId == null && string.IsNullOrEmpty(p.GameObjectName))
                 return ToolResult<ProBuilderExtrudeResult>.Fail(
-                    "GameObjectName is required", ErrorCodes.INVALID_PARAM);
+                    "Either InstanceId or GameObjectName is required", ErrorCodes.INVALID_PARAM);
 
-            var go = GameObject.Find(p.GameObjectName);
-            if (go == null)
-                return ToolResult<ProBuilderExtrudeResult>.Fail(
-                    $"GameObject '{p.GameObjectName}' not found", ErrorCodes.NOT_FOUND);
+            if (!GameObjectResolver.TryResolve(p.InstanceId, p.GameObjectName, out var go, out var resolveError))
+                return ToolResult<ProBuilderExtrudeResult>.Fail(resolveError, ErrorCodes.NOT_FOUND);
 
             var pb = go.GetComponent<ProBuilderMesh>();
             if (pb == null)
@@ -65,7 +64,8 @@ namespace Mosaic.Bridge.Tools.ProBuilder
 
     public sealed class ProBuilderExtrudeParams
     {
-        [Required] public string GameObjectName { get; set; }
+        public string GameObjectName { get; set; }
+        public int? InstanceId { get; set; }
         [Required] public int[] FaceIndices { get; set; }
         public float Distance { get; set; } = 1.0f;
     }

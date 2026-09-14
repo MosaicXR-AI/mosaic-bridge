@@ -8,6 +8,7 @@ using UnityEngine.ProBuilder.MeshOperations;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -23,19 +24,17 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     isReadOnly: false, category: "probuilder")]
         public static ToolResult<ProBuilderModifyResult> Modify(ProBuilderModifyParams p)
         {
-            if (string.IsNullOrEmpty(p.GameObjectName))
+            if (p.InstanceId == null && string.IsNullOrEmpty(p.GameObjectName))
                 return ToolResult<ProBuilderModifyResult>.Fail(
-                    "GameObjectName is required", ErrorCodes.INVALID_PARAM);
+                    "Either InstanceId or GameObjectName is required", ErrorCodes.INVALID_PARAM);
 
             if (string.IsNullOrEmpty(p.Operation))
                 return ToolResult<ProBuilderModifyResult>.Fail(
                     "Operation is required. Valid: merge, subdivide, flip-normals, detach, bridge, triangulate",
                     ErrorCodes.INVALID_PARAM);
 
-            var go = GameObject.Find(p.GameObjectName);
-            if (go == null)
-                return ToolResult<ProBuilderModifyResult>.Fail(
-                    $"GameObject '{p.GameObjectName}' not found", ErrorCodes.NOT_FOUND);
+            if (!GameObjectResolver.TryResolve(p.InstanceId, p.GameObjectName, out var go, out var resolveError))
+                return ToolResult<ProBuilderModifyResult>.Fail(resolveError, ErrorCodes.NOT_FOUND);
 
             var pb = go.GetComponent<ProBuilderMesh>();
             if (pb == null)
@@ -226,7 +225,8 @@ namespace Mosaic.Bridge.Tools.ProBuilder
 
     public sealed class ProBuilderModifyParams
     {
-        [Required] public string GameObjectName { get; set; }
+        public string GameObjectName { get; set; }
+        public int? InstanceId { get; set; }
         [Required] public string Operation { get; set; }
 
         /// <summary>bevel: literal ProBuilder Edge(a,b) pairs, e.g. [[0,1],[1,2]] — from probuilder/info's

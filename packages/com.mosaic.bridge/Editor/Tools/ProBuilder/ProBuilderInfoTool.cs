@@ -8,6 +8,7 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -24,12 +25,10 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     isReadOnly: true, category: "probuilder")]
         public static ToolResult<ProBuilderInfoResult> Info(ProBuilderInfoParams p)
         {
-            if (!string.IsNullOrEmpty(p.GameObjectName))
+            if (p.InstanceId != null || !string.IsNullOrEmpty(p.GameObjectName))
             {
-                var go = GameObject.Find(p.GameObjectName);
-                if (go == null)
-                    return ToolResult<ProBuilderInfoResult>.Fail(
-                        $"GameObject '{p.GameObjectName}' not found", ErrorCodes.NOT_FOUND);
+                if (!GameObjectResolver.TryResolve(p.InstanceId, p.GameObjectName, out var go, out var resolveError))
+                    return ToolResult<ProBuilderInfoResult>.Fail(resolveError, ErrorCodes.NOT_FOUND);
 
                 var pb = go.GetComponent<ProBuilderMesh>();
                 if (pb == null)
@@ -134,8 +133,9 @@ namespace Mosaic.Bridge.Tools.ProBuilder
     public sealed class ProBuilderInfoParams
     {
         public string GameObjectName { get; set; }
+        public int? InstanceId { get; set; }
 
-        /// <summary>"faces", "edges", "vertices", or "all". Ignored when GameObjectName is null.</summary>
+        /// <summary>"faces", "edges", "vertices", or "all". Ignored when GameObjectName/InstanceId are null.</summary>
         public string Detail { get; set; }
     }
 

@@ -17,6 +17,8 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 var go = GameObject.Find(name);
                 if (go != null) Object.DestroyImmediate(go);
             }
+            foreach (var go in GameObject.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+                if (go.name == "Wall") Object.DestroyImmediate(go);
         }
 
         [Test]
@@ -120,6 +122,50 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 GameObjectName = "NonExistent", Operation = "subdivide"
             });
             Assert.IsFalse(result.Success);
+        }
+
+        // O4 L18: "parts lists reuse names like 'Wall'" — GameObject.Find silently returned the
+        // first match with no warning. Two objects sharing a name must now fail loudly by bare
+        // name, and resolve unambiguously via InstanceId.
+        [Test]
+        public void Modify_DuplicateName_FailsWithAmbiguousError()
+        {
+            var first = ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "Wall" });
+            var second = ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "Wall" });
+            Assert.IsTrue(first.Success, first.Error);
+            Assert.IsTrue(second.Success, second.Error);
+
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
+            {
+                GameObjectName = "Wall", Operation = "subdivide"
+            });
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("matches 2 GameObjects", result.Error);
+        }
+
+        [Test]
+        public void Modify_DuplicateName_ResolvesByInstanceId()
+        {
+            var first = ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "Wall" });
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "Wall" });
+
+            var result = ProBuilderModifyTool.Modify(new ProBuilderModifyParams
+            {
+                InstanceId = first.Data.InstanceId, Operation = "subdivide"
+            });
+            Assert.IsTrue(result.Success, result.Error);
+        }
+
+        [Test]
+        public void Info_DuplicateName_ResolvesByInstanceId()
+        {
+            ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Cube", Name = "Wall" });
+            var second = ProBuilderCreateTool.Create(new ProBuilderCreateParams { Shape = "Sphere", Name = "Wall" });
+
+            var result = ProBuilderInfoTool.Info(new ProBuilderInfoParams { InstanceId = second.Data.InstanceId });
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(1, result.Data.Meshes.Length);
+            Assert.AreEqual(second.Data.InstanceId, result.Data.Meshes[0].InstanceId);
         }
     }
 }

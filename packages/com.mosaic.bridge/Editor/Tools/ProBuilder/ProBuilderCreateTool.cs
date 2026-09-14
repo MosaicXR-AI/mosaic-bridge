@@ -9,6 +9,7 @@ using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
 using Mosaic.Bridge.Core.Extensibility;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -243,10 +244,9 @@ namespace Mosaic.Bridge.Tools.ProBuilder
             if (p.Rotation != null && p.Rotation.Length == 3)
                 mesh.transform.eulerAngles = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
 
-            if (!string.IsNullOrEmpty(p.ParentName))
+            if (p.ParentInstanceId != null || !string.IsNullOrEmpty(p.ParentName))
             {
-                var parent = GameObject.Find(p.ParentName);
-                if (parent != null)
+                if (GameObjectResolver.TryResolve(p.ParentInstanceId, p.ParentName, out var parent, out _))
                     mesh.transform.SetParent(parent.transform, true);
             }
 
@@ -319,6 +319,7 @@ namespace Mosaic.Bridge.Tools.ProBuilder
         public float[] Position   { get; set; }   // [x, y, z] world position
         public float[] Rotation   { get; set; }   // [x, y, z] euler angles (e.g. [90,0,0] for yardarms)
         public string  ParentName { get; set; }   // parent GameObject name
+        public int?    ParentInstanceId { get; set; }
 
         // Cylinder / Cone / Pipe / Icosahedron
         public float Radius { get; set; }

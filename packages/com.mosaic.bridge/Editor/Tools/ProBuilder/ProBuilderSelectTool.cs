@@ -6,6 +6,7 @@ using UnityEngine.ProBuilder;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.ProBuilder
 {
@@ -16,14 +17,12 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     isReadOnly: false, category: "probuilder")]
         public static ToolResult<ProBuilderSelectResult> Select(ProBuilderSelectParams p)
         {
-            if (string.IsNullOrEmpty(p.GameObjectName))
+            if (p.InstanceId == null && string.IsNullOrEmpty(p.GameObjectName))
                 return ToolResult<ProBuilderSelectResult>.Fail(
-                    "GameObjectName is required", ErrorCodes.INVALID_PARAM);
+                    "Either InstanceId or GameObjectName is required", ErrorCodes.INVALID_PARAM);
 
-            var go = GameObject.Find(p.GameObjectName);
-            if (go == null)
-                return ToolResult<ProBuilderSelectResult>.Fail(
-                    $"GameObject '{p.GameObjectName}' not found", ErrorCodes.NOT_FOUND);
+            if (!GameObjectResolver.TryResolve(p.InstanceId, p.GameObjectName, out var go, out var resolveError))
+                return ToolResult<ProBuilderSelectResult>.Fail(resolveError, ErrorCodes.NOT_FOUND);
 
             var pb = go.GetComponent<ProBuilderMesh>();
             if (pb == null)
@@ -111,7 +110,8 @@ namespace Mosaic.Bridge.Tools.ProBuilder
 
     public sealed class ProBuilderSelectParams
     {
-        [Required] public string GameObjectName { get; set; }
+        public string GameObjectName { get; set; }
+        public int? InstanceId { get; set; }
         [Required] public string Mode { get; set; }
         [Required] public int[] Indices { get; set; }
     }

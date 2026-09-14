@@ -12,7 +12,11 @@ namespace Mosaic.Bridge.Tools.Textures
         [MosaicTool("texture/set-import-settings",
                     "Sets texture import settings (type, shape, max size, compression, sRGB, filter mode, wrap mode). " +
                     "Use TextureShape=Cube with TextureType=Default to convert an equirectangular HDRI into a Cubemap " +
-                    "(e.g. for skyboxes). Closes issue #7.",
+                    "(e.g. for skyboxes). Closes issue #7. " +
+                    "Sprite params (require TextureType=Sprite): SpriteMode ('Single' or 'Multiple' — use sprite/slice " +
+                    "afterward for Multiple), PixelsPerUnit, Pivot=[x,y] (0..1, also sets alignment to Custom — " +
+                    "otherwise Unity ignores it), Border=[left,bottom,right,top] pixels (a UI Image's Sliced type " +
+                    "does nothing until this is non-zero), MeshType ('FullRect' or 'Tight').",
                     isReadOnly: false)]
         public static ToolResult<TextureSetImportSettingsResult> SetImportSettings(TextureSetImportSettingsParams p)
         {
@@ -80,18 +84,71 @@ namespace Mosaic.Bridge.Tools.Textures
                 importer.textureShape = textureShape;
             }
 
+            // Sprite Mode
+            if (!string.IsNullOrEmpty(p.SpriteMode))
+            {
+                if (!TryParseSpriteImportMode(p.SpriteMode, out var spriteMode))
+                    return ToolResult<TextureSetImportSettingsResult>.Fail(
+                        $"Unknown SpriteMode '{p.SpriteMode}'. Valid: Single, Multiple", ErrorCodes.INVALID_PARAM);
+                importer.spriteImportMode = spriteMode;
+            }
+
+            if (p.PixelsPerUnit.HasValue)
+                importer.spritePixelsPerUnit = p.PixelsPerUnit.Value;
+
+            if (p.Pivot != null && p.Pivot.Length != 2)
+                return ToolResult<TextureSetImportSettingsResult>.Fail(
+                    "Pivot requires exactly [x, y]", ErrorCodes.INVALID_PARAM);
+
+            if (p.Border != null)
+            {
+                if (p.Border.Length != 4)
+                    return ToolResult<TextureSetImportSettingsResult>.Fail(
+                        "Border requires exactly [left, bottom, right, top]", ErrorCodes.INVALID_PARAM);
+                importer.spriteBorder = new Vector4(p.Border[0], p.Border[1], p.Border[2], p.Border[3]);
+            }
+
+            SpriteMeshType parsedMeshType = default;
+            if (!string.IsNullOrEmpty(p.MeshType) && !TryParseSpriteMeshType(p.MeshType, out parsedMeshType))
+                return ToolResult<TextureSetImportSettingsResult>.Fail(
+                    $"Unknown MeshType '{p.MeshType}'. Valid: FullRect, Tight", ErrorCodes.INVALID_PARAM);
+
+            // spriteAlignment/spriteMeshType are not direct TextureImporter properties — both live
+            // on the settings struct read/written as a batch.
+            if (p.Pivot != null || !string.IsNullOrEmpty(p.MeshType))
+            {
+                var settings = new TextureImporterSettings();
+                importer.ReadTextureSettings(settings);
+                if (p.Pivot != null)
+                {
+                    settings.spritePivot = new Vector2(p.Pivot[0], p.Pivot[1]);
+                    settings.spriteAlignment = (int)SpriteAlignment.Custom;
+                }
+                if (!string.IsNullOrEmpty(p.MeshType))
+                    settings.spriteMeshType = parsedMeshType;
+                importer.SetTextureSettings(settings);
+            }
+
             importer.SaveAndReimport();
+
+            var finalSettings = new TextureImporterSettings();
+            importer.ReadTextureSettings(finalSettings);
 
             return ToolResult<TextureSetImportSettingsResult>.Ok(new TextureSetImportSettingsResult
             {
-                AssetPath    = p.AssetPath,
-                TextureType  = importer.textureType.ToString(),
-                TextureShape = importer.textureShape.ToString(),
-                MaxSize      = importer.maxTextureSize,
-                Compression  = importer.textureCompression.ToString(),
-                SRGB         = importer.sRGBTexture,
-                FilterMode   = importer.filterMode.ToString(),
-                WrapMode     = importer.wrapMode.ToString()
+                AssetPath     = p.AssetPath,
+                TextureType   = importer.textureType.ToString(),
+                TextureShape  = importer.textureShape.ToString(),
+                MaxSize       = importer.maxTextureSize,
+                Compression   = importer.textureCompression.ToString(),
+                SRGB          = importer.sRGBTexture,
+                FilterMode    = importer.filterMode.ToString(),
+                WrapMode      = importer.wrapMode.ToString(),
+                SpriteMode    = importer.spriteImportMode.ToString(),
+                PixelsPerUnit = importer.spritePixelsPerUnit,
+                Pivot         = new[] { importer.spritePivot.x, importer.spritePivot.y },
+                Border        = new[] { importer.spriteBorder.x, importer.spriteBorder.y, importer.spriteBorder.z, importer.spriteBorder.w },
+                MeshType      = finalSettings.spriteMeshType.ToString(),
             });
         }
 
@@ -141,6 +198,26 @@ namespace Mosaic.Bridge.Tools.Textures
                 case "bilinear":  result = FilterMode.Bilinear;  return true;
                 case "trilinear": result = FilterMode.Trilinear; return true;
                 default:          result = FilterMode.Bilinear;  return false;
+            }
+        }
+
+        private static bool TryParseSpriteImportMode(string value, out SpriteImportMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "single":   result = SpriteImportMode.Single;   return true;
+                case "multiple": result = SpriteImportMode.Multiple; return true;
+                default:         result = SpriteImportMode.Single;   return false;
+            }
+        }
+
+        private static bool TryParseSpriteMeshType(string value, out SpriteMeshType result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "fullrect": result = SpriteMeshType.FullRect; return true;
+                case "tight":    result = SpriteMeshType.Tight;    return true;
+                default:         result = SpriteMeshType.FullRect; return false;
             }
         }
 

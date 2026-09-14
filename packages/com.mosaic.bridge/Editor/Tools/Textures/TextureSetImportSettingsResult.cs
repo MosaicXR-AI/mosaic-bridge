@@ -10,5 +10,10 @@ namespace Mosaic.Bridge.Tools.Textures
         public bool SRGB { get; set; }
         public string FilterMode { get; set; }
         public string WrapMode { get; set; }
+        public string SpriteMode { get; set; }
+        public float PixelsPerUnit { get; set; }
+        public float[] Pivot { get; set; }
+        public float[] Border { get; set; }
+        public string MeshType { get; set; }
     }
 }

@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEngine.ProBuilder;
 using UnityEngine.ProBuilder.MeshOperations;
+using PbEditorMeshUtility = UnityEditor.ProBuilder.EditorMeshUtility;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
@@ -62,7 +63,10 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                     "All shapes support Position:[x,y,z], Rotation:[x,y,z] euler angles, and Name. " +
                     "Rotation tips: yardarms/horizontal cylinders → Rotation:[90,0,0]; " +
                     "bowsprit (forward+up 35°) → Rotation:[0,0,-55]; vertical (default) → omit Rotation. " +
-                    "GenerateBox does NOT exist — always use Shape='Cube'.",
+                    "GenerateBox does NOT exist — always use Shape='Cube'. " +
+                    "Collider: 'Mesh' (default, matches the ProBuilder Editor UI's own default), 'Box', or 'None'. " +
+                    "Convex (Mesh collider only) and IsTrigger are both false by default — a trigger MeshCollider " +
+                    "requires Convex=true, same as Unity's own rule.",
                     isReadOnly: false, category: "probuilder")]
         public static ToolResult<ProBuilderCreateResult> Create(ProBuilderCreateParams p)
         {
@@ -248,6 +252,44 @@ namespace Mosaic.Bridge.Tools.ProBuilder
 
             mesh.ToMesh();
             mesh.Refresh();
+            PbEditorMeshUtility.Optimize(mesh);
+
+            // G2: ShapeGenerator never adds a collider — only the ProBuilder Editor UI's own
+            // internal init does (EditorUtility.InitObject, prefs s_ColliderType /
+            // s_MeshColliderIsConvex). Default here mirrors that UI default: a non-convex
+            // MeshCollider, so a course object is physically solid the moment it's created.
+            string colliderType = string.IsNullOrEmpty(p.Collider) ? "Mesh" : p.Collider;
+            if (!string.Equals(colliderType, "Mesh", System.StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(colliderType, "Box", System.StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(colliderType, "None", System.StringComparison.OrdinalIgnoreCase))
+                return ToolResult<ProBuilderCreateResult>.Fail(
+                    $"Unknown Collider '{p.Collider}'. Valid: Mesh, Box, None", ErrorCodes.INVALID_PARAM);
+
+            if (p.IsTrigger && string.Equals(colliderType, "Mesh", System.StringComparison.OrdinalIgnoreCase) && !p.Convex)
+                return ToolResult<ProBuilderCreateResult>.Fail(
+                    "IsTrigger=true on a Mesh collider requires Convex=true — Unity does not support a " +
+                    "non-convex trigger MeshCollider. Use Convex=true, Collider='Box', or IsTrigger=false.",
+                    ErrorCodes.INVALID_PARAM);
+
+            if (string.Equals(colliderType, "Mesh", System.StringComparison.OrdinalIgnoreCase))
+            {
+                var mc = mesh.gameObject.AddComponent<MeshCollider>();
+                // ProBuilderMesh has no public Mesh property of its own — ToMesh()/Refresh() build
+                // and attach the runtime Mesh onto the sibling MeshFilter, same as any other
+                // procedural mesh workflow.
+                mc.sharedMesh = mesh.GetComponent<MeshFilter>().sharedMesh;
+                mc.convex = p.Convex;
+                mc.isTrigger = p.IsTrigger;
+            }
+            else if (string.Equals(colliderType, "Box", System.StringComparison.OrdinalIgnoreCase))
+            {
+                var box = mesh.gameObject.AddComponent<BoxCollider>();
+                box.isTrigger = p.IsTrigger;
+            }
+            else
+            {
+                colliderType = "None";
+            }
 
             Undo.RegisterCreatedObjectUndo(mesh.gameObject, "Mosaic: ProBuilder Create");
 
@@ -263,6 +305,7 @@ namespace Mosaic.Bridge.Tools.ProBuilder
                 InstanceId  = UnityIds.Of(mesh.gameObject),
                 VertexCount = mesh.vertexCount,
                 FaceCount   = mesh.faceCount,
+                ColliderType = colliderType,
                 QualityCheck = qa
             });
         }
@@ -297,6 +340,11 @@ namespace Mosaic.Bridge.Tools.ProBuilder
         public float ArchWidth { get; set; }
         public float ArchDepth { get; set; }
         public int RadialCuts { get; set; }
+
+        // Collider (G2) — "Mesh" (default), "Box", or "None"
+        public string Collider { get; set; }
+        public bool Convex { get; set; }
+        public bool IsTrigger { get; set; }
     }
 
     public sealed class ProBuilderCreateResult
@@ -305,6 +353,9 @@ namespace Mosaic.Bridge.Tools.ProBuilder
         public int InstanceId { get; set; }
         public int VertexCount { get; set; }
         public int FaceCount { get; set; }
+
+        /// <summary>What was actually added: "Mesh", "Box", or "None".</summary>
+        public string ColliderType { get; set; }
 
         /// <summary>Set only when an object-quality provider (Mosaic.Pro.Core) is installed.</summary>
         public ObjectQaReport QualityCheck { get; set; }

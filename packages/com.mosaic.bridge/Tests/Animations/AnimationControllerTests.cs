@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEditor;
+using UnityEngine;
 using Mosaic.Bridge.Tools.Animations;
 
 namespace Mosaic.Bridge.Tests.Animations
@@ -337,6 +338,104 @@ namespace Mosaic.Bridge.Tests.Animations
 
             Assert.IsFalse(result.Success);
             Assert.AreEqual("OUT_OF_RANGE", result.ErrorCode);
+        }
+
+        // O4 §4.5 P2: "one controller, many characters" — an override controller retargets clips
+        // without duplicating the whole state machine.
+        [Test]
+        public void CreateOverride_ReplacesAMatchedClipByName()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            var baseController = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ControllerPath);
+            var state = baseController.layers[0].stateMachine.AddState("Idle");
+            var originalClip = new UnityEngine.AnimationClip { name = "Base_Idle" };
+            AssetDatabase.AddObjectToAsset(originalClip, baseController);
+            state.motion = originalClip;
+            AssetDatabase.SaveAssets();
+
+            const string newClipPath = TestDir + "/Character_Idle.anim";
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = newClipPath, ClipName = "Character_Idle" });
+
+            const string overridePath = TestDir + "/TestOverride.overrideController";
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "create-override", Path = overridePath, BaseControllerPath = ControllerPath,
+                Overrides = new[]
+                {
+                    new OverrideClipInput { OriginalClipName = "Base_Idle", NewClipPath = newClipPath },
+                },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(1, result.Data.OverrideCount);
+
+            var overrideController = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimatorOverrideController>(overridePath);
+            Assert.IsNotNull(overrideController);
+            Assert.AreEqual("Character_Idle", overrideController[originalClip].name);
+        }
+
+        [Test]
+        public void CreateOverride_UnmatchedOriginalClip_ReturnsFail()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            const string newClipPath = TestDir + "/Character_Idle2.anim";
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = newClipPath });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "create-override", Path = TestDir + "/TestOverride2.overrideController",
+                BaseControllerPath = ControllerPath,
+                Overrides = new[]
+                {
+                    new OverrideClipInput { OriginalClipName = "NoSuchClip", NewClipPath = newClipPath },
+                },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddBehaviour_AttachesTheCompiledBehaviourType()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationStateTool.Execute(new AnimationStateParams
+            {
+                Action = "add", ControllerPath = ControllerPath, StateName = "Attack",
+            });
+
+            var result = AnimationStateTool.Execute(new AnimationStateParams
+            {
+                Action = "add-behaviour", ControllerPath = ControllerPath, StateName = "Attack",
+                BehaviourTypeName = nameof(TestStateMachineBehaviour),
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            StringAssert.Contains(nameof(TestStateMachineBehaviour), result.Data.AddedBehaviourTypeName);
+
+            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ControllerPath);
+            var attackState = controller.layers[0].stateMachine.states[0].state;
+            Assert.AreEqual(1, attackState.behaviours.Length);
+            Assert.IsInstanceOf<TestStateMachineBehaviour>(attackState.behaviours[0]);
+        }
+
+        [Test]
+        public void AddBehaviour_UnknownType_ReturnsFail()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationStateTool.Execute(new AnimationStateParams
+            {
+                Action = "add", ControllerPath = ControllerPath, StateName = "Attack",
+            });
+
+            var result = AnimationStateTool.Execute(new AnimationStateParams
+            {
+                Action = "add-behaviour", ControllerPath = ControllerPath, StateName = "Attack",
+                BehaviourTypeName = "NoSuchBehaviour_zzz",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
     }
 }

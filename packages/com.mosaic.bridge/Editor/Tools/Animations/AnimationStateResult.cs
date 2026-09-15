@@ -36,5 +36,8 @@ namespace Mosaic.Bridge.Tools.Animations
         public bool MirrorParameterActive { get; set; }
         public bool IKOnFeet { get; set; }
         public bool WriteDefaultValues { get; set; }
+
+        // -- add-behaviour --
+        public string AddedBehaviourTypeName { get; set; }
     }
 }

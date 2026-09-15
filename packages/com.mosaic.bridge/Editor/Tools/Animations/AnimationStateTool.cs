@@ -9,7 +9,7 @@ namespace Mosaic.Bridge.Tools.Animations
 {
     public static class AnimationStateTool
     {
-        private const string ValidActions = "add, remove, set-motion, info, add-sub-machine, set-default, set-settings";
+        private const string ValidActions = "add, remove, set-motion, info, add-sub-machine, set-default, set-settings, add-behaviour";
 
         [MosaicTool("animation/state",
                     "Manages animator states: add, remove, set motion clip, inspect state info, add nested " +
@@ -17,9 +17,11 @@ namespace Mosaic.Bridge.Tools.Animations
                     "IK/writeDefaultValues/tag). ParentStateMachinePath (e.g. 'Combat/Melee') places a new state/" +
                     "sub-machine inside a specific nested machine instead of always the layer root, where every " +
                     "generated state used to land — Animator captures of anything but a flat state machine were " +
-                    "unreadable without this. set-motion: for a multi-clip FBX (several takes embedded in one " +
-                    "imported file), ClipPath alone always resolves to the first embedded clip — pass ClipName " +
-                    "to pick a specific take by its own name.",
+                    "unreadable without this. add-behaviour attaches a compiled StateMachineBehaviour-derived " +
+                    "script (footstep/attack-window behaviours) by BehaviourTypeName — check editor/compile-status " +
+                    "first if it was just created. set-motion: for a multi-clip FBX (several takes embedded in " +
+                    "one imported file), ClipPath alone always resolves to the first embedded clip — pass " +
+                    "ClipName to pick a specific take by its own name.",
                     isReadOnly: false)]
         public static ToolResult<AnimationStateResult> Execute(AnimationStateParams p)
         {
@@ -32,6 +34,7 @@ namespace Mosaic.Bridge.Tools.Animations
                 case "add-sub-machine": return AddSubMachine(p);
                 case "set-default":     return SetDefault(p);
                 case "set-settings":    return SetSettings(p);
+                case "add-behaviour":   return AddBehaviour(p);
                 default:
                     return Fail($"Unknown action '{p.Action}'. Valid actions: {ValidActions}");
             }
@@ -328,6 +331,48 @@ namespace Mosaic.Bridge.Tools.Animations
                 MirrorParameterActive      = state.mirrorParameterActive,
                 IKOnFeet                   = state.iKOnFeet,
                 WriteDefaultValues         = state.writeDefaultValues,
+            });
+        }
+
+        private static ToolResult<AnimationStateResult> AddBehaviour(AnimationStateParams p)
+        {
+            if (string.IsNullOrEmpty(p.StateName))
+                return Fail("StateName is required for 'add-behaviour' action");
+            if (string.IsNullOrEmpty(p.BehaviourTypeName))
+                return Fail("BehaviourTypeName is required for 'add-behaviour' action");
+
+            var controller = AnimationToolHelpers.LoadController(p.ControllerPath);
+            if (controller == null)
+                return Fail($"AnimatorController not found at '{p.ControllerPath}'", ErrorCodes.NOT_FOUND);
+            if (p.LayerIndex < 0 || p.LayerIndex >= controller.layers.Length)
+                return Fail($"LayerIndex {p.LayerIndex} is out of range (0..{controller.layers.Length - 1})", ErrorCodes.OUT_OF_RANGE);
+
+            var state = AnimationToolHelpers.FindState(controller, p.StateName, p.LayerIndex);
+            if (state == null)
+                return Fail($"State '{p.StateName}' not found in layer {p.LayerIndex}", ErrorCodes.NOT_FOUND);
+
+            var behaviourType = AnimationToolHelpers.ResolveStateMachineBehaviourType(p.BehaviourTypeName);
+            if (behaviourType == null)
+                return Fail(
+                    $"StateMachineBehaviour type '{p.BehaviourTypeName}' not found. It must be a compiled " +
+                    "MonoBehaviour-free script deriving from StateMachineBehaviour — check editor/compile-status " +
+                    "first if it was just created.", ErrorCodes.NOT_FOUND);
+
+            Undo.RecordObject(controller, "Mosaic: Add StateMachineBehaviour");
+            var behaviour = controller.AddEffectiveStateMachineBehaviour(behaviourType, state, p.LayerIndex);
+            if (behaviour == null)
+                return Fail($"Failed to add '{p.BehaviourTypeName}' to state '{p.StateName}'.", ErrorCodes.INTERNAL_ERROR);
+
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+
+            return ToolResult<AnimationStateResult>.Ok(new AnimationStateResult
+            {
+                Action = "add-behaviour",
+                ControllerPath = p.ControllerPath,
+                StateName = state.name,
+                LayerIndex = p.LayerIndex,
+                AddedBehaviourTypeName = behaviourType.FullName,
             });
         }
     }

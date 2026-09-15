@@ -2,6 +2,7 @@
     "name": "Mosaic.Bridge.Tests",
     "rootNamespace": "Mosaic.Bridge.Tests",
     "references": [
+        "Mosaic.Bridge.Tests.RuntimeFixtures",
         "Mosaic.Bridge.Contracts",
         "Mosaic.Bridge.Core",
         "Mosaic.Bridge.Tools",

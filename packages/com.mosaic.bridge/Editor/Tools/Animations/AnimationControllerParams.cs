@@ -5,7 +5,7 @@ namespace Mosaic.Bridge.Tools.Animations
     public sealed class AnimationControllerParams
     {
         /// <summary>Action to perform: create, info, add-parameter, remove-parameter, add-layer,
-        /// set-layer, remove-layer</summary>
+        /// set-layer, remove-layer, create-override</summary>
         [Required] public string Action { get; set; }
 
         /// <summary>Asset path for the controller (e.g. "Assets/Animations/MyController.controller")</summary>
@@ -54,5 +54,32 @@ namespace Mosaic.Bridge.Tools.Animations
         /// <summary>set-layer: when synced, whether this layer's own state durations/timing are used
         /// instead of the synced-from layer's.</summary>
         public bool? SyncedLayerAffectsTiming { get; set; }
+
+        // -- create-override --
+        /// <summary>Asset path of the AnimatorController this override controller retargets clips for.</summary>
+        public string BaseControllerPath { get; set; }
+
+        /// <summary>Clip replacements to apply. Omit for an override controller with every clip
+        /// still pointing at the base controller's own originals (a valid starting point to edit
+        /// later, e.g. in the Inspector).</summary>
+        public OverrideClipInput[] Overrides { get; set; }
+    }
+
+    public sealed class OverrideClipInput
+    {
+        /// <summary>Name of the original clip (as it appears in the base controller) to replace.
+        /// Either this or OriginalClipPath is required.</summary>
+        public string OriginalClipName { get; set; }
+
+        /// <summary>Asset path of the original clip to replace. Either this or OriginalClipName is
+        /// required — OriginalClipName is usually simpler since the base controller's own clips
+        /// may be sub-assets of an FBX with no independently addressable path of their own.</summary>
+        public string OriginalClipPath { get; set; }
+
+        /// <summary>Asset path of the replacement AnimationClip.</summary>
+        public string NewClipPath { get; set; }
+
+        /// <summary>For a multi-clip container at NewClipPath (see L19), the specific clip name to use.</summary>
+        public string NewClipName { get; set; }
     }
 }

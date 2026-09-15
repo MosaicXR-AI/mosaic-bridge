@@ -11,13 +11,15 @@ namespace Mosaic.Bridge.Tools.Animations
 {
     public static class AnimationControllerTool
     {
-        private const string ValidActions = "create, info, add-parameter, remove-parameter, add-layer, set-layer, remove-layer";
+        private const string ValidActions = "create, info, add-parameter, remove-parameter, add-layer, set-layer, remove-layer, create-override";
 
         [MosaicTool("animation/controller",
                     "Manages AnimatorController assets: create, inspect, add/remove parameters, add/set/remove " +
-                    "layers. set-layer: LayerWeight, BlendingMode (Override/Additive), AvatarMaskPath (for an " +
-                    "override layer masking body parts — 'upper-body aim while running'), IKPass, " +
-                    "SyncedLayerIndex/SyncedLayerAffectsTiming.",
+                    "layers, create an override controller. set-layer: LayerWeight, BlendingMode " +
+                    "(Override/Additive), AvatarMaskPath (for an override layer masking body parts — " +
+                    "'upper-body aim while running'), IKPass, SyncedLayerIndex/SyncedLayerAffectsTiming. " +
+                    "create-override: BaseControllerPath + Overrides[] ({OriginalClipName or OriginalClipPath, " +
+                    "NewClipPath}) — 'one controller, many characters'.",
                     isReadOnly: false)]
         public static ToolResult<AnimationControllerResult> Execute(AnimationControllerParams p)
         {
@@ -30,6 +32,7 @@ namespace Mosaic.Bridge.Tools.Animations
                 case "add-layer":       return AddLayer(p);
                 case "set-layer":       return SetLayer(p);
                 case "remove-layer":    return RemoveLayer(p);
+                case "create-override": return CreateOverride(p);
                 default:
                     return ToolResult<AnimationControllerResult>.Fail(
                         $"Unknown action '{p.Action}'. Valid actions: {ValidActions}",
@@ -330,6 +333,79 @@ namespace Mosaic.Bridge.Tools.Animations
                 Path       = p.Path,
                 LayerIndex = idx,
                 LayerName  = removedName,
+            });
+        }
+
+        private static ToolResult<AnimationControllerResult> CreateOverride(AnimationControllerParams p)
+        {
+            if (string.IsNullOrEmpty(p.Path))
+                return ToolResult<AnimationControllerResult>.Fail(
+                    "Path is required for 'create-override' action", ErrorCodes.INVALID_PARAM);
+            if (string.IsNullOrEmpty(p.BaseControllerPath))
+                return ToolResult<AnimationControllerResult>.Fail(
+                    "BaseControllerPath is required for 'create-override' action", ErrorCodes.INVALID_PARAM);
+
+            var baseController = AnimationToolHelpers.LoadController(p.BaseControllerPath);
+            if (baseController == null)
+                return ToolResult<AnimationControllerResult>.Fail(
+                    $"AnimatorController not found at '{p.BaseControllerPath}'", ErrorCodes.NOT_FOUND);
+
+            var overrideController = new AnimatorOverrideController(baseController);
+            // Seeded with every original clip mapped to itself — ApplyOverrides only REPLACES
+            // entries in this same list, it does not add new ones, so a caller's override must
+            // match one of these originals by name or path.
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrideController.GetOverrides(pairs);
+
+            int overrideCount = 0;
+            if (p.Overrides != null)
+            {
+                foreach (var ov in p.Overrides)
+                {
+                    if (string.IsNullOrEmpty(ov.OriginalClipName) && string.IsNullOrEmpty(ov.OriginalClipPath))
+                        return ToolResult<AnimationControllerResult>.Fail(
+                            "Each override needs OriginalClipName or OriginalClipPath.", ErrorCodes.INVALID_PARAM);
+                    if (string.IsNullOrEmpty(ov.NewClipPath))
+                        return ToolResult<AnimationControllerResult>.Fail(
+                            "Each override needs NewClipPath.", ErrorCodes.INVALID_PARAM);
+
+                    var newClip = AnimationToolHelpers.LoadClip(ov.NewClipPath, ov.NewClipName);
+                    if (newClip == null)
+                        return ToolResult<AnimationControllerResult>.Fail(
+                            $"AnimationClip not found at '{ov.NewClipPath}'" +
+                            (ov.NewClipName != null ? $" (ClipName '{ov.NewClipName}')" : ""), ErrorCodes.NOT_FOUND);
+
+                    int idx = -1;
+                    for (int i = 0; i < pairs.Count; i++)
+                    {
+                        var original = pairs[i].Key;
+                        if (original == null) continue;
+                        bool matchByName = !string.IsNullOrEmpty(ov.OriginalClipName) && original.name == ov.OriginalClipName;
+                        bool matchByPath = !string.IsNullOrEmpty(ov.OriginalClipPath) &&
+                            AssetDatabase.GetAssetPath(original) == ov.OriginalClipPath;
+                        if (matchByName || matchByPath) { idx = i; break; }
+                    }
+                    if (idx < 0)
+                        return ToolResult<AnimationControllerResult>.Fail(
+                            $"No original clip matching '{ov.OriginalClipName ?? ov.OriginalClipPath}' found in " +
+                            $"'{p.BaseControllerPath}'.", ErrorCodes.NOT_FOUND);
+
+                    pairs[idx] = new KeyValuePair<AnimationClip, AnimationClip>(pairs[idx].Key, newClip);
+                    overrideCount++;
+                }
+                overrideController.ApplyOverrides(pairs);
+            }
+
+            AnimationToolHelpers.EnsureDirectoryExists(p.Path);
+            AssetDatabase.CreateAsset(overrideController, p.Path);
+            AssetDatabase.SaveAssets();
+
+            return ToolResult<AnimationControllerResult>.Ok(new AnimationControllerResult
+            {
+                Action = "create-override",
+                Path = p.Path,
+                Guid = AssetDatabase.AssetPathToGUID(p.Path),
+                OverrideCount = overrideCount,
             });
         }
     }

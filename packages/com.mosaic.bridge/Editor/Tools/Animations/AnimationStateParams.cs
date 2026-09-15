@@ -33,6 +33,11 @@ namespace Mosaic.Bridge.Tools.Animations
         /// <summary>add-sub-machine: name of the new sub-state-machine.</summary>
         public string SubMachineName { get; set; }
 
+        /// <summary>add-behaviour: name (bare or full) of a StateMachineBehaviour-derived type —
+        /// a course's own compiled script (footstep/attack-window behaviours). Compile-status
+        /// must be settled first; a script that hasn't compiled yet cannot be found by reflection.</summary>
+        public string BehaviourTypeName { get; set; }
+
         /// <summary>Asset path of the AnimationClip to assign as motion (for set-motion). For a
         /// multi-clip FBX, this alone always resolves to the FIRST embedded clip — pass ClipName
         /// to pick a specific take.</summary>

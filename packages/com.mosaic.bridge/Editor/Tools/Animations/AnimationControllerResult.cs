@@ -30,6 +30,9 @@ namespace Mosaic.Bridge.Tools.Animations
         public bool IKPass { get; set; }
         public int SyncedLayerIndex { get; set; }
         public bool SyncedLayerAffectsTiming { get; set; }
+
+        // -- create-override result --
+        public int OverrideCount { get; set; }
     }
 
     public sealed class AnimationParameterInfo

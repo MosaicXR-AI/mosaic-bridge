@@ -118,6 +118,25 @@ namespace Mosaic.Bridge.Tools.Animations
             return null;
         }
 
+        /// <summary>Finds a StateMachineBehaviour-derived type by bare or full name across every
+        /// loaded assembly — the same reflection-search pattern UIToolHelpers.ResolveComponentType
+        /// uses for Component, needed here because AnimatorController.AddEffectiveStateMachineBehaviour
+        /// takes a System.Type, not a compile-time generic (the type is a course's own script,
+        /// unknown until runtime). An exact FullName match wins over a same-named type elsewhere.</summary>
+        internal static System.Type ResolveStateMachineBehaviourType(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName)) return null;
+            var direct = System.Type.GetType(typeName);
+            if (direct != null && typeof(StateMachineBehaviour).IsAssignableFrom(direct)) return direct;
+
+            var candidates = System.AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => { try { return a.GetTypes(); } catch { return System.Type.EmptyTypes; } })
+                .Where(t => typeof(StateMachineBehaviour).IsAssignableFrom(t) && (t.Name == typeName || t.FullName == typeName))
+                .ToList();
+            if (candidates.Count == 0) return null;
+            return candidates.FirstOrDefault(t => t.FullName == typeName) ?? candidates[0];
+        }
+
         /// <summary>Ensure a directory exists for the given asset path.</summary>
         internal static void EnsureDirectoryExists(string assetPath)
         {

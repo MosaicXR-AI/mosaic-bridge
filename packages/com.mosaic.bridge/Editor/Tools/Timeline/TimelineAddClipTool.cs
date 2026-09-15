@@ -12,7 +12,12 @@ namespace Mosaic.Bridge.Tools.Timeline
     public static class TimelineAddClipTool
     {
         [MosaicTool("timeline/add-clip",
-                    "Adds a clip to a track in a TimelineAsset",
+                    "Adds a clip to a track in a TimelineAsset. TimelineClip fields (DisplayName, " +
+                    "ClipIn, TimeScale, Ease/BlendIn/OutDuration, Blend*CurveMode='Auto'|'Manual') " +
+                    "apply to any track. Per-track typed fields require a matching ClipAssetPath: " +
+                    "AnimationTrack — AnimPosition/AnimEulerAngles/AnimLoop='Off'|'On'|'UseSourceAsset'" +
+                    "/AnimRemoveStartOffset/AnimApplyFootIK; AudioTrack — AudioLoop; ControlTrack — " +
+                    "ControlUpdateParticle/ControlPostPlayback='Active'|'Inactive'|'Revert'.",
                     isReadOnly: false)]
         public static ToolResult<TimelineAddClipResult> AddClip(TimelineAddClipParams p)
         {
@@ -90,6 +95,83 @@ namespace Mosaic.Bridge.Tools.Timeline
             clip.start = p.Start;
             clip.duration = p.Duration > 0 ? p.Duration : 1.0;
 
+            if (!string.IsNullOrEmpty(p.DisplayName))
+                clip.displayName = p.DisplayName;
+            if (p.ClipIn.HasValue)
+                clip.clipIn = p.ClipIn.Value;
+            if (p.TimeScale.HasValue)
+                clip.timeScale = p.TimeScale.Value;
+            if (p.EaseInDuration.HasValue)
+                clip.easeInDuration = p.EaseInDuration.Value;
+            if (p.EaseOutDuration.HasValue)
+                clip.easeOutDuration = p.EaseOutDuration.Value;
+            if (p.BlendInDuration.HasValue)
+                clip.blendInDuration = p.BlendInDuration.Value;
+            if (p.BlendOutDuration.HasValue)
+                clip.blendOutDuration = p.BlendOutDuration.Value;
+
+            if (!string.IsNullOrEmpty(p.BlendInCurveMode))
+            {
+                if (!TryParseBlendCurveMode(p.BlendInCurveMode, out var mode))
+                    return ToolResult<TimelineAddClipResult>.Fail(
+                        $"Unknown BlendInCurveMode '{p.BlendInCurveMode}'. Valid: Auto, Manual", ErrorCodes.INVALID_PARAM);
+                clip.blendInCurveMode = mode;
+            }
+            if (!string.IsNullOrEmpty(p.BlendOutCurveMode))
+            {
+                if (!TryParseBlendCurveMode(p.BlendOutCurveMode, out var mode))
+                    return ToolResult<TimelineAddClipResult>.Fail(
+                        $"Unknown BlendOutCurveMode '{p.BlendOutCurveMode}'. Valid: Auto, Manual", ErrorCodes.INVALID_PARAM);
+                clip.blendOutCurveMode = mode;
+            }
+
+            if (clip.asset is AnimationPlayableAsset animAsset)
+            {
+                if (p.AnimPosition != null)
+                {
+                    if (p.AnimPosition.Length != 3)
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            "AnimPosition requires exactly [x, y, z]", ErrorCodes.INVALID_PARAM);
+                    animAsset.position = new Vector3(p.AnimPosition[0], p.AnimPosition[1], p.AnimPosition[2]);
+                }
+                if (p.AnimEulerAngles != null)
+                {
+                    if (p.AnimEulerAngles.Length != 3)
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            "AnimEulerAngles requires exactly [x, y, z]", ErrorCodes.INVALID_PARAM);
+                    animAsset.eulerAngles = new Vector3(p.AnimEulerAngles[0], p.AnimEulerAngles[1], p.AnimEulerAngles[2]);
+                }
+                if (!string.IsNullOrEmpty(p.AnimLoop))
+                {
+                    if (!TryParseAnimLoopMode(p.AnimLoop, out var loopMode))
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            $"Unknown AnimLoop '{p.AnimLoop}'. Valid: Off, On, UseSourceAsset", ErrorCodes.INVALID_PARAM);
+                    animAsset.loop = loopMode;
+                }
+                if (p.AnimRemoveStartOffset.HasValue)
+                    animAsset.removeStartOffset = p.AnimRemoveStartOffset.Value;
+                if (p.AnimApplyFootIK.HasValue)
+                    animAsset.applyFootIK = p.AnimApplyFootIK.Value;
+            }
+            else if (clip.asset is AudioPlayableAsset audioAsset)
+            {
+                if (p.AudioLoop.HasValue)
+                    audioAsset.loop = p.AudioLoop.Value;
+            }
+            else if (clip.asset is ControlPlayableAsset controlAsset)
+            {
+                if (p.ControlUpdateParticle.HasValue)
+                    controlAsset.updateParticle = p.ControlUpdateParticle.Value;
+                if (!string.IsNullOrEmpty(p.ControlPostPlayback))
+                {
+                    if (!TryParsePostPlaybackState(p.ControlPostPlayback, out var state))
+                        return ToolResult<TimelineAddClipResult>.Fail(
+                            $"Unknown ControlPostPlayback '{p.ControlPostPlayback}'. Valid: Active, Inactive, Revert",
+                            ErrorCodes.INVALID_PARAM);
+                    controlAsset.postPlayback = state;
+                }
+            }
+
             EditorUtility.SetDirty(timeline);
             AssetDatabase.SaveAssets();
 
@@ -98,8 +180,48 @@ namespace Mosaic.Bridge.Tools.Timeline
                 TrackIndex = p.TrackIndex,
                 ClipName = clip.displayName,
                 Start = clip.start,
-                Duration = clip.duration
+                Duration = clip.duration,
+                ClipIn = clip.clipIn,
+                TimeScale = clip.timeScale,
+                EaseInDuration = clip.easeInDuration,
+                EaseOutDuration = clip.easeOutDuration,
+                BlendInDuration = clip.blendInDuration,
+                BlendOutDuration = clip.blendOutDuration,
+                BlendInCurveMode = clip.blendInCurveMode.ToString(),
+                BlendOutCurveMode = clip.blendOutCurveMode.ToString(),
             });
+        }
+
+        private static bool TryParseBlendCurveMode(string value, out TimelineClip.BlendCurveMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "auto":   result = TimelineClip.BlendCurveMode.Auto;   return true;
+                case "manual": result = TimelineClip.BlendCurveMode.Manual; return true;
+                default:       result = TimelineClip.BlendCurveMode.Auto;   return false;
+            }
+        }
+
+        private static bool TryParseAnimLoopMode(string value, out AnimationPlayableAsset.LoopMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "off":            result = AnimationPlayableAsset.LoopMode.Off;            return true;
+                case "on":             result = AnimationPlayableAsset.LoopMode.On;              return true;
+                case "usesourceasset": result = AnimationPlayableAsset.LoopMode.UseSourceAsset;  return true;
+                default:               result = AnimationPlayableAsset.LoopMode.Off;             return false;
+            }
+        }
+
+        private static bool TryParsePostPlaybackState(string value, out ActivationControlPlayable.PostPlaybackState result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "active":   result = ActivationControlPlayable.PostPlaybackState.Active;   return true;
+                case "inactive": result = ActivationControlPlayable.PostPlaybackState.Inactive; return true;
+                case "revert":   result = ActivationControlPlayable.PostPlaybackState.Revert;   return true;
+                default:         result = ActivationControlPlayable.PostPlaybackState.Active;   return false;
+            }
         }
     }
 }

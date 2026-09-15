@@ -4,6 +4,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Timeline;
 using Mosaic.Bridge.Tools.Timeline;
+using Mosaic.Bridge.Tools.Animations;
 
 namespace Mosaic.Bridge.Tests.Unit.Tools.Timeline
 {
@@ -21,6 +22,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Timeline
         private const string TimelinePath = "Assets/TimelineAddClipToolTest.playable";
         private const string AudioClipPath = "Assets/TimelineAddClipToolTest.wav";
         private const string PrefabPath = "Assets/TimelineAddClipToolTest.prefab";
+        private const string AnimClipPath = "Assets/TimelineAddClipToolTest.anim";
 
         [TearDown]
         public void Cleanup()
@@ -31,6 +33,19 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Timeline
                 AssetDatabase.DeleteAsset(AudioClipPath);
             if (AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath) != null)
                 AssetDatabase.DeleteAsset(PrefabPath);
+            if (AssetDatabase.LoadAssetAtPath<AnimationClip>(AnimClipPath) != null)
+                AssetDatabase.DeleteAsset(AnimClipPath);
+        }
+
+        private static void CreateTwoSecondAnimClip(string path)
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = path });
+            AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-curve", Path = path, PropertyPath = "", ComponentType = "Transform",
+                PropertyName = "localPosition.x",
+                KeyframeTimes = new float[] { 0f, 2f }, KeyframeValues = new float[] { 0f, 1f },
+            });
         }
 
         private static void CreateTimelineWithTrack(string trackType)
@@ -165,6 +180,126 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Timeline
 
             Assert.IsFalse(result.Success);
             StringAssert.Contains("not supported", result.Error);
+        }
+
+        // O4 §4.5 P2: typed clips — TimelineClip.* fields on any track, plus per-track
+        // AnimationPlayableAsset/AudioPlayableAsset/ControlPlayableAsset fields.
+
+        [Test]
+        public void TimelineClipFields_ApplyAndRoundTrip()
+        {
+            CreateTimelineWithTrack("Animation");
+            CreateTwoSecondAnimClip(AnimClipPath);
+
+            var result = TimelineAddClipTool.AddClip(new TimelineAddClipParams
+            {
+                AssetPath = TimelinePath, TrackIndex = 0, ClipAssetPath = AnimClipPath, Start = 0, Duration = 1,
+                DisplayName = "MyClip", ClipIn = 0.5, TimeScale = 2.0,
+                EaseInDuration = 0.1, EaseOutDuration = 0.2,
+                BlendInDuration = 0.3, BlendOutDuration = 0.4,
+                BlendInCurveMode = "Manual", BlendOutCurveMode = "Auto",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("MyClip", result.Data.ClipName);
+            Assert.AreEqual(0.5, result.Data.ClipIn);
+            Assert.AreEqual(2.0, result.Data.TimeScale);
+            Assert.AreEqual(0.1, result.Data.EaseInDuration);
+            Assert.AreEqual(0.2, result.Data.EaseOutDuration);
+            Assert.AreEqual(0.3, result.Data.BlendInDuration);
+            Assert.AreEqual(0.4, result.Data.BlendOutDuration);
+            Assert.AreEqual("Manual", result.Data.BlendInCurveMode);
+            Assert.AreEqual("Auto", result.Data.BlendOutCurveMode);
+        }
+
+        [Test]
+        public void UnknownBlendInCurveMode_ReturnsFail()
+        {
+            CreateTimelineWithTrack("Animation");
+
+            var result = TimelineAddClipTool.AddClip(new TimelineAddClipParams
+            {
+                AssetPath = TimelinePath, TrackIndex = 0, BlendInCurveMode = "Bogus",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void AnimationTrack_TypedFields_Apply()
+        {
+            CreateTimelineWithTrack("Animation");
+            CreateTwoSecondAnimClip(AnimClipPath);
+
+            var result = TimelineAddClipTool.AddClip(new TimelineAddClipParams
+            {
+                AssetPath = TimelinePath, TrackIndex = 0, ClipAssetPath = AnimClipPath,
+                AnimPosition = new[] { 1f, 2f, 3f },
+                AnimEulerAngles = new[] { 0f, 90f, 0f },
+                AnimLoop = "On",
+                AnimRemoveStartOffset = true,
+                AnimApplyFootIK = false,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var timeline = AssetDatabase.LoadAssetAtPath<TimelineAsset>(TimelinePath);
+            var track = (AnimationTrack)System.Linq.Enumerable.First(timeline.GetOutputTracks());
+            var clip = System.Linq.Enumerable.Single(track.GetClips());
+            var asset = (AnimationPlayableAsset)clip.asset;
+
+            Assert.AreEqual(new Vector3(1, 2, 3), asset.position);
+            Assert.AreEqual(new Vector3(0, 90, 0), asset.eulerAngles);
+            Assert.AreEqual(AnimationPlayableAsset.LoopMode.On, asset.loop);
+            Assert.IsTrue(asset.removeStartOffset);
+            Assert.IsFalse(asset.applyFootIK);
+        }
+
+        [Test]
+        public void AudioTrack_AudioLoop_Applies()
+        {
+            CreateTimelineWithTrack("Audio");
+            CreateSilentWavAsset(AudioClipPath);
+
+            var result = TimelineAddClipTool.AddClip(new TimelineAddClipParams
+            {
+                AssetPath = TimelinePath, TrackIndex = 0, ClipAssetPath = AudioClipPath, AudioLoop = true,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var timeline = AssetDatabase.LoadAssetAtPath<TimelineAsset>(TimelinePath);
+            var track = (AudioTrack)System.Linq.Enumerable.First(timeline.GetOutputTracks());
+            var clip = System.Linq.Enumerable.Single(track.GetClips());
+            Assert.IsTrue(((AudioPlayableAsset)clip.asset).loop);
+        }
+
+        [Test]
+        public void ControlTrack_TypedFields_Apply()
+        {
+            CreateTimelineWithTrack("Control");
+            var prefabGo = new GameObject("TimelineAddClipToolTestPrefab3");
+            try
+            {
+                PrefabUtility.SaveAsPrefabAsset(prefabGo, PrefabPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(prefabGo);
+            }
+
+            var result = TimelineAddClipTool.AddClip(new TimelineAddClipParams
+            {
+                AssetPath = TimelinePath, TrackIndex = 0, ClipAssetPath = PrefabPath,
+                ControlUpdateParticle = true, ControlPostPlayback = "Revert",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var timeline = AssetDatabase.LoadAssetAtPath<TimelineAsset>(TimelinePath);
+            var track = (ControlTrack)System.Linq.Enumerable.First(timeline.GetOutputTracks());
+            var clip = System.Linq.Enumerable.Single(track.GetClips());
+            var asset = (ControlPlayableAsset)clip.asset;
+            Assert.IsTrue(asset.updateParticle);
+            Assert.AreEqual(ActivationControlPlayable.PostPlaybackState.Revert, asset.postPlayback);
         }
     }
 }

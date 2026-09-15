@@ -5,6 +5,79 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.28] — 2026-09-15
+
+The O4 education-tooling-gaps pass: every cross-cutting enabler, the "lived gaps" a real
+course build hit, the async job registry, and all 20 latent defects found while reading the
+existing tools (L1–L20). Batched into one release per plan.
+
+### Added
+
+- **Sub-asset addressing + type-aware reference resolution** (`Mosaic.Bridge.Core.Assets.ObjectReferenceResolver`):
+  `"Assets/sheet.png#SubAssetName"` addressing, type-aware via the SerializedProperty's real
+  field type, sprite-sheet→first-sub-sprite and GameObject/prefab→Component fallbacks. Wired
+  into `component/set_reference`, `scriptable_object/set_field`, and every O4 tool built after it.
+- **Generic serialized-value codec** (`Mosaic.Bridge.Core.SerializedValues.SerializedPropertyCodec`):
+  `component/set_property` now handles Enum (name or index), LayerMask, Gradient, AnimationCurve,
+  arbitrary structs, and arrays generically instead of failing on anything but primitives.
+- **GameObject resolver** (`Mosaic.Bridge.Core.Scenes.GameObjectResolver`): resolves by
+  InstanceId, then hierarchy path, then a bare name searched across every loaded scene
+  (including inactive objects) — failing loudly on an ambiguous name instead of guessing the
+  first match. Wired into all 6 `probuilder/*` tools (fixes L18).
+- **Job registry** (`Mosaic.Bridge.Core.Jobs.JobRegistry`): one async contract (`job/status`,
+  `job/list`, `job/cancel`) with `IJobKind{Start,Probe,Cancel}`, SessionState-persisted records
+  that survive a domain reload, and `Progress` integration. Migrated `package/add`/`package/remove`
+  off a blocking `Thread.Sleep` loop (**L15** — the most dangerous route for an autonomous agent,
+  which could also lose its response entirely to a domain reload mid-wait) and added `build/start`,
+  which returns a JobId immediately instead of blocking the HTTP request for a player build's
+  entire duration (the "45-minute hang").
+- ProBuilder: `Collider`/`Convex`/`IsTrigger` on `create`; `info Detail=faces|edges|vertices|all`;
+  `modify` gains `bevel` and `delete-faces`.
+- Lighting: `lighting/bake-status` (isRunning/progress/lightmap count).
+- Audio: `route-source`, `set-source`, `create-mixer`, `mixer-group`, `mixer-info`.
+- 2D core module: `texture/set-import-settings` sprite params; `tilemap/create|create-tile|set-tiles|add-collider|info`;
+  `sprite/info|create`; `physics2d/add-rigidbody|add-collider`; `sprite/slice`; `animation/clip set-sprite-curve`.
+- UI: `create_canvas` gains `InputModule`/scaler params (**L6**); `add_element`/`set_properties` TMP
+  branches actually compile and work now (**L5**); `ui/add_listener`/`remove_listener` for persistent
+  `UnityEvent` listeners.
+
+### Fixed — latent defects L1–L20
+
+- **L1** `probuilder/modify` `triangulate` called Subdivide, not Triangulate.
+- **L2** `probuilder/create` advertised 6 non-existent shape names; cylinders were hardcoded to
+  hard-shaded (faceted) sides; ProBuilder meshes had no UV2, breaking lightmaps.
+- **L3** `timeline/add-clip` silently ignored `ClipAssetPath` for every track type except
+  AnimationTrack — an Audio clip played nothing, a Control clip got no prefab.
+- **L4** `cinemachine/set-properties` rebuilt `LensSettings` from 4 fields, silently discarding
+  Dutch, ModeOverride, and the entire PhysicalProperties block.
+- **L5/L6** see Added, above.
+- **L7** `gameobject/duplicate` used `Object.Instantiate`, disconnecting a duplicated prefab
+  instance from its prefab.
+- **L8** `asset/create_prefab`/`prefab/create` used `SaveAsPrefabAsset`, leaving the scene object
+  unlinked from the prefab it just created.
+- **L9** `physics/add-rigidbody` threw `NullReferenceException` on a GameObject that already had one.
+- **L10** `physics/set-physics-material`'s friction/bounciness defaulted to 0 (an icy floor by
+  accident) instead of Unity's own 0.6/0.6/0, and could not reuse an existing material asset.
+- **L11** `physics/add-collider` auto-fit sizing used a world-space AABB, oversizing colliders on
+  rotated objects; a concave MeshCollider on a dynamic Rigidbody was accepted with no error.
+- **L12** `particle/set-renderer UseUrpParticlesMaterial` created an unsaved in-memory Material —
+  pink particles after reopening the project.
+- **L13** `terrain/height` never called `TerrainData.SyncHeightmap()` after a DelayLod batch.
+- **L14** `terrain/paint add-layer` always created a new `.terrainlayer` asset, so a course's
+  terrain/grid tiles ended up with duplicate, inconsistent layers instead of one shared layer.
+- **L15** see Added, above (job registry).
+- **L16/L17** already correct — a prior pass had fixed the description text and the knowledge file.
+- **L18** see Added, above (GameObject resolver).
+- **L19** `animation/state set-motion` always resolved the first clip in a multi-clip FBX; added
+  `ClipName` to pick a specific take.
+- **L20** `taglayer/static`'s error message omitted `ContributeGI` from its advertised valid-flags
+  list (the parser already accepted it).
+
+Also fixed two bugs found while verifying the above with real headless Unity test runs rather
+than assumption: the Tests assembly was missing the `MOSAIC_HAS_TIMELINE` versionDefine entirely
+(the pre-existing Timeline test suite had never once compiled or run), and `spline/create`
+accepted a single knot and reported success for a degenerate, zero-length spline.
+
 ## [1.0.0-beta.27] — 2026-09-14
 
 Re-published beta.26 under a new version number. The `.meta`-file fix landed as a patch

@@ -3,6 +3,12 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEditor;
 using Unity.Cinemachine;
+#if MOSAIC_HAS_TIMELINE
+using System.Linq;
+using UnityEngine.Playables;
+using UnityEngine.Timeline;
+using Mosaic.Bridge.Tools.Timeline;
+#endif
 
 namespace Mosaic.Bridge.Tests.Cinemachine
 {
@@ -1070,6 +1076,85 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
             Assert.IsNull(GameObject.Find("TestManager"));
         }
+
+#if MOSAIC_HAS_TIMELINE
+        // O4 §4.5 P2: cinemachine/timeline-shot — the cinematics course's core deliverable, a shot list.
+
+        [Test]
+        public void TimelineShot_AddsClipAndWiresVirtualCamera()
+        {
+            const string timelinePath = "Assets/TestCinemachineShotTimeline.playable";
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+            TimelineCreateTool.Create(new TimelineCreateParams { Name = "T", Path = timelinePath });
+            TimelineAddTrackTool.AddTrack(new TimelineAddTrackParams
+            {
+                AssetPath = timelinePath, TrackType = "Cinemachine", Name = "CMTrack",
+            });
+            var directorGo = new GameObject("TestShotDirector");
+            var director = directorGo.AddComponent<PlayableDirector>();
+            director.playableAsset = AssetDatabase.LoadAssetAtPath<TimelineAsset>(timelinePath);
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineTimelineShotTool.Execute(new Tools.Cinemachine.CinemachineTimelineShotParams
+                {
+                    TimelineAssetPath = timelinePath, TrackIndex = 0,
+                    DirectorInstanceId = directorGo.GetInstanceID(), VCamName = "TestVCam",
+                    Start = 0, Duration = 3,
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual(3, result.Data.Duration, 0.0001);
+                Assert.IsFalse(result.Data.BrainFoundInScene);
+
+                var timeline = AssetDatabase.LoadAssetAtPath<TimelineAsset>(timelinePath);
+                var track = (CinemachineTrack)timeline.GetOutputTracks().First();
+                var clip = track.GetClips().Single();
+                var shot = (CinemachineShot)clip.asset;
+                var value = director.GetReferenceValue(shot.VirtualCamera.exposedName, out var idValid);
+                Assert.IsTrue(idValid);
+                Assert.AreEqual(GameObject.Find("TestVCam").GetComponent<CinemachineCamera>(), value);
+            }
+            finally
+            {
+                Object.DestroyImmediate(directorGo);
+                if (AssetDatabase.LoadAssetAtPath<TimelineAsset>(timelinePath) != null)
+                    AssetDatabase.DeleteAsset(timelinePath);
+            }
+        }
+
+        [Test]
+        public void TimelineShot_NonCinemachineTrack_ReturnsInvalidParam()
+        {
+            const string timelinePath = "Assets/TestCinemachineShotTimeline2.playable";
+            TimelineCreateTool.Create(new TimelineCreateParams { Name = "T", Path = timelinePath });
+            TimelineAddTrackTool.AddTrack(new TimelineAddTrackParams
+            {
+                AssetPath = timelinePath, TrackType = "Activation", Name = "NotCM",
+            });
+            var directorGo = new GameObject("TestShotDirector");
+            var director = directorGo.AddComponent<PlayableDirector>();
+            director.playableAsset = AssetDatabase.LoadAssetAtPath<TimelineAsset>(timelinePath);
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineTimelineShotTool.Execute(new Tools.Cinemachine.CinemachineTimelineShotParams
+                {
+                    TimelineAssetPath = timelinePath, TrackIndex = 0,
+                    DirectorInstanceId = directorGo.GetInstanceID(), VCamName = "TestVCam",
+                });
+
+                Assert.IsFalse(result.Success);
+                Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+            }
+            finally
+            {
+                Object.DestroyImmediate(directorGo);
+                if (AssetDatabase.LoadAssetAtPath<TimelineAsset>(timelinePath) != null)
+                    AssetDatabase.DeleteAsset(timelinePath);
+            }
+        }
+#endif
     }
 }
 #endif

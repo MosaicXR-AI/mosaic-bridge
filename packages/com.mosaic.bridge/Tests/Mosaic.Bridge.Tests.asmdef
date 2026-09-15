@@ -16,6 +16,7 @@
         "Mosaic.Bridge.Tools.Splines",
         "Mosaic.Bridge.Tools.VisualScripting",
         "Mosaic.Bridge.Tools.Sprite2D",
+        "Mosaic.Bridge.Tools.VFX",
         "Unity.Cinemachine",
         "Unity.Splines",
         "Unity.Timeline",
@@ -94,6 +95,11 @@
             "name": "com.unity.inputsystem",
             "expression": "",
             "define": "MOSAIC_HAS_INPUT_SYSTEM"
+        },
+        {
+            "name": "com.unity.visualeffectgraph",
+            "expression": "17.0.0",
+            "define": "MOSAIC_HAS_VFX"
         }
     ],
     "noEngineReferences": false

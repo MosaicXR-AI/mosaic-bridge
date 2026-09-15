@@ -9,5 +9,8 @@ namespace Mosaic.Bridge.Tools.Physics
         public float Bounciness { get; set; }
         public string AssetPath { get; set; }
         public bool SavedAsAsset { get; set; }
+        public string FrictionCombine { get; set; }
+        public string BounceCombine { get; set; }
+        public int ChildrenAppliedCount { get; set; }
     }
 }

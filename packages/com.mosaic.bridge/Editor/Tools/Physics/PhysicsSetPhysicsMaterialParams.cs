@@ -19,5 +19,13 @@ namespace Mosaic.Bridge.Tools.Physics
         /// that existing asset (ignoring DynamicFriction/StaticFriction/Bounciness) instead of
         /// overwriting it with a brand-new one — lets multiple objects share one physics material.</summary>
         public bool ReuseExisting { get; set; }
+
+        /// <summary>"Average", "Minimum", "Multiply", or "Maximum". Omit to keep Unity's default (Average).</summary>
+        public string FrictionCombine { get; set; }
+        /// <summary>"Average", "Minimum", "Multiply", or "Maximum". Omit to keep Unity's default (Average).</summary>
+        public string BounceCombine { get; set; }
+
+        /// <summary>When true, also assigns this PhysicsMaterial to every Collider on child GameObjects.</summary>
+        public bool ApplyToChildren { get; set; }
     }
 }

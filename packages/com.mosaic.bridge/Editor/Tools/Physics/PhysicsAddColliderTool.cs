@@ -11,10 +11,14 @@ namespace Mosaic.Bridge.Tools.Physics
     public static class PhysicsAddColliderTool
     {
         [MosaicTool("physics/add-collider",
-                    "Adds a collider component (Box, Sphere, Capsule, or Mesh) to a GameObject. " +
-                    "Set AddRigidbody=true to also add a Rigidbody (skipped if one is already present). " +
-                    "Mesh colliders: set Convex=true when the GameObject has (or will have) a non-kinematic " +
-                    "Rigidbody — Unity rejects a concave MeshCollider there at runtime with no editor-time error.",
+                    "Adds a collider component (Box, Sphere, Capsule, or Mesh) to a GameObject, auto-fit to " +
+                    "its mesh/renderer (including SkinnedMeshRenderer). Set AddRigidbody=true to also add a " +
+                    "Rigidbody (skipped if one is already present). Mesh colliders: set Convex=true when the " +
+                    "GameObject has (or will have) a non-kinematic Rigidbody — Unity rejects a concave " +
+                    "MeshCollider there at runtime with no editor-time error. Radius/Height/Direction override " +
+                    "auto-fit for Sphere/Capsule. MaterialPath assigns a PhysicsMaterial. IncludeLayers/" +
+                    "ExcludeLayers are comma-separated layer names. Fit=children fits a Box to the union of " +
+                    "all child renderer bounds — a compound-collider approximation for an assembled prop.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<PhysicsAddColliderResult> Execute(PhysicsAddColliderParams p)
         {
@@ -36,7 +40,10 @@ namespace Mosaic.Bridge.Tools.Physics
             {
                 case "box":
                     var box = Undo.AddComponent<BoxCollider>(go);
-                    AutoSizeBox(go, box);
+                    if (string.Equals(p.Fit, "children", StringComparison.OrdinalIgnoreCase))
+                        AutoSizeBoxFromChildren(go, box);
+                    else
+                        AutoSizeBox(go, box);
                     if (p.Center != null && p.Center.Length == 3)
                         box.center = new Vector3(p.Center[0], p.Center[1], p.Center[2]);
                     if (p.Size != null && p.Size.Length == 3)
@@ -49,6 +56,8 @@ namespace Mosaic.Bridge.Tools.Physics
                     AutoSizeSphere(go, sphere);
                     if (p.Center != null && p.Center.Length == 3)
                         sphere.center = new Vector3(p.Center[0], p.Center[1], p.Center[2]);
+                    if (p.Radius.HasValue)
+                        sphere.radius = p.Radius.Value;
                     collider = sphere;
                     break;
 
@@ -57,6 +66,17 @@ namespace Mosaic.Bridge.Tools.Physics
                     AutoSizeCapsule(go, capsule);
                     if (p.Center != null && p.Center.Length == 3)
                         capsule.center = new Vector3(p.Center[0], p.Center[1], p.Center[2]);
+                    if (p.Radius.HasValue)
+                        capsule.radius = p.Radius.Value;
+                    if (p.Height.HasValue)
+                        capsule.height = p.Height.Value;
+                    if (!string.IsNullOrEmpty(p.Direction))
+                    {
+                        if (!TryParseAxis(p.Direction, out var axis))
+                            return ToolResult<PhysicsAddColliderResult>.Fail(
+                                $"Unknown Direction '{p.Direction}'. Use X, Y, or Z.", ErrorCodes.INVALID_PARAM);
+                        capsule.direction = axis;
+                    }
                     collider = capsule;
                     break;
 
@@ -95,6 +115,20 @@ namespace Mosaic.Bridge.Tools.Physics
 
             if (p.IsTrigger.HasValue)
                 collider.isTrigger = p.IsTrigger.Value;
+
+            if (!string.IsNullOrEmpty(p.MaterialPath))
+            {
+                var material = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(p.MaterialPath);
+                if (material == null)
+                    return ToolResult<PhysicsAddColliderResult>.Fail(
+                        $"PhysicsMaterial not found at '{p.MaterialPath}'", ErrorCodes.NOT_FOUND);
+                collider.sharedMaterial = material;
+            }
+
+            if (!string.IsNullOrEmpty(p.IncludeLayers))
+                collider.includeLayers = LayerMask.GetMask(SplitLayerNames(p.IncludeLayers));
+            if (!string.IsNullOrEmpty(p.ExcludeLayers))
+                collider.excludeLayers = LayerMask.GetMask(SplitLayerNames(p.ExcludeLayers));
 
             bool rigidbodyAdded = false;
             if (p.AddRigidbody == true && go.GetComponent<Rigidbody>() == null)
@@ -141,6 +175,37 @@ namespace Mosaic.Bridge.Tools.Physics
             }
             bounds = default;
             return false;
+        }
+
+        private static string[] SplitLayerNames(string commaSeparated) =>
+            Array.ConvertAll(commaSeparated.Split(','), s => s.Trim());
+
+        private static bool TryParseAxis(string value, out int axis)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "x": axis = 0; return true;
+                case "y": axis = 1; return true;
+                case "z": axis = 2; return true;
+                default: axis = 1; return false;
+            }
+        }
+
+        /// <summary>Compound-collider approximation: a box spanning the union of every child
+        /// renderer's world bounds, transformed into go's local space. For a parent GameObject
+        /// with no mesh of its own (e.g. an assembled prop made of child meshes).</summary>
+        private static void AutoSizeBoxFromChildren(GameObject go, BoxCollider box)
+        {
+            var renderers = go.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) return;
+
+            var worldBounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+                worldBounds.Encapsulate(renderers[i].bounds);
+
+            box.center = go.transform.InverseTransformPoint(worldBounds.center);
+            var size = go.transform.InverseTransformVector(worldBounds.size);
+            box.size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
         }
 
         private static void AutoSizeBox(GameObject go, BoxCollider box)

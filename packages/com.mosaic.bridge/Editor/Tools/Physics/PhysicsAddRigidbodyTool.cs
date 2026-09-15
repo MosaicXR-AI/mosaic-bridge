@@ -10,7 +10,11 @@ namespace Mosaic.Bridge.Tools.Physics
     public static class PhysicsAddRigidbodyTool
     {
         [MosaicTool("physics/add-rigidbody",
-                    "Adds a Rigidbody component to a GameObject with optional physics properties",
+                    "Adds a Rigidbody component to a GameObject with optional physics properties, or updates " +
+                    "an existing one (L9: no longer fails/conflicts if a Rigidbody is already present). " +
+                    "Interpolation/CollisionDetection are enum names; FreezePosition[XYZ]/FreezeRotation[XYZ] " +
+                    "combine into Rigidbody.constraints; IncludeLayers/ExcludeLayers are comma-separated " +
+                    "layer names.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<PhysicsAddRigidbodyResult> Execute(PhysicsAddRigidbodyParams p)
         {
@@ -20,19 +24,61 @@ namespace Mosaic.Bridge.Tools.Physics
                     $"GameObject '{p.Name ?? p.InstanceId?.ToString()}' not found",
                     ErrorCodes.NOT_FOUND);
 
-            // L9: Undo.AddComponent<T> returns null when the GameObject already has a component
-            // of that type — every field access below would have thrown NullReferenceException.
-            if (go.GetComponent<Rigidbody>() != null)
-                return ToolResult<PhysicsAddRigidbodyResult>.Fail(
-                    $"GameObject '{go.name}' already has a Rigidbody component.", ErrorCodes.CONFLICT);
-
-            var rb = Undo.AddComponent<Rigidbody>(go);
+            var existing = go.GetComponent<Rigidbody>();
+            bool wasExisting = existing != null;
+            var rb = existing != null ? existing : Undo.AddComponent<Rigidbody>(go);
+            if (wasExisting)
+                Undo.RecordObject(rb, "Mosaic: Update Rigidbody");
 
             if (p.Mass.HasValue)       rb.mass        = p.Mass.Value;
             if (p.Drag.HasValue)       rb.linearDamping         = p.Drag.Value;
             if (p.AngularDrag.HasValue) rb.angularDamping  = p.AngularDrag.Value;
             if (p.UseGravity.HasValue) rb.useGravity   = p.UseGravity.Value;
             if (p.IsKinematic.HasValue) rb.isKinematic  = p.IsKinematic.Value;
+
+            if (!string.IsNullOrEmpty(p.Interpolation))
+            {
+                if (!System.Enum.TryParse<RigidbodyInterpolation>(p.Interpolation, ignoreCase: true, out var interp))
+                    return ToolResult<PhysicsAddRigidbodyResult>.Fail(
+                        $"Unknown Interpolation '{p.Interpolation}'. Valid: None, Interpolate, Extrapolate",
+                        ErrorCodes.INVALID_PARAM);
+                rb.interpolation = interp;
+            }
+
+            if (!string.IsNullOrEmpty(p.CollisionDetection))
+            {
+                if (!System.Enum.TryParse<CollisionDetectionMode>(p.CollisionDetection, ignoreCase: true, out var mode))
+                    return ToolResult<PhysicsAddRigidbodyResult>.Fail(
+                        $"Unknown CollisionDetection '{p.CollisionDetection}'. Valid: Discrete, Continuous, " +
+                        "ContinuousDynamic, ContinuousSpeculative", ErrorCodes.INVALID_PARAM);
+                rb.collisionDetectionMode = mode;
+            }
+
+            if (HasAnyConstraintField(p))
+            {
+                var constraints = RigidbodyConstraints.None;
+                if (p.FreezePositionX == true) constraints |= RigidbodyConstraints.FreezePositionX;
+                if (p.FreezePositionY == true) constraints |= RigidbodyConstraints.FreezePositionY;
+                if (p.FreezePositionZ == true) constraints |= RigidbodyConstraints.FreezePositionZ;
+                if (p.FreezeRotationX == true) constraints |= RigidbodyConstraints.FreezeRotationX;
+                if (p.FreezeRotationY == true) constraints |= RigidbodyConstraints.FreezeRotationY;
+                if (p.FreezeRotationZ == true) constraints |= RigidbodyConstraints.FreezeRotationZ;
+                rb.constraints = constraints;
+            }
+
+            if (p.CenterOfMass != null)
+            {
+                if (p.CenterOfMass.Length != 3)
+                    return ToolResult<PhysicsAddRigidbodyResult>.Fail(
+                        "CenterOfMass requires exactly [x, y, z]", ErrorCodes.INVALID_PARAM);
+                rb.centerOfMass = new Vector3(p.CenterOfMass[0], p.CenterOfMass[1], p.CenterOfMass[2]);
+            }
+            if (p.MaxAngularVelocity.HasValue) rb.maxAngularVelocity = p.MaxAngularVelocity.Value;
+
+            if (!string.IsNullOrEmpty(p.IncludeLayers))
+                rb.includeLayers = LayerMask.GetMask(SplitLayerNames(p.IncludeLayers));
+            if (!string.IsNullOrEmpty(p.ExcludeLayers))
+                rb.excludeLayers = LayerMask.GetMask(SplitLayerNames(p.ExcludeLayers));
 
             return ToolResult<PhysicsAddRigidbodyResult>.Ok(new PhysicsAddRigidbodyResult
             {
@@ -42,8 +88,21 @@ namespace Mosaic.Bridge.Tools.Physics
                 Drag           = rb.linearDamping,
                 AngularDrag    = rb.angularDamping,
                 UseGravity     = rb.useGravity,
-                IsKinematic    = rb.isKinematic
+                IsKinematic    = rb.isKinematic,
+                WasExisting    = wasExisting,
+                Interpolation  = rb.interpolation.ToString(),
+                CollisionDetection = rb.collisionDetectionMode.ToString(),
+                Constraints    = rb.constraints.ToString(),
+                CenterOfMass   = new[] { rb.centerOfMass.x, rb.centerOfMass.y, rb.centerOfMass.z },
+                MaxAngularVelocity = rb.maxAngularVelocity,
             });
         }
+
+        private static bool HasAnyConstraintField(PhysicsAddRigidbodyParams p) =>
+            p.FreezePositionX.HasValue || p.FreezePositionY.HasValue || p.FreezePositionZ.HasValue ||
+            p.FreezeRotationX.HasValue || p.FreezeRotationY.HasValue || p.FreezeRotationZ.HasValue;
+
+        private static string[] SplitLayerNames(string commaSeparated) =>
+            System.Array.ConvertAll(commaSeparated.Split(','), s => s.Trim());
     }
 }

@@ -139,17 +139,22 @@ namespace Mosaic.Bridge.Tests.Physics
         }
 
         // L9: Undo.AddComponent<Rigidbody> returns null when one already exists, and every field
-        // access on that null used to throw NullReferenceException instead of a clean error.
+        // access on that null used to throw NullReferenceException instead of a clean error. Fixed
+        // by updating the existing Rigidbody instead of failing (O4 §4.7 "update-if-exists").
         [Test]
-        public void AddRigidbody_AlreadyPresent_ReturnsCleanErrorNotException()
+        public void AddRigidbody_AlreadyPresent_UpdatesInsteadOfFailing()
         {
-            Undo.AddComponent<Rigidbody>(_testGo);
+            var existing = Undo.AddComponent<Rigidbody>(_testGo);
+            existing.mass = 1f;
 
             var result = Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyTool.Execute(
-                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams { Name = "PhysicsTestCube" });
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams { Name = "PhysicsTestCube", Mass = 9f });
 
-            Assert.IsFalse(result.Success);
-            StringAssert.Contains("already has a Rigidbody", result.Error);
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(result.Data.WasExisting);
+            Assert.AreEqual(9f, result.Data.Mass);
+            Assert.AreEqual(9f, existing.mass);
+            Assert.AreEqual(1, _testGo.GetComponents<Rigidbody>().Length, "must not add a second Rigidbody");
         }
 
         // ── Add Collider ────────────────────────────────────────────────────
@@ -446,6 +451,217 @@ namespace Mosaic.Bridge.Tests.Physics
 
             Assert.IsFalse(result.Success);
             StringAssert.Contains("No PhysicsMaterial asset found", result.Error);
+        }
+
+        // ── O4 §4.7: Rigidbody full surface ─────────────────────────────────
+
+        [Test]
+        public void AddRigidbody_ConstraintsAndInterpolation_Apply()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams
+                {
+                    Name = "PhysicsTestCube",
+                    Interpolation = "Interpolate", CollisionDetection = "Continuous",
+                    FreezePositionY = true, FreezeRotationX = true,
+                    MaxAngularVelocity = 5f,
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Interpolate", result.Data.Interpolation);
+            Assert.AreEqual("Continuous", result.Data.CollisionDetection);
+            Assert.AreEqual(5f, result.Data.MaxAngularVelocity, 0.001f);
+
+            var rb = _testGo.GetComponent<Rigidbody>();
+            Assert.AreEqual(RigidbodyConstraints.FreezePositionY | RigidbodyConstraints.FreezeRotationX, rb.constraints);
+        }
+
+        [Test]
+        public void AddRigidbody_UnknownInterpolation_ReturnsInvalidParam()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams
+                {
+                    Name = "PhysicsTestCube", Interpolation = "Teleport",
+                });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddRigidbody_IncludeExcludeLayers_Apply()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddRigidbodyParams
+                {
+                    Name = "PhysicsTestCube", IncludeLayers = "Default", ExcludeLayers = "Water",
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var rb = _testGo.GetComponent<Rigidbody>();
+            Assert.AreEqual(LayerMask.GetMask("Default"), (int)rb.includeLayers);
+            Assert.AreEqual(LayerMask.GetMask("Water"), (int)rb.excludeLayers);
+        }
+
+        // ── O4 §4.7: Collider fitting, convex, compound, layers ──────────────
+
+        [Test]
+        public void AddCollider_CapsuleExplicitOverrides_Apply()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Capsule",
+                    Radius = 2f, Height = 4f, Direction = "Z",
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var capsule = _testGo.GetComponent<CapsuleCollider>();
+            Assert.AreEqual(2f, capsule.radius, 0.001f);
+            Assert.AreEqual(4f, capsule.height, 0.001f);
+            Assert.AreEqual(2, capsule.direction);
+        }
+
+        [Test]
+        public void AddCollider_UnknownDirection_ReturnsInvalidParam()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Capsule", Direction = "W",
+                });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddCollider_IncludeExcludeLayers_Apply()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                {
+                    Name = "PhysicsTestCube", Type = "Box",
+                    IncludeLayers = "Default", ExcludeLayers = "Water",
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var box = _testGo.GetComponent<BoxCollider>();
+            Assert.AreEqual(LayerMask.GetMask("Default"), (int)box.includeLayers);
+            Assert.AreEqual(LayerMask.GetMask("Water"), (int)box.excludeLayers);
+        }
+
+        [Test]
+        public void AddCollider_FitChildren_EncompassesChildRenderers()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+            Object.DestroyImmediate(_testGo.GetComponent<MeshFilter>());
+            Object.DestroyImmediate(_testGo.GetComponent<MeshRenderer>());
+
+            var child = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            child.transform.SetParent(_testGo.transform, false);
+            child.transform.localPosition = new Vector3(2f, 0f, 0f);
+            Object.DestroyImmediate(child.GetComponent<Collider>());
+
+            try
+            {
+                var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                    {
+                        Name = "PhysicsTestCube", Type = "Box", Fit = "children",
+                    });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var box = _testGo.GetComponent<BoxCollider>();
+                var childRenderer = child.GetComponent<Renderer>();
+                Assert.IsTrue(box.bounds.Contains(childRenderer.bounds.min));
+                Assert.IsTrue(box.bounds.Contains(childRenderer.bounds.max));
+            }
+            finally
+            {
+                Object.DestroyImmediate(child);
+            }
+        }
+
+        [Test]
+        public void AddCollider_MaterialPath_Assigns()
+        {
+            var existing = _testGo.GetComponent<Collider>();
+            if (existing != null) Object.DestroyImmediate(existing);
+
+            const string path = "Assets/MosaicColliderTestMaterial.physicMaterial";
+            var mat = new PhysicsMaterial { dynamicFriction = 0.1f };
+            AssetDatabase.CreateAsset(mat, path);
+
+            try
+            {
+                var result = Mosaic.Bridge.Tools.Physics.PhysicsAddColliderTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsAddColliderParams
+                    {
+                        Name = "PhysicsTestCube", Type = "Box", MaterialPath = path,
+                    });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreSame(mat, _testGo.GetComponent<BoxCollider>().sharedMaterial);
+            }
+            finally
+            {
+                if (AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(path) != null)
+                    AssetDatabase.DeleteAsset(path);
+            }
+        }
+
+        // ── O4 §4.7: Physics material reuse — combine modes + ApplyToChildren ─
+
+        [Test]
+        public void SetPhysicsMaterial_CombineModes_Apply()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams
+                {
+                    Name = "PhysicsTestCube", FrictionCombine = "Maximum", BounceCombine = "Minimum",
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Maximum", result.Data.FrictionCombine);
+            Assert.AreEqual("Minimum", result.Data.BounceCombine);
+        }
+
+        [Test]
+        public void SetPhysicsMaterial_ApplyToChildren_AssignsToChildColliders()
+        {
+            var child = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            child.transform.SetParent(_testGo.transform, false);
+
+            try
+            {
+                var result = Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsSetPhysicsMaterialParams
+                    {
+                        Name = "PhysicsTestCube", ApplyToChildren = true,
+                    });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual(1, result.Data.ChildrenAppliedCount);
+                Assert.AreSame(
+                    _testGo.GetComponent<Collider>().sharedMaterial,
+                    child.GetComponent<Collider>().sharedMaterial);
+            }
+            finally
+            {
+                Object.DestroyImmediate(child);
+            }
         }
     }
 }

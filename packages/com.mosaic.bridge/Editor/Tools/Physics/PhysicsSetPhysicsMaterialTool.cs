@@ -14,7 +14,9 @@ namespace Mosaic.Bridge.Tools.Physics
                     "Creates and assigns a PhysicsMaterial to a GameObject's collider. Omitted friction/" +
                     "bounciness values keep Unity's own defaults (0.6/0.6/0) rather than becoming 0. Set " +
                     "ReuseExisting=true with an AssetPath that already has a PhysicsMaterial to share that " +
-                    "asset across multiple objects instead of creating a new one each call.",
+                    "asset across multiple objects instead of creating a new one each call. " +
+                    "FrictionCombine/BounceCombine control how this material blends with the other collider's " +
+                    "in contact. ApplyToChildren also assigns it to every child Collider.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<PhysicsSetPhysicsMaterialResult> Execute(PhysicsSetPhysicsMaterialParams p)
         {
@@ -64,6 +66,23 @@ namespace Mosaic.Bridge.Tools.Physics
                     bounciness      = p.Bounciness ?? 0f
                 };
 
+                if (!string.IsNullOrEmpty(p.FrictionCombine))
+                {
+                    if (!System.Enum.TryParse<PhysicsMaterialCombine>(p.FrictionCombine, ignoreCase: true, out var combine))
+                        return ToolResult<PhysicsSetPhysicsMaterialResult>.Fail(
+                            $"Unknown FrictionCombine '{p.FrictionCombine}'. Valid: Average, Minimum, Multiply, Maximum",
+                            ErrorCodes.INVALID_PARAM);
+                    mat.frictionCombine = combine;
+                }
+                if (!string.IsNullOrEmpty(p.BounceCombine))
+                {
+                    if (!System.Enum.TryParse<PhysicsMaterialCombine>(p.BounceCombine, ignoreCase: true, out var combine))
+                        return ToolResult<PhysicsSetPhysicsMaterialResult>.Fail(
+                            $"Unknown BounceCombine '{p.BounceCombine}'. Valid: Average, Minimum, Multiply, Maximum",
+                            ErrorCodes.INVALID_PARAM);
+                    mat.bounceCombine = combine;
+                }
+
                 if (!string.IsNullOrEmpty(p.AssetPath))
                 {
                     var absoluteDir = Path.GetDirectoryName(
@@ -80,6 +99,18 @@ namespace Mosaic.Bridge.Tools.Physics
 
             collider.sharedMaterial = mat;
 
+            int childrenApplied = 0;
+            if (p.ApplyToChildren)
+            {
+                foreach (var child in go.GetComponentsInChildren<Collider>())
+                {
+                    if (child == collider) continue;
+                    Undo.RecordObject(child, "Mosaic: Set PhysicsMaterial");
+                    child.sharedMaterial = mat;
+                    childrenApplied++;
+                }
+            }
+
             return ToolResult<PhysicsSetPhysicsMaterialResult>.Ok(new PhysicsSetPhysicsMaterialResult
             {
                 GameObjectName  = go.name,
@@ -88,7 +119,10 @@ namespace Mosaic.Bridge.Tools.Physics
                 StaticFriction  = mat.staticFriction,
                 Bounciness      = mat.bounciness,
                 AssetPath       = assetPath,
-                SavedAsAsset    = savedAsAsset
+                SavedAsAsset    = savedAsAsset,
+                FrictionCombine = mat.frictionCombine.ToString(),
+                BounceCombine   = mat.bounceCombine.ToString(),
+                ChildrenAppliedCount = childrenApplied,
             });
         }
     }

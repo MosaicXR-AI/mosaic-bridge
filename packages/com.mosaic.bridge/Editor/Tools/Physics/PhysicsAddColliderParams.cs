@@ -23,5 +23,26 @@ namespace Mosaic.Bridge.Tools.Physics
         /// dynamic Rigidbody is invalid and silently produces no collision. Default false, matching
         /// MeshCollider's own default.</summary>
         public bool Convex { get; set; }
+
+        /// <summary>Sphere/Capsule only. Explicit override — null keeps the auto-fit size.</summary>
+        public float? Radius { get; set; }
+        /// <summary>Capsule only. Explicit override — null keeps the auto-fit size.</summary>
+        public float? Height { get; set; }
+        /// <summary>Capsule only. Axis: "X", "Y", or "Z". Null keeps CapsuleCollider's default (Y).</summary>
+        public string Direction { get; set; }
+
+        /// <summary>Asset path of a PhysicsMaterial to assign (sharedMaterial). Null leaves unset.</summary>
+        public string MaterialPath { get; set; }
+
+        /// <summary>Comma-separated layer names this collider additionally includes, overriding the
+        /// Layer Collision Matrix (Collider.includeLayers). Null leaves the default (no override).</summary>
+        public string IncludeLayers { get; set; }
+        /// <summary>Comma-separated layer names this collider excludes (Collider.excludeLayers).</summary>
+        public string ExcludeLayers { get; set; }
+
+        /// <summary>"self" (default, fit to this GameObject's own mesh/renderer) or "children"
+        /// (fit to the union of all child renderer bounds — a compound-collider approximation for
+        /// a parent with no mesh of its own). Box colliders only.</summary>
+        public string Fit { get; set; } = "self";
     }
 }

@@ -11,7 +11,10 @@ namespace Mosaic.Bridge.Tools.Terrains
     public static class TerrainPaintTool
     {
         [MosaicTool("terrain/paint",
-                    "Splatmap painting: add-layer, remove-layer, paint-layer, fill-layer",
+                    "Splatmap painting: add-layer (also MaskMapPath, Metallic, Smoothness, " +
+                    "TileOffset, NormalScale, Diffuse RemapMin/Max — full PBR layer authoring, " +
+                    "applied whether the .terrainlayer is newly created or an existing one is " +
+                    "reused), remove-layer, paint-layer, fill-layer",
                     isReadOnly: false)]
         public static ToolResult<TerrainPaintResult> Execute(TerrainPaintParams p)
         {
@@ -94,6 +97,42 @@ namespace Mosaic.Bridge.Tools.Terrains
                         System.IO.Path.Combine(Application.dataPath, "..", dir));
                 AssetDatabase.CreateAsset(layer, layerPath);
             }
+
+            // Full PBR authoring — applied whether the layer is new or reused, so a second
+            // add-layer call can tune an already-shared layer without recreating it.
+            if (!string.IsNullOrEmpty(p.MaskMapPath))
+            {
+                var maskMap = AssetDatabase.LoadAssetAtPath<Texture2D>(p.MaskMapPath);
+                if (maskMap == null)
+                    return ToolResult<TerrainPaintResult>.Fail(
+                        $"Mask map not found at '{p.MaskMapPath}'", ErrorCodes.NOT_FOUND);
+                layer.maskMapTexture = maskMap;
+            }
+            if (p.Metallic.HasValue) layer.metallic = p.Metallic.Value;
+            if (p.Smoothness.HasValue) layer.smoothness = p.Smoothness.Value;
+            if (p.NormalScale.HasValue) layer.normalScale = p.NormalScale.Value;
+            if (p.TileOffset != null)
+            {
+                if (p.TileOffset.Length != 2)
+                    return ToolResult<TerrainPaintResult>.Fail(
+                        "TileOffset requires exactly [x, y]", ErrorCodes.INVALID_PARAM);
+                layer.tileOffset = new Vector2(p.TileOffset[0], p.TileOffset[1]);
+            }
+            if (p.DiffuseRemapMin != null)
+            {
+                if (p.DiffuseRemapMin.Length != 4)
+                    return ToolResult<TerrainPaintResult>.Fail(
+                        "DiffuseRemapMin requires exactly [r, g, b, a]", ErrorCodes.INVALID_PARAM);
+                layer.diffuseRemapMin = new Vector4(p.DiffuseRemapMin[0], p.DiffuseRemapMin[1], p.DiffuseRemapMin[2], p.DiffuseRemapMin[3]);
+            }
+            if (p.DiffuseRemapMax != null)
+            {
+                if (p.DiffuseRemapMax.Length != 4)
+                    return ToolResult<TerrainPaintResult>.Fail(
+                        "DiffuseRemapMax requires exactly [r, g, b, a]", ErrorCodes.INVALID_PARAM);
+                layer.diffuseRemapMax = new Vector4(p.DiffuseRemapMax[0], p.DiffuseRemapMax[1], p.DiffuseRemapMax[2], p.DiffuseRemapMax[3]);
+            }
+            EditorUtility.SetDirty(layer);
 
             int existingIndex = System.Array.IndexOf(data.terrainLayers, layer);
             int layerIndex;

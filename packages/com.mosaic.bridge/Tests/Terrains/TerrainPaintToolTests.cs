@@ -108,5 +108,61 @@ namespace Mosaic.Bridge.Tests.Terrains
                 "adding the same texture twice must not duplicate the layer on the terrain");
             Assert.AreEqual(0, second.Data.LayerIndex);
         }
+
+        // O4 §4.3: PBR layer authoring (maskMap, metallic, smoothness, tileOffset, normalScale,
+        // diffuse remap) — previously only diffuseTexture/normalMapTexture/tileSize were settable.
+
+        [Test]
+        public void AddLayer_PbrFields_ApplyToTheLayerAsset()
+        {
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+                Metallic = 0.5f, Smoothness = 0.8f, NormalScale = 0.7f,
+                TileOffset = new[] { 1f, 2f },
+                DiffuseRemapMin = new[] { 0f, 0f, 0f, 0f },
+                DiffuseRemapMax = new[] { 2f, 2f, 2f, 1f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(LayerPath);
+            Assert.AreEqual(0.5f, layer.metallic, 0.0001f);
+            Assert.AreEqual(0.8f, layer.smoothness, 0.0001f);
+            Assert.AreEqual(0.7f, layer.normalScale, 0.0001f);
+            Assert.AreEqual(new Vector2(1, 2), layer.tileOffset);
+            Assert.AreEqual(new Vector4(2, 2, 2, 1), layer.diffuseRemapMax);
+        }
+
+        [Test]
+        public void AddLayer_PbrFields_ApplyOnReusedLayerToo()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+            });
+
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintB", Action = "add-layer", TexturePath = TexturePath,
+                Metallic = 0.9f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var layer = AssetDatabase.LoadAssetAtPath<TerrainLayer>(LayerPath);
+            Assert.AreEqual(0.9f, layer.metallic, 0.0001f);
+        }
+
+        [Test]
+        public void AddLayer_InvalidTileOffset_ReturnsInvalidParam()
+        {
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+                TileOffset = new[] { 1f },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
     }
 }

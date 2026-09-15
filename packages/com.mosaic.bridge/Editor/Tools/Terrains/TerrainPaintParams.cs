@@ -29,6 +29,21 @@ namespace Mosaic.Bridge.Tools.Terrains
         /// common terrain/grid case) converge on one asset without this needing to be passed.</summary>
         public string LayerAssetPath { get; set; }
 
+        // -- add-layer: full PBR layer authoring (applied whether the layer is new or reused) --
+
+        /// <summary>Asset path to a mask map Texture2D (R=metallic, G=AO, B=height, A=smoothness).</summary>
+        public string MaskMapPath { get; set; }
+        public float? Metallic { get; set; }
+        public float? Smoothness { get; set; }
+        /// <summary>UV tiling offset [x, y].</summary>
+        public float[] TileOffset { get; set; }
+        /// <summary>Scales the normal map's effect, 0..1.</summary>
+        public float? NormalScale { get; set; }
+        /// <summary>Diffuse remap when a channel value is 0, [r,g,b,a].</summary>
+        public float[] DiffuseRemapMin { get; set; }
+        /// <summary>Diffuse remap when a channel value is 1, [r,g,b,a].</summary>
+        public float[] DiffuseRemapMax { get; set; }
+
         /// <summary>Normalized X position on the terrain (0..1) for paint.</summary>
         public float X { get; set; } = 0.5f;
 

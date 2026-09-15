@@ -292,5 +292,43 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
             Assert.AreEqual(2.5f, result.Data.DopplerLevel, 0.001f);
             Assert.AreEqual(180f, result.Data.Spread, 0.001f);
         }
+
+        [Test]
+        public void SetSpatial_CustomRolloffCurve_AppliesKeyframes()
+        {
+            _testGo = new GameObject("AudioTest_CustomRolloff");
+            _testGo.AddComponent<AudioSource>();
+
+            var result = AudioSetSpatialTool.Execute(new AudioSetSpatialParams
+            {
+                Name = "AudioTest_CustomRolloff",
+                RolloffMode = "Custom",
+                CustomRolloffTimes = new[] { 0f, 0.5f, 1f },
+                CustomRolloffValues = new[] { 1f, 0.4f, 0f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var source = _testGo.GetComponent<AudioSource>();
+            var curve = source.GetCustomCurve(AudioSourceCurveType.CustomRolloff);
+            Assert.AreEqual(3, curve.keys.Length);
+            Assert.AreEqual(0.4f, curve.Evaluate(0.5f), 0.001f);
+        }
+
+        [Test]
+        public void SetSpatial_CurveMismatchedLengths_ReturnsInvalidParam()
+        {
+            _testGo = new GameObject("AudioTest_BadCurve");
+            _testGo.AddComponent<AudioSource>();
+
+            var result = AudioSetSpatialTool.Execute(new AudioSetSpatialParams
+            {
+                Name = "AudioTest_BadCurve",
+                CustomRolloffTimes = new[] { 0f, 1f },
+                CustomRolloffValues = new[] { 1f },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
     }
 }

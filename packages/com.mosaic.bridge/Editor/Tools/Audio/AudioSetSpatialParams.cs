@@ -22,5 +22,22 @@ namespace Mosaic.Bridge.Tools.Audio
 
         /// <summary>Spread angle of 3D sound in degrees (0-360).</summary>
         public float? Spread { get; set; }
+
+        /// <summary>Keyframe times (parallel to CustomRolloffValues) for the custom volume-rolloff curve.
+        /// Requires RolloffMode="Custom". Sets AudioSource.SetCustomCurve(CustomRolloff, ...).</summary>
+        public float[] CustomRolloffTimes { get; set; }
+        public float[] CustomRolloffValues { get; set; }
+
+        /// <summary>Keyframe times/values for the custom spatial-blend curve.</summary>
+        public float[] SpatialBlendCurveTimes { get; set; }
+        public float[] SpatialBlendCurveValues { get; set; }
+
+        /// <summary>Keyframe times/values for the custom reverb-zone-mix curve.</summary>
+        public float[] ReverbZoneMixCurveTimes { get; set; }
+        public float[] ReverbZoneMixCurveValues { get; set; }
+
+        /// <summary>Keyframe times/values for the custom spread curve.</summary>
+        public float[] SpreadCurveTimes { get; set; }
+        public float[] SpreadCurveValues { get; set; }
     }
 }

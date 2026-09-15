@@ -11,7 +11,9 @@ namespace Mosaic.Bridge.Tools.Audio
     public static class AudioSetSpatialTool
     {
         [MosaicTool("audio/set-spatial",
-                    "Sets spatial audio properties on an AudioSource (min/max distance, rolloff, doppler, spread)",
+                    "Sets spatial audio properties on an AudioSource (min/max distance, rolloff, doppler, " +
+                    "spread; custom curves for CustomRolloff/SpatialBlend/ReverbZoneMix/Spread via " +
+                    "parallel Times/Values keyframe arrays)",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<AudioSetSpatialResult> Execute(AudioSetSpatialParams p)
         {
@@ -70,6 +72,14 @@ namespace Mosaic.Bridge.Tools.Audio
             if (p.Spread.HasValue)
                 source.spread = Mathf.Clamp(p.Spread.Value, 0f, 360f);
 
+            if (!TryApplyCurve(source, AudioSourceCurveType.CustomRolloff, p.CustomRolloffTimes, p.CustomRolloffValues, out var curveError) ||
+                !TryApplyCurve(source, AudioSourceCurveType.SpatialBlend, p.SpatialBlendCurveTimes, p.SpatialBlendCurveValues, out curveError) ||
+                !TryApplyCurve(source, AudioSourceCurveType.ReverbZoneMix, p.ReverbZoneMixCurveTimes, p.ReverbZoneMixCurveValues, out curveError) ||
+                !TryApplyCurve(source, AudioSourceCurveType.Spread, p.SpreadCurveTimes, p.SpreadCurveValues, out curveError))
+            {
+                return ToolResult<AudioSetSpatialResult>.Fail(curveError, ErrorCodes.INVALID_PARAM);
+            }
+
 #if UNITY_2023_1_OR_NEWER
             bool hasListener = UnityEngine.Object.FindAnyObjectByType<AudioListener>() != null;
 #else
@@ -90,6 +100,31 @@ namespace Mosaic.Bridge.Tools.Audio
                 Spread                 = source.spread,
                 NoAudioListenerWarning = listenerWarning
             });
+        }
+
+        private static bool TryApplyCurve(
+            AudioSource source, AudioSourceCurveType type, float[] times, float[] values, out string error)
+        {
+            error = null;
+            if (times == null && values == null) return true;
+
+            if (times == null || values == null || times.Length != values.Length)
+            {
+                error = $"{type} curve requires matching Times/Values arrays of the same length";
+                return false;
+            }
+            if (times.Length == 0)
+            {
+                error = $"{type} curve requires at least one keyframe";
+                return false;
+            }
+
+            var keyframes = new Keyframe[times.Length];
+            for (int i = 0; i < times.Length; i++)
+                keyframes[i] = new Keyframe(times[i], values[i]);
+
+            source.SetCustomCurve(type, new AnimationCurve(keyframes));
+            return true;
         }
     }
 }

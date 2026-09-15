@@ -1,5 +1,6 @@
 #if MOSAIC_HAS_TIMELINE
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.Timeline;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
@@ -37,8 +38,24 @@ namespace Mosaic.Bridge.Tools.Timeline
                 }
             }
 
-            var timeline = new TimelineAsset();
+            var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
             timeline.name = p.Name;
+
+            if (p.FrameRate.HasValue)
+                timeline.editorSettings.frameRate = p.FrameRate.Value;
+
+            if (!string.IsNullOrEmpty(p.DurationMode))
+            {
+                if (!TryParseDurationMode(p.DurationMode, out var durationMode))
+                    return ToolResult<TimelineCreateResult>.Fail(
+                        $"Unknown DurationMode '{p.DurationMode}'. Valid: BasedOnClips, FixedLength",
+                        ErrorCodes.INVALID_PARAM);
+                timeline.durationMode = durationMode;
+            }
+
+            if (p.FixedDuration.HasValue)
+                timeline.fixedDuration = p.FixedDuration.Value;
+
             AssetDatabase.CreateAsset(timeline, p.Path);
             AssetDatabase.SaveAssets();
 
@@ -47,8 +64,21 @@ namespace Mosaic.Bridge.Tools.Timeline
             return ToolResult<TimelineCreateResult>.Ok(new TimelineCreateResult
             {
                 AssetPath = p.Path,
-                Name = p.Name
+                Name = p.Name,
+                FrameRate = timeline.editorSettings.frameRate,
+                DurationMode = timeline.durationMode.ToString(),
+                FixedDuration = timeline.fixedDuration,
             });
+        }
+
+        private static bool TryParseDurationMode(string value, out TimelineAsset.DurationMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "basedonclips": result = TimelineAsset.DurationMode.BasedOnClips; return true;
+                case "fixedlength":  result = TimelineAsset.DurationMode.FixedLength;  return true;
+                default:             result = TimelineAsset.DurationMode.BasedOnClips; return false;
+            }
         }
     }
 }

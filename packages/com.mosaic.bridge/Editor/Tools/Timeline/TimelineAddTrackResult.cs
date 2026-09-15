@@ -6,6 +6,8 @@ namespace Mosaic.Bridge.Tools.Timeline
         public int TrackIndex { get; set; }
         public string TrackType { get; set; }
         public string Name { get; set; }
+        public bool Muted { get; set; }
+        public string ParentGroupName { get; set; }
     }
 }
 #endif

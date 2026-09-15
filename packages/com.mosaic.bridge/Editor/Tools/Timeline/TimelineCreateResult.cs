@@ -5,6 +5,9 @@ namespace Mosaic.Bridge.Tools.Timeline
     {
         public string AssetPath { get; set; }
         public string Name { get; set; }
+        public double FrameRate { get; set; }
+        public string DurationMode { get; set; }
+        public double FixedDuration { get; set; }
     }
 }
 #endif

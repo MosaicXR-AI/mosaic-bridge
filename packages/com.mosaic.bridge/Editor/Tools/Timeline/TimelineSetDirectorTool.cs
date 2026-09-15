@@ -46,14 +46,65 @@ namespace Mosaic.Bridge.Tools.Timeline
             }
 
             director.playableAsset = timeline;
+
+            if (p.PlayOnAwake.HasValue)
+                director.playOnAwake = p.PlayOnAwake.Value;
+
+            if (!string.IsNullOrEmpty(p.WrapMode))
+            {
+                if (!TryParseWrapMode(p.WrapMode, out var wrapMode))
+                    return ToolResult<TimelineSetDirectorResult>.Fail(
+                        $"Unknown WrapMode '{p.WrapMode}'. Valid: Hold, Loop, None", ErrorCodes.INVALID_PARAM);
+                director.extrapolationMode = wrapMode;
+            }
+
+            if (!string.IsNullOrEmpty(p.UpdateMode))
+            {
+                if (!TryParseUpdateMode(p.UpdateMode, out var updateMode))
+                    return ToolResult<TimelineSetDirectorResult>.Fail(
+                        $"Unknown UpdateMode '{p.UpdateMode}'. Valid: GameTime, DSPClock, UnscaledGameTime, Manual",
+                        ErrorCodes.INVALID_PARAM);
+                director.timeUpdateMode = updateMode;
+            }
+
+            if (p.InitialTime.HasValue)
+                director.initialTime = p.InitialTime.Value;
+
             EditorUtility.SetDirty(director);
 
             return ToolResult<TimelineSetDirectorResult>.Ok(new TimelineSetDirectorResult
             {
                 InstanceId = UnityIds.Of(go),
                 GameObjectName = go.name,
-                TimelineAssetPath = p.TimelineAssetPath
+                TimelineAssetPath = p.TimelineAssetPath,
+                PlayOnAwake = director.playOnAwake,
+                WrapMode = director.extrapolationMode.ToString(),
+                UpdateMode = director.timeUpdateMode.ToString(),
+                InitialTime = director.initialTime,
             });
+        }
+
+        private static bool TryParseWrapMode(string value, out DirectorWrapMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "hold": result = DirectorWrapMode.Hold; return true;
+                case "loop": result = DirectorWrapMode.Loop; return true;
+                case "none": result = DirectorWrapMode.None; return true;
+                default:     result = DirectorWrapMode.Hold; return false;
+            }
+        }
+
+        private static bool TryParseUpdateMode(string value, out DirectorUpdateMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "gametime":         result = DirectorUpdateMode.GameTime;         return true;
+                case "dspclock":         result = DirectorUpdateMode.DSPClock;         return true;
+                case "unscaledgametime": result = DirectorUpdateMode.UnscaledGameTime; return true;
+                case "manual":           result = DirectorUpdateMode.Manual;           return true;
+                default:                 result = DirectorUpdateMode.GameTime;         return false;
+            }
         }
     }
 }

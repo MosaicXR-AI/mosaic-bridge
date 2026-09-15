@@ -11,6 +11,14 @@ namespace Mosaic.Bridge.Tools.Animations
         public string BlendParameterY { get; set; }
         public int ChildCount { get; set; }
         public BlendTreeChildInfo[] Children { get; set; }
+
+        // -- set-thresholds --
+        public bool UseAutomaticThresholds { get; set; }
+        public float MinThreshold { get; set; }
+        public float MaxThreshold { get; set; }
+
+        // -- add-child-tree --
+        public string ChildTreeName { get; set; }
     }
 
     public sealed class BlendTreeChildInfo
@@ -21,5 +29,8 @@ namespace Mosaic.Bridge.Tools.Animations
         public float PositionX { get; set; }
         public float PositionY { get; set; }
         public float TimeScale { get; set; }
+        public string DirectBlendParameter { get; set; }
+        public bool Mirror { get; set; }
+        public bool IsNestedBlendTree { get; set; }
     }
 }

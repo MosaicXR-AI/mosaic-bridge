@@ -55,5 +55,24 @@ namespace Mosaic.Bridge.Tools.Terrains
 
         /// <summary>Paint strength (0..1).</summary>
         public float Strength { get; set; } = 1f;
+
+        // -- array --
+
+        /// <summary>Flat row-major [HeightCells * Width] array of target weights (0..1) for
+        /// LayerIndex over the rectangle at (ArrayX, ArrayY).</summary>
+        public float[] Weights { get; set; }
+        public int ArrayX { get; set; }
+        public int ArrayY { get; set; }
+        public int Width { get; set; }
+        public int HeightCells { get; set; }
+
+        // -- auto (by slope/height) --
+
+        /// <summary>Degrees, inclusive. Null means no slope constraint.</summary>
+        public float? MinSlope { get; set; }
+        public float? MaxSlope { get; set; }
+        /// <summary>World-space height, inclusive. Null means no height constraint.</summary>
+        public float? MinHeight { get; set; }
+        public float? MaxHeight { get; set; }
     }
 }

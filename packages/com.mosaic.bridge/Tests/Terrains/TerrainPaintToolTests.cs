@@ -164,5 +164,115 @@ namespace Mosaic.Bridge.Tests.Terrains
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
+
+        // O4 §4.3: batch/auto splatmap — procedural texturing without brush-call storms.
+
+        [Test]
+        public void Array_AppliesWeightsAndRedistributesOtherLayers()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+            });
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "fill-layer", LayerIndex = 0,
+            });
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer",
+                TexturePath = TexturePath, LayerAssetPath = "Assets/TerrainData/SecondLayer.terrainlayer",
+            });
+
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "array", LayerIndex = 1,
+                ArrayX = 0, ArrayY = 0, Width = 2, HeightCells = 2,
+                Weights = new[] { 1f, 1f, 1f, 1f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var terrain = _terrainA.GetComponent<Terrain>();
+            var alphas = terrain.terrainData.GetAlphamaps(0, 0, 2, 2);
+            for (int y = 0; y < 2; y++)
+            for (int x = 0; x < 2; x++)
+            {
+                Assert.AreEqual(1f, alphas[y, x, 1], 0.0001f);
+                Assert.AreEqual(0f, alphas[y, x, 0], 0.0001f);
+            }
+
+            if (AssetDatabase.AssetPathExists("Assets/TerrainData/SecondLayer.terrainlayer"))
+                AssetDatabase.DeleteAsset("Assets/TerrainData/SecondLayer.terrainlayer");
+        }
+
+        [Test]
+        public void Array_MismatchedWeightsLength_ReturnsInvalidParam()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+            });
+
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "array", LayerIndex = 0,
+                Width = 2, HeightCells = 2, Weights = new[] { 1f },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void Auto_ByHeight_PaintsOnlyMatchingSamples()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+            });
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer",
+                TexturePath = TexturePath, LayerAssetPath = "Assets/TerrainData/SecondLayer2.terrainlayer",
+            });
+
+            // Raise the whole terrain to a known height, then only the second layer should match
+            // a MinHeight above it (nothing should paint).
+            var terrain = _terrainA.GetComponent<Terrain>();
+            var res = terrain.terrainData.heightmapResolution;
+            var heights = new float[res, res];
+            for (int y = 0; y < res; y++)
+                for (int x = 0; x < res; x++)
+                    heights[y, x] = 0.1f; // low
+            terrain.terrainData.SetHeights(0, 0, heights);
+
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "auto", LayerIndex = 1, MinHeight = 1000f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            StringAssert.Contains("0 of", result.Data.Message);
+
+            if (AssetDatabase.AssetPathExists("Assets/TerrainData/SecondLayer2.terrainlayer"))
+                AssetDatabase.DeleteAsset("Assets/TerrainData/SecondLayer2.terrainlayer");
+        }
+
+        [Test]
+        public void Auto_NoConstraints_ReturnsInvalidParam()
+        {
+            TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "add-layer", TexturePath = TexturePath,
+            });
+
+            var result = TerrainPaintTool.Execute(new TerrainPaintParams
+            {
+                Name = "TestTerrain_PaintA", Action = "auto", LayerIndex = 0,
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
     }
 }

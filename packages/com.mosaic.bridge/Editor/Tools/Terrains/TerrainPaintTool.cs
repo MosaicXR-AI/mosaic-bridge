@@ -14,7 +14,10 @@ namespace Mosaic.Bridge.Tools.Terrains
                     "Splatmap painting: add-layer (also MaskMapPath, Metallic, Smoothness, " +
                     "TileOffset, NormalScale, Diffuse RemapMin/Max — full PBR layer authoring, " +
                     "applied whether the .terrainlayer is newly created or an existing one is " +
-                    "reused), remove-layer, paint-layer, fill-layer",
+                    "reused), remove-layer, paint-layer, fill-layer, array (Weights flat " +
+                    "[HeightCells*Width] over the rectangle at ArrayX/ArrayY — batch/procedural " +
+                    "texturing without brush-call storms), auto (paints LayerIndex wherever " +
+                    "Min/MaxSlope degrees and/or Min/MaxHeight match, across the whole terrain).",
                     isReadOnly: false)]
         public static ToolResult<TerrainPaintResult> Execute(TerrainPaintParams p)
         {
@@ -39,9 +42,15 @@ namespace Mosaic.Bridge.Tools.Terrains
                 case "fill-layer":
                     return FillLayer(terrain, data, p);
 
+                case "array":
+                    return ArrayLayer(terrain, data, p);
+
+                case "auto":
+                    return AutoLayer(terrain, data, p);
+
                 default:
                     return ToolResult<TerrainPaintResult>.Fail(
-                        $"Unknown action '{p.Action}'. Valid actions: add-layer, remove-layer, paint-layer, fill-layer",
+                        $"Unknown action '{p.Action}'. Valid actions: add-layer, remove-layer, paint-layer, fill-layer, array, auto",
                         ErrorCodes.INVALID_PARAM);
             }
         }
@@ -291,6 +300,132 @@ namespace Mosaic.Bridge.Tools.Terrains
                 LayerCount = layerCount,
                 Message    = $"Filled entire terrain with layer {p.LayerIndex}"
             });
+        }
+
+        private static ToolResult<TerrainPaintResult> ArrayLayer(
+            UnityEngine.Terrain terrain, TerrainData data, TerrainPaintParams p)
+        {
+            if (data.terrainLayers.Length == 0)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    "Terrain has no layers. Use add-layer first.", ErrorCodes.NOT_PERMITTED);
+            if (p.LayerIndex < 0 || p.LayerIndex >= data.terrainLayers.Length)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    $"LayerIndex {p.LayerIndex} out of range (0..{data.terrainLayers.Length - 1})",
+                    ErrorCodes.OUT_OF_RANGE);
+            if (p.Weights == null || p.Weights.Length == 0)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    "Weights is required for action 'array'", ErrorCodes.INVALID_PARAM);
+            if (p.Width <= 0 || p.HeightCells <= 0)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    "Width and HeightCells must be > 0 for action 'array'", ErrorCodes.INVALID_PARAM);
+            if (p.Weights.Length != p.Width * p.HeightCells)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    $"Weights length {p.Weights.Length} does not match Width*HeightCells ({p.Width * p.HeightCells})",
+                    ErrorCodes.INVALID_PARAM);
+
+            int alphaRes = data.alphamapResolution;
+            if (p.ArrayX < 0 || p.ArrayY < 0 || p.ArrayX + p.Width > alphaRes || p.ArrayY + p.HeightCells > alphaRes)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    $"Array region ({p.ArrayX},{p.ArrayY})+({p.Width}x{p.HeightCells}) exceeds alphamap resolution {alphaRes}",
+                    ErrorCodes.INVALID_PARAM);
+
+            int layerCount = data.terrainLayers.Length;
+            var alphas = data.GetAlphamaps(p.ArrayX, p.ArrayY, p.Width, p.HeightCells);
+
+            for (int y = 0; y < p.HeightCells; y++)
+            {
+                for (int x = 0; x < p.Width; x++)
+                {
+                    SetLayerWeightAndRedistribute(alphas, x, y, p.LayerIndex, layerCount,
+                        Mathf.Clamp01(p.Weights[y * p.Width + x]));
+                }
+            }
+
+            data.SetAlphamaps(p.ArrayX, p.ArrayY, alphas);
+
+            return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
+            {
+                Action     = "array",
+                InstanceId = UnityIds.Of(terrain.gameObject),
+                Name       = terrain.gameObject.name,
+                LayerCount = layerCount,
+                Message    = $"Applied {p.Width}x{p.HeightCells} weight array to layer {p.LayerIndex} at ({p.ArrayX},{p.ArrayY})"
+            });
+        }
+
+        private static ToolResult<TerrainPaintResult> AutoLayer(
+            UnityEngine.Terrain terrain, TerrainData data, TerrainPaintParams p)
+        {
+            if (data.terrainLayers.Length == 0)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    "Terrain has no layers. Use add-layer first.", ErrorCodes.NOT_PERMITTED);
+            if (p.LayerIndex < 0 || p.LayerIndex >= data.terrainLayers.Length)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    $"LayerIndex {p.LayerIndex} out of range (0..{data.terrainLayers.Length - 1})",
+                    ErrorCodes.OUT_OF_RANGE);
+            if (!p.MinSlope.HasValue && !p.MaxSlope.HasValue && !p.MinHeight.HasValue && !p.MaxHeight.HasValue)
+                return ToolResult<TerrainPaintResult>.Fail(
+                    "At least one of MinSlope/MaxSlope/MinHeight/MaxHeight is required for action 'auto'",
+                    ErrorCodes.INVALID_PARAM);
+
+            int alphaRes = data.alphamapResolution;
+            int layerCount = data.terrainLayers.Length;
+            var alphas = data.GetAlphamaps(0, 0, alphaRes, alphaRes);
+            int painted = 0;
+
+            for (int y = 0; y < alphaRes; y++)
+            {
+                for (int x = 0; x < alphaRes; x++)
+                {
+                    float nx = (float)x / (alphaRes - 1);
+                    float ny = (float)y / (alphaRes - 1);
+
+                    if (p.MinSlope.HasValue || p.MaxSlope.HasValue)
+                    {
+                        var slope = data.GetSteepness(nx, ny);
+                        if (p.MinSlope.HasValue && slope < p.MinSlope.Value) continue;
+                        if (p.MaxSlope.HasValue && slope > p.MaxSlope.Value) continue;
+                    }
+                    if (p.MinHeight.HasValue || p.MaxHeight.HasValue)
+                    {
+                        var height = data.GetInterpolatedHeight(nx, ny);
+                        if (p.MinHeight.HasValue && height < p.MinHeight.Value) continue;
+                        if (p.MaxHeight.HasValue && height > p.MaxHeight.Value) continue;
+                    }
+
+                    SetLayerWeightAndRedistribute(alphas, x, y, p.LayerIndex, layerCount, 1f);
+                    painted++;
+                }
+            }
+
+            data.SetAlphamaps(0, 0, alphas);
+
+            return ToolResult<TerrainPaintResult>.Ok(new TerrainPaintResult
+            {
+                Action     = "auto",
+                InstanceId = UnityIds.Of(terrain.gameObject),
+                Name       = terrain.gameObject.name,
+                LayerCount = layerCount,
+                Message    = $"Auto-painted layer {p.LayerIndex} on {painted} of {alphaRes * alphaRes} alphamap samples"
+            });
+        }
+
+        /// <summary>Sets alphas[y,x,layerIndex] to newVal and rescales every other layer at that
+        /// pixel proportionally so the total stays 1 — same redistribution PaintLayer already uses.</summary>
+        private static void SetLayerWeightAndRedistribute(float[,,] alphas, int x, int y, int layerIndex, int layerCount, float newVal)
+        {
+            alphas[y, x, layerIndex] = newVal;
+
+            float otherTotal = 0f;
+            for (int l = 0; l < layerCount; l++)
+                if (l != layerIndex) otherTotal += alphas[y, x, l];
+
+            if (otherTotal > 0f)
+            {
+                float scale = (1f - newVal) / otherTotal;
+                for (int l = 0; l < layerCount; l++)
+                    if (l != layerIndex) alphas[y, x, l] *= scale;
+            }
         }
     }
 }

@@ -130,5 +130,52 @@ namespace Mosaic.Bridge.Tests.Lighting
         {
             return UnityIds.Resolve(instanceId) as GameObject;
         }
+
+        // O4 §4.3: bake type, cookie, culling mask, shadow bias — Mixed/Baked lights are
+        // prerequisite to any bake; cookies are a standard exercise.
+
+        [Test]
+        public void Create_LightmapBakeTypeAndShadowBias_Apply()
+        {
+            var result = LightingCreateTool.Execute(new LightingCreateParams
+            {
+                Type = "Point", Name = "__MosaicTest_BakeType__",
+                LightmapBakeType = "Mixed", ShadowBias = 0.05f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Mixed", result.Data.LightmapBakeType);
+
+            _created = FindCreated(result.Data.InstanceId);
+            var light = _created.GetComponent<Light>();
+            Assert.AreEqual(LightmapBakeType.Mixed, light.lightmapBakeType);
+            Assert.AreEqual(0.05f, light.shadowBias, 0.0001f);
+        }
+
+        [Test]
+        public void Create_AreaLight_SetsAreaSize()
+        {
+            var result = LightingCreateTool.Execute(new LightingCreateParams
+            {
+                Type = "Area", Name = "__MosaicTest_AreaLight__", AreaSize = new[] { 3f, 5f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            _created = FindCreated(result.Data.InstanceId);
+            var light = _created.GetComponent<Light>();
+            Assert.AreEqual(new Vector2(3f, 5f), light.areaSize);
+        }
+
+        [Test]
+        public void Create_InvalidLightmapBakeType_ReturnsFail()
+        {
+            var result = LightingCreateTool.Execute(new LightingCreateParams
+            {
+                Type = "Point", LightmapBakeType = "Bogus",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
     }
 }

@@ -7,5 +7,6 @@ namespace Mosaic.Bridge.Tools.Lighting
         public string HierarchyPath { get; set; }
         public string LightType { get; set; }
         public float Intensity { get; set; }
+        public string LightmapBakeType { get; set; }
     }
 }

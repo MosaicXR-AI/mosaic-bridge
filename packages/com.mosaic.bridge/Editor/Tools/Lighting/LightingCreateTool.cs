@@ -48,6 +48,59 @@ namespace Mosaic.Bridge.Tools.Lighting
             if (p.Rotation != null && p.Rotation.Length == 3)
                 go.transform.eulerAngles = new Vector3(p.Rotation[0], p.Rotation[1], p.Rotation[2]);
 
+            if (!string.IsNullOrEmpty(p.LightmapBakeType))
+            {
+                if (!Enum.TryParse<LightmapBakeType>(p.LightmapBakeType, true, out var bakeType))
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    return ToolResult<LightingCreateResult>.Fail(
+                        $"Invalid LightmapBakeType '{p.LightmapBakeType}'. Valid: Realtime, Mixed, Baked",
+                        ErrorCodes.INVALID_PARAM);
+                }
+                light.lightmapBakeType = bakeType;
+            }
+
+            if (!string.IsNullOrEmpty(p.CookiePath))
+            {
+                var cookie = AssetDatabase.LoadAssetAtPath<Texture>(p.CookiePath);
+                if (cookie == null)
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    return ToolResult<LightingCreateResult>.Fail(
+                        $"No Texture found at '{p.CookiePath}'", ErrorCodes.NOT_FOUND);
+                }
+                light.cookie = cookie;
+            }
+
+            if (p.CookieSize != null)
+            {
+                if (p.CookieSize.Length != 2)
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    return ToolResult<LightingCreateResult>.Fail(
+                        "CookieSize requires exactly [width, height]", ErrorCodes.INVALID_PARAM);
+                }
+                light.cookieSize2D = new Vector2(p.CookieSize[0], p.CookieSize[1]);
+            }
+
+            if (!string.IsNullOrEmpty(p.CullingMask))
+                light.cullingMask = LayerMask.GetMask(
+                    Array.ConvertAll(p.CullingMask.Split(','), s => s.Trim()));
+
+            if (p.ShadowBias.HasValue)
+                light.shadowBias = p.ShadowBias.Value;
+
+            if (p.AreaSize != null)
+            {
+                if (p.AreaSize.Length != 2)
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    return ToolResult<LightingCreateResult>.Fail(
+                        "AreaSize requires exactly [width, height]", ErrorCodes.INVALID_PARAM);
+                }
+                light.areaSize = new Vector2(p.AreaSize[0], p.AreaSize[1]);
+            }
+
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Create Light");
 
             return ToolResult<LightingCreateResult>.Ok(new LightingCreateResult
@@ -56,7 +109,8 @@ namespace Mosaic.Bridge.Tools.Lighting
                 Name          = go.name,
                 HierarchyPath = LightingToolHelpers.GetHierarchyPath(go.transform),
                 LightType     = lightType.ToString(),
-                Intensity     = light.intensity
+                Intensity     = light.intensity,
+                LightmapBakeType = light.lightmapBakeType.ToString(),
             });
         }
     }

@@ -81,6 +81,69 @@ namespace Mosaic.Bridge.Tools.Lighting
                 changed++;
             }
 
+            if (!string.IsNullOrEmpty(p.LightmapBakeType))
+            {
+                if (Enum.TryParse<LightmapBakeType>(p.LightmapBakeType, true, out var bakeType))
+                {
+                    light.lightmapBakeType = bakeType;
+                    changed++;
+                }
+                else
+                {
+                    return ToolResult<LightingSetPropertiesResult>.Fail(
+                        $"Invalid LightmapBakeType '{p.LightmapBakeType}'. Valid: Realtime, Mixed, Baked",
+                        ErrorCodes.INVALID_PARAM);
+                }
+            }
+
+            if (p.CookiePath != null)
+            {
+                if (p.CookiePath.Length == 0)
+                {
+                    light.cookie = null;
+                }
+                else
+                {
+                    var cookie = AssetDatabase.LoadAssetAtPath<Texture>(p.CookiePath);
+                    if (cookie == null)
+                        return ToolResult<LightingSetPropertiesResult>.Fail(
+                            $"No Texture found at '{p.CookiePath}'", ErrorCodes.NOT_FOUND);
+                    light.cookie = cookie;
+                }
+                changed++;
+            }
+
+            if (p.CookieSize != null)
+            {
+                if (p.CookieSize.Length != 2)
+                    return ToolResult<LightingSetPropertiesResult>.Fail(
+                        "CookieSize requires exactly [width, height]", ErrorCodes.INVALID_PARAM);
+                light.cookieSize2D = new Vector2(p.CookieSize[0], p.CookieSize[1]);
+                changed++;
+            }
+
+            if (!string.IsNullOrEmpty(p.CullingMask))
+            {
+                light.cullingMask = LayerMask.GetMask(
+                    Array.ConvertAll(p.CullingMask.Split(','), s => s.Trim()));
+                changed++;
+            }
+
+            if (p.ShadowBias.HasValue)
+            {
+                light.shadowBias = p.ShadowBias.Value;
+                changed++;
+            }
+
+            if (p.AreaSize != null)
+            {
+                if (p.AreaSize.Length != 2)
+                    return ToolResult<LightingSetPropertiesResult>.Fail(
+                        "AreaSize requires exactly [width, height]", ErrorCodes.INVALID_PARAM);
+                light.areaSize = new Vector2(p.AreaSize[0], p.AreaSize[1]);
+                changed++;
+            }
+
             return ToolResult<LightingSetPropertiesResult>.Ok(new LightingSetPropertiesResult
             {
                 InstanceId        = UnityIds.Of(light.gameObject),
@@ -88,7 +151,10 @@ namespace Mosaic.Bridge.Tools.Lighting
                 LightType         = light.type.ToString(),
                 Intensity         = light.intensity,
                 Shadows           = light.shadows.ToString(),
-                PropertiesChanged = changed
+                PropertiesChanged = changed,
+                LightmapBakeType  = light.lightmapBakeType.ToString(),
+                CookiePath        = light.cookie != null ? AssetDatabase.GetAssetPath(light.cookie) : null,
+                ShadowBias        = light.shadowBias,
             });
         }
     }

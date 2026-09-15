@@ -12,5 +12,16 @@ namespace Mosaic.Bridge.Tools.Lighting
         public float? SpotAngle { get; set; }         // Spot only
         public float[] Position { get; set; }         // [x,y,z]
         public float[] Rotation { get; set; }         // euler angles [x,y,z]
+
+        /// <summary>"Realtime", "Mixed", or "Baked". Editor-only. Null leaves Unity's default.</summary>
+        public string LightmapBakeType { get; set; }
+        /// <summary>Asset path of a Texture to project as a cookie.</summary>
+        public string CookiePath { get; set; }
+        public float[] CookieSize { get; set; } // [width, height] — Light.cookieSize2D
+        /// <summary>Layer names (comma-separated) this light affects. Null leaves Unity's default.</summary>
+        public string CullingMask { get; set; }
+        public float? ShadowBias { get; set; }
+        /// <summary>[width, height] for Area lights.</summary>
+        public float[] AreaSize { get; set; }
     }
 }

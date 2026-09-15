@@ -8,5 +8,8 @@ namespace Mosaic.Bridge.Tools.Lighting
         public float Intensity { get; set; }
         public string Shadows { get; set; }
         public int PropertiesChanged { get; set; }
+        public string LightmapBakeType { get; set; }
+        public string CookiePath { get; set; }
+        public float ShadowBias { get; set; }
     }
 }

@@ -11,5 +11,16 @@ namespace Mosaic.Bridge.Tools.Lighting
         public string Shadows { get; set; }       // None, Hard, Soft
         public float? ColorTemperature { get; set; }
         public float? BounceIntensity { get; set; }
+
+        /// <summary>"Realtime", "Mixed", or "Baked". Editor-only. Null to leave unchanged.</summary>
+        public string LightmapBakeType { get; set; }
+        /// <summary>Asset path of a Texture to project as a cookie. Empty string clears it. Null to leave unchanged.</summary>
+        public string CookiePath { get; set; }
+        public float[] CookieSize { get; set; } // [width, height] — Light.cookieSize2D
+        /// <summary>Layer names (comma-separated) this light affects. Null to leave unchanged.</summary>
+        public string CullingMask { get; set; }
+        public float? ShadowBias { get; set; }
+        /// <summary>[width, height] for Area lights (rectangular/disc/tube/pyramid, per light type).</summary>
+        public float[] AreaSize { get; set; }
     }
 }

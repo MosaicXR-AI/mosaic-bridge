@@ -9,19 +9,20 @@ namespace Mosaic.Bridge.Tools.Materials
     public static class MaterialSetPropertyTool
     {
         [MosaicTool("material/set-property",
-                    "Sets a shader property value on a material asset. ValueType: float | int | color | vector | texture | bool | keyword. bool supports material flags (enableInstancing, doubleSidedGI). keyword toggles shader keywords (_EMISSION, _NORMALMAP, _ALPHATEST_ON, etc).",
+                    "Sets a shader property value on a material asset. ValueType: float | int | color | vector | texture | bool | keyword | gi-flags. bool supports material flags (enableInstancing, doubleSidedGI). keyword toggles shader keywords (_EMISSION, _NORMALMAP, _ALPHATEST_ON, etc) — the _EMISSION keyword alone does not make emissive geometry contribute to a bake. gi-flags sets Material.globalIlluminationFlags via StringValue (comma-separated: None, RealtimeEmissive, BakedEmissive, EmissiveIsBlack) — required for that.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<MaterialSetPropertyResult> Execute(MaterialSetPropertyParams p)
         {
             if (string.IsNullOrEmpty(p.Path))
                 return ToolResult<MaterialSetPropertyResult>.Fail(
                     "Path is required", ErrorCodes.INVALID_PARAM);
-            if (string.IsNullOrEmpty(p.Property))
-                return ToolResult<MaterialSetPropertyResult>.Fail(
-                    "Property is required", ErrorCodes.INVALID_PARAM);
             if (string.IsNullOrEmpty(p.ValueType))
                 return ToolResult<MaterialSetPropertyResult>.Fail(
                     "ValueType is required", ErrorCodes.INVALID_PARAM);
+            // gi-flags sets a Material-level field, not a shader property — Property is ignored.
+            if (string.IsNullOrEmpty(p.Property) && !string.Equals(p.ValueType, "gi-flags", System.StringComparison.OrdinalIgnoreCase))
+                return ToolResult<MaterialSetPropertyResult>.Fail(
+                    "Property is required", ErrorCodes.INVALID_PARAM);
 
             var mat = AssetDatabase.LoadAssetAtPath<Material>(p.Path);
             if (mat == null)
@@ -33,8 +34,9 @@ namespace Mosaic.Bridge.Tools.Materials
             var valueType = p.ValueType.ToLowerInvariant();
             var isMaterialFlag = valueType == "bool" && IsKnownMaterialFlag(p.Property);
             var isKeywordOp    = valueType == "keyword";
+            var isGiFlagsOp    = valueType == "gi-flags";
 
-            if (!isMaterialFlag && !isKeywordOp && !mat.HasProperty(p.Property))
+            if (!isMaterialFlag && !isKeywordOp && !isGiFlagsOp && !mat.HasProperty(p.Property))
                 return ToolResult<MaterialSetPropertyResult>.Fail(
                     $"Material shader does not have property '{p.Property}'", ErrorCodes.NOT_FOUND);
 
@@ -62,6 +64,14 @@ namespace Mosaic.Bridge.Tools.Materials
                 case "keyword":
                     if (p.BoolValue) mat.EnableKeyword(p.Property);
                     else             mat.DisableKeyword(p.Property);
+                    break;
+
+                case "gi-flags":
+                    if (!TryParseGiFlags(p.StringValue, out var giFlags))
+                        return ToolResult<MaterialSetPropertyResult>.Fail(
+                            $"Unknown flag in GI flags '{p.StringValue}'. Valid (comma-separated): " +
+                            "None, RealtimeEmissive, BakedEmissive, EmissiveIsBlack", ErrorCodes.INVALID_PARAM);
+                    mat.globalIlluminationFlags = giFlags;
                     break;
 
                 case "color":
@@ -104,7 +114,7 @@ namespace Mosaic.Bridge.Tools.Materials
 
                 default:
                     return ToolResult<MaterialSetPropertyResult>.Fail(
-                        $"Unknown ValueType '{p.ValueType}'. Expected: float, int, color, vector, texture, bool, keyword",
+                        $"Unknown ValueType '{p.ValueType}'. Expected: float, int, color, vector, texture, bool, keyword, gi-flags",
                         ErrorCodes.INVALID_PARAM);
             }
 
@@ -131,6 +141,26 @@ namespace Mosaic.Bridge.Tools.Materials
                 ValueType = p.ValueType,
                 Applied   = true
             });
+        }
+
+        private static bool TryParseGiFlags(string value, out MaterialGlobalIlluminationFlags result)
+        {
+            result = MaterialGlobalIlluminationFlags.None;
+            if (string.IsNullOrEmpty(value))
+                return true;
+
+            foreach (var token in value.Split(','))
+            {
+                switch (token.Trim().ToLowerInvariant())
+                {
+                    case "none":             result |= MaterialGlobalIlluminationFlags.None;             break;
+                    case "realtimeemissive": result |= MaterialGlobalIlluminationFlags.RealtimeEmissive; break;
+                    case "bakedemissive":    result |= MaterialGlobalIlluminationFlags.BakedEmissive;    break;
+                    case "emissiveisblack":  result |= MaterialGlobalIlluminationFlags.EmissiveIsBlack;  break;
+                    default:                 return false;
+                }
+            }
+            return true;
         }
 
         private static bool IsKnownMaterialFlag(string propertyName)

@@ -13,6 +13,8 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public float Dutch { get; set; }
         public float OrthographicSize { get; set; }
         public string LensModeOverride { get; set; }
+        public bool InputControllerAdded { get; set; }
+        public string[] DiscoveredControllerNames { get; set; }
     }
 }
 #endif

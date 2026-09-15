@@ -1,4 +1,5 @@
 #if MOSAIC_HAS_CINEMACHINE
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using Unity.Cinemachine;
@@ -6,6 +7,9 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+#if MOSAIC_HAS_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace Mosaic.Bridge.Tools.Cinemachine
 {
@@ -17,7 +21,10 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                     "HardLockToTarget. Aim: Composer, HardLookAt, GroupFraming, PanTilt (Pan/TiltAngle), " +
                     "RotateWithFollowTarget. Noise: BasicMultiChannelPerlin (NoiseProfilePath or " +
                     "NoiseProfilePresetName + Amplitude/FrequencyGain). Lens: Dutch, OrthographicSize, " +
-                    "LensModeOverride.",
+                    "LensModeOverride. AddInputController adds a CinemachineInputAxisController and " +
+                    "auto-discovers the vcam's own input axes (needs Input System) — without it an " +
+                    "orbit/look camera is inert in Play mode; InputControllerBindings rebinds a " +
+                    "discovered controller (by name) to a custom InputActionReference asset.",
                     isReadOnly: false)]
         public static ToolResult<CinemachineCreateVCamResult> Execute(CinemachineCreateVCamParams p)
         {
@@ -154,6 +161,44 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                 vcam.Lens = lens;
             }
 
+            // Input axis controller: without this, an orbit/look camera (PanTilt, OrbitalFollow)
+            // has axes but nothing driving them, so it's inert in Play mode.
+            bool inputControllerAdded = false;
+            string[] discoveredControllerNames = null;
+            if (p.AddInputController)
+            {
+#if MOSAIC_HAS_INPUT_SYSTEM
+                var axisController = go.AddComponent<CinemachineInputAxisController>();
+                axisController.SynchronizeControllers();
+                inputControllerAdded = true;
+                discoveredControllerNames = axisController.Controllers.Select(c => c.Name).ToArray();
+
+                if (p.InputControllerBindings != null)
+                {
+                    foreach (var binding in p.InputControllerBindings)
+                    {
+                        var index = axisController.Controllers.FindIndex(c => c.Name == binding.ControllerName);
+                        if (index < 0)
+                            return Fail(go, $"No discovered controller named '{binding.ControllerName}'. " +
+                                             $"Available: {string.Join(", ", discoveredControllerNames)}", ErrorCodes.NOT_FOUND);
+
+                        var actionRef = AssetDatabase.LoadAssetAtPath<InputActionReference>(binding.InputActionReferencePath);
+                        if (actionRef == null)
+                            return Fail(go, $"No InputActionReference found at '{binding.InputActionReferencePath}'", ErrorCodes.NOT_FOUND);
+
+                        var controllerEntry = axisController.Controllers[index];
+                        var input = controllerEntry.Input;
+                        input.InputAction = actionRef;
+                        if (binding.Gain.HasValue) input.Gain = binding.Gain.Value;
+                        controllerEntry.Input = input;
+                        axisController.Controllers[index] = controllerEntry;
+                    }
+                }
+#else
+                return Fail(go, "AddInputController requires the com.unity.inputsystem package, which is not installed in this project.");
+#endif
+            }
+
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Cinemachine Create VCam");
 
             return ToolResult<CinemachineCreateVCamResult>.Ok(new CinemachineCreateVCamResult
@@ -168,13 +213,15 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                 Dutch = vcam.Lens.Dutch,
                 OrthographicSize = vcam.Lens.OrthographicSize,
                 LensModeOverride = vcam.Lens.ModeOverride.ToString(),
+                InputControllerAdded = inputControllerAdded,
+                DiscoveredControllerNames = discoveredControllerNames,
             });
         }
 
-        private static ToolResult<CinemachineCreateVCamResult> Fail(GameObject toDestroy, string message)
+        private static ToolResult<CinemachineCreateVCamResult> Fail(GameObject toDestroy, string message, string code = ErrorCodes.INVALID_PARAM)
         {
             Object.DestroyImmediate(toDestroy);
-            return ToolResult<CinemachineCreateVCamResult>.Fail(message, ErrorCodes.INVALID_PARAM);
+            return ToolResult<CinemachineCreateVCamResult>.Fail(message, code);
         }
     }
 }

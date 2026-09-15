@@ -50,8 +50,25 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         /// <summary>"None", "Orthographic", "Perspective", or "Physical". Null to leave unchanged.</summary>
         public string LensModeOverride { get; set; }
 
+        /// <summary>Adds a CinemachineInputAxisController and auto-discovers the vcam's own input
+        /// axes (e.g. PanTilt's Pan/Tilt) via SynchronizeControllers — without this, an orbit/look
+        /// camera is inert in Play mode even with a body/aim that has input axes.</summary>
+        public bool AddInputController { get; set; }
+
+        /// <summary>Binds a discovered controller (by the name SynchronizeControllers gave it, e.g.
+        /// "Look X (Pan)") to a specific InputActionReference asset, for custom input action maps
+        /// instead of the default ones SynchronizeControllers wires up.</summary>
+        public CinemachineInputControllerBindingInput[] InputControllerBindings { get; set; }
+
         /// <summary>Camera priority. Higher priority cameras take precedence. Default 10.</summary>
         public int Priority { get; set; } = 10;
+    }
+
+    public sealed class CinemachineInputControllerBindingInput
+    {
+        [Required] public string ControllerName { get; set; }
+        [Required] public string InputActionReferencePath { get; set; }
+        public float? Gain { get; set; }
     }
 }
 #endif

@@ -8,7 +8,8 @@
         "Unity.Cinemachine",
         "Unity.Splines",
         "Unity.Mathematics",
-        "Unity.Timeline"
+        "Unity.Timeline",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
@@ -36,6 +37,11 @@
             "name": "com.unity.timeline",
             "expression": "",
             "define": "MOSAIC_HAS_TIMELINE"
+        },
+        {
+            "name": "com.unity.inputsystem",
+            "expression": "",
+            "define": "MOSAIC_HAS_INPUT_SYSTEM"
         }
     ],
     "noEngineReferences": false

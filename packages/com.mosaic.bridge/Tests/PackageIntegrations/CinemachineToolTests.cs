@@ -9,6 +9,9 @@ using UnityEngine.Playables;
 using UnityEngine.Timeline;
 using Mosaic.Bridge.Tools.Timeline;
 #endif
+#if MOSAIC_HAS_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace Mosaic.Bridge.Tests.Cinemachine
 {
@@ -1236,6 +1239,95 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.AreEqual(UnityEngine.Splines.PathIndexUnit.Normalized, cart.PositionUnits);
             Assert.AreEqual(GameObject.Find("TestDollyTrack").GetComponent<UnityEngine.Splines.SplineContainer>(), cart.Spline);
         }
+
+#if MOSAIC_HAS_INPUT_SYSTEM
+        // O4 §4.5 P2: input axis controller — an orbit camera is inert in Play mode without it.
+
+        [Test]
+        public void CreateVCam_AddInputController_DiscoversPanTiltAxes()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", AimType = "PanTilt", AddInputController = true,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(result.Data.InputControllerAdded);
+            Assert.IsTrue(result.Data.DiscoveredControllerNames.Length > 0);
+
+            var axisController = GameObject.Find("TestVCam").GetComponent<CinemachineInputAxisController>();
+            Assert.IsNotNull(axisController);
+            Assert.AreEqual(result.Data.DiscoveredControllerNames.Length, axisController.Controllers.Count);
+        }
+
+        [Test]
+        public void CreateVCam_InputControllerBindings_RebindsToCustomAction()
+        {
+            const string actionRefPath = "Assets/TestLookAction.asset";
+            var asset = ScriptableObject.CreateInstance<InputActionAsset>();
+            var map = asset.AddActionMap("Gameplay");
+            var action = map.AddAction("Look");
+            var actionRef = InputActionReference.Create(action);
+            AssetDatabase.CreateAsset(actionRef, actionRefPath);
+            AssetDatabase.SaveAssets();
+
+            try
+            {
+                var created = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+                {
+                    Name = "TestVCam2", AimType = "PanTilt", AddInputController = true,
+                });
+                Assert.IsTrue(created.Success, created.Error);
+                var controllerName = created.Data.DiscoveredControllerNames[0];
+
+                var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+                {
+                    Name = "TestVCam", AimType = "PanTilt", AddInputController = true,
+                    InputControllerBindings = new[]
+                    {
+                        new Tools.Cinemachine.CinemachineInputControllerBindingInput
+                        {
+                            ControllerName = controllerName, InputActionReferencePath = actionRefPath, Gain = 2f,
+                        },
+                    },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var axisController = GameObject.Find("TestVCam").GetComponent<CinemachineInputAxisController>();
+                var bound = axisController.Controllers.Find(c => c.Name == controllerName);
+                var boundActionRef = AssetDatabase.LoadAssetAtPath<InputActionReference>(actionRefPath);
+                Assert.AreEqual(boundActionRef, bound.Input.InputAction);
+                Assert.AreEqual(2f, bound.Input.Gain, 0.0001f);
+
+                Object.DestroyImmediate(GameObject.Find("TestVCam2"));
+            }
+            finally
+            {
+                if (AssetDatabase.LoadAssetAtPath<InputActionReference>(actionRefPath) != null)
+                    AssetDatabase.DeleteAsset(actionRefPath);
+            }
+        }
+
+        [Test]
+        public void CreateVCam_InputControllerBindings_UnknownControllerName_ReturnsNotFound()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", AddInputController = true,
+                InputControllerBindings = new[]
+                {
+                    new Tools.Cinemachine.CinemachineInputControllerBindingInput
+                    {
+                        ControllerName = "NoSuchController", InputActionReferencePath = "Assets/DoesNotMatter.asset",
+                    },
+                },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+            Assert.IsNull(GameObject.Find("TestVCam"), "a failed create must not leave a partial GameObject behind");
+        }
+#endif
     }
 }
 #endif

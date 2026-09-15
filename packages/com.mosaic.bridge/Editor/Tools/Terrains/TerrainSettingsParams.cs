@@ -34,5 +34,10 @@ namespace Mosaic.Bridge.Tools.Terrains
 
         /// <summary>Whether tree and detail objects are drawn.</summary>
         public bool? DrawTreesAndFoliage { get; set; }
+
+        /// <summary>Whether this terrain tile auto-connects to adjacent tiles sharing the same GroupingID.</summary>
+        public bool? AllowAutoConnect { get; set; }
+        /// <summary>Tiles with the same GroupingID auto-connect when AllowAutoConnect is true.</summary>
+        public int? GroupingId { get; set; }
     }
 }

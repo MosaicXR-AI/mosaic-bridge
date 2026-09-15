@@ -14,6 +14,8 @@ namespace Mosaic.Bridge.Tools.Terrains
         public bool   CastShadows            { get; set; }
         public bool   DrawHeightmap          { get; set; }
         public bool   DrawTreesAndFoliage    { get; set; }
+        public bool   AllowAutoConnect       { get; set; }
+        public int    GroupingId             { get; set; }
         public string Message                { get; set; }
     }
 }

@@ -74,6 +74,16 @@ namespace Mosaic.Bridge.Tools.Terrains
                 terrain.drawTreesAndFoliage = p.DrawTreesAndFoliage.Value;
                 changed = true;
             }
+            if (p.AllowAutoConnect.HasValue)
+            {
+                terrain.allowAutoConnect = p.AllowAutoConnect.Value;
+                changed = true;
+            }
+            if (p.GroupingId.HasValue)
+            {
+                terrain.groupingID = p.GroupingId.Value;
+                changed = true;
+            }
 
             if (changed)
                 EditorUtility.SetDirty(terrain);
@@ -92,6 +102,8 @@ namespace Mosaic.Bridge.Tools.Terrains
                 CastShadows           = terrain.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.Off,
                 DrawHeightmap         = terrain.drawHeightmap,
                 DrawTreesAndFoliage   = terrain.drawTreesAndFoliage,
+                AllowAutoConnect      = terrain.allowAutoConnect,
+                GroupingId            = terrain.groupingID,
                 Message               = changed ? "Settings updated" : "No changes (read-only query)"
             });
         }

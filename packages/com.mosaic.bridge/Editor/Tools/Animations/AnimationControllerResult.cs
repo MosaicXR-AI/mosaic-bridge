@@ -20,6 +20,16 @@ namespace Mosaic.Bridge.Tools.Animations
 
         // -- add-layer result --
         public string AddedLayerName { get; set; }
+
+        // -- set-layer / remove-layer result --
+        public int? LayerIndex { get; set; }
+        public string LayerName { get; set; }
+        public float LayerWeight { get; set; }
+        public string BlendingMode { get; set; }
+        public string AvatarMaskPath { get; set; }
+        public bool IKPass { get; set; }
+        public int SyncedLayerIndex { get; set; }
+        public bool SyncedLayerAffectsTiming { get; set; }
     }
 
     public sealed class AnimationParameterInfo

@@ -234,5 +234,109 @@ namespace Mosaic.Bridge.Tests.Animations
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
+
+        // O4 §4.5 P1: set-layer/remove-layer. AnimatorController.layers hands back a fresh copy
+        // on every read -- mutating an element without writing the whole array back is a silent
+        // no-op, which is exactly the bug this exercises: WeightAndBlendingModePersist below fails
+        // if that write-back is ever dropped.
+        [Test]
+        public void SetLayer_WeightAndBlendingModePersist()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "add-layer", Path = ControllerPath, LayerName = "Upper"
+            });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "set-layer", Path = ControllerPath, LayerIndex = 1,
+                LayerWeight = 0.5f, BlendingMode = "Additive", IKPass = true,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(0.5f, result.Data.LayerWeight, 0.001f);
+            Assert.AreEqual("Additive", result.Data.BlendingMode);
+            Assert.IsTrue(result.Data.IKPass);
+
+            // Re-load fresh from disk -- proves the write-back actually persisted, not just that
+            // the in-memory `layer` object we already had a reference to looked right.
+            var reloaded = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ControllerPath);
+            Assert.AreEqual(0.5f, reloaded.layers[1].defaultWeight, 0.001f);
+            Assert.AreEqual(UnityEditor.Animations.AnimatorLayerBlendingMode.Additive, reloaded.layers[1].blendingMode);
+            Assert.IsTrue(reloaded.layers[1].iKPass);
+        }
+
+        [Test]
+        public void SetLayer_UnknownBlendingMode_ReturnsFail()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "add-layer", Path = ControllerPath, LayerName = "Upper"
+            });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "set-layer", Path = ControllerPath, LayerIndex = 1, BlendingMode = "Nonsense",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetLayer_AvatarMaskPath_AssignsTheMask()
+        {
+            const string maskPath = TestDir + "/TestMask.mask";
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "add-layer", Path = ControllerPath, LayerName = "Upper"
+            });
+            AnimationAvatarMaskTool.Execute(new AnimationAvatarMaskParams { Action = "create", MaskPath = maskPath });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "set-layer", Path = ControllerPath, LayerIndex = 1, AvatarMaskPath = maskPath,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(maskPath, result.Data.AvatarMaskPath);
+        }
+
+        [Test]
+        public void RemoveLayer_RemovesIt()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+            AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "add-layer", Path = ControllerPath, LayerName = "Upper"
+            });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "remove-layer", Path = ControllerPath, LayerIndex = 1,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Upper", result.Data.LayerName);
+            var reloaded = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ControllerPath);
+            Assert.AreEqual(1, reloaded.layers.Length);
+        }
+
+        [Test]
+        public void RemoveLayer_OutOfRange_ReturnsFail()
+        {
+            AnimationControllerTool.Execute(new AnimationControllerParams { Action = "create", Path = ControllerPath });
+
+            var result = AnimationControllerTool.Execute(new AnimationControllerParams
+            {
+                Action = "remove-layer", Path = ControllerPath, LayerIndex = 5,
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("OUT_OF_RANGE", result.ErrorCode);
+        }
     }
 }

@@ -722,6 +722,99 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.IsFalse(result.Success);
             Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
+
+        // O4 §4.5 P2: cinemachine/target-group — a camera that follows the group frames every
+        // member automatically (e.g. via GroupFraming aim).
+
+        [Test]
+        public void TargetGroup_Create_AddMember_Info_RoundTrips()
+        {
+            var member1 = new GameObject("TargetGroupMember1");
+            var member2 = new GameObject("TargetGroupMember2");
+            try
+            {
+                var create = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "create", Name = "TestTargetGroup", PositionMode = "GroupCenter", RotationMode = "Manual",
+                });
+                Assert.IsTrue(create.Success, create.Error);
+                Assert.AreEqual("GroupCenter", create.Data.PositionMode);
+                Assert.AreEqual("Manual", create.Data.RotationMode);
+
+                var add1 = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "add-member", Name = "TestTargetGroup", MemberName = "TargetGroupMember1", Weight = 1f, Radius = 2f,
+                });
+                Assert.IsTrue(add1.Success, add1.Error);
+                Assert.AreEqual(1, add1.Data.MemberCount);
+
+                var add2 = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "add-member", Name = "TestTargetGroup", MemberName = "TargetGroupMember2", Weight = 2f,
+                });
+                Assert.IsTrue(add2.Success, add2.Error);
+                Assert.AreEqual(2, add2.Data.MemberCount);
+
+                var info = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "info", Name = "TestTargetGroup",
+                });
+                Assert.IsTrue(info.Success, info.Error);
+                Assert.AreEqual(2, info.Data.Members.Length);
+                Assert.AreEqual("TargetGroupMember1", info.Data.Members[0].Name);
+                Assert.AreEqual(2f, info.Data.Members[0].Radius, 0.0001f);
+
+                var remove = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "remove-member", Name = "TestTargetGroup", MemberName = "TargetGroupMember1",
+                });
+                Assert.IsTrue(remove.Success, remove.Error);
+                Assert.AreEqual(1, remove.Data.MemberCount);
+            }
+            finally
+            {
+                Object.DestroyImmediate(member1);
+                Object.DestroyImmediate(member2);
+                var groupGo = GameObject.Find("TestTargetGroup");
+                if (groupGo != null) Object.DestroyImmediate(groupGo);
+            }
+        }
+
+        [Test]
+        public void TargetGroup_AddMember_GroupNotFound_ReturnsNotFound()
+        {
+            var result = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+            {
+                Action = "add-member", Name = "NoSuchGroup", MemberName = "Whatever",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void TargetGroup_RemoveMember_NotAMember_ReturnsNotFound()
+        {
+            Tools.Cinemachine.CinemachineTargetGroupTool.Execute(
+                new Tools.Cinemachine.CinemachineTargetGroupParams { Action = "create", Name = "TestTargetGroup" });
+            var nonMember = new GameObject("TargetGroupMember1");
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineTargetGroupTool.Execute(new Tools.Cinemachine.CinemachineTargetGroupParams
+                {
+                    Action = "remove-member", Name = "TestTargetGroup", MemberName = "TargetGroupMember1",
+                });
+
+                Assert.IsFalse(result.Success);
+                Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+            }
+            finally
+            {
+                Object.DestroyImmediate(nonMember);
+                var groupGo = GameObject.Find("TestTargetGroup");
+                if (groupGo != null) Object.DestroyImmediate(groupGo);
+            }
+        }
     }
 }
 #endif

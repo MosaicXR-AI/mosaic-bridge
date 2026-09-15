@@ -1,6 +1,7 @@
 #if MOSAIC_HAS_CINEMACHINE
 using NUnit.Framework;
 using UnityEngine;
+using UnityEditor;
 using Unity.Cinemachine;
 
 namespace Mosaic.Bridge.Tests.Cinemachine
@@ -814,6 +815,96 @@ namespace Mosaic.Bridge.Tests.Cinemachine
                 var groupGo = GameObject.Find("TestTargetGroup");
                 if (groupGo != null) Object.DestroyImmediate(groupGo);
             }
+        }
+
+        // O4 §4.5 P2: custom blends + brain settings — the blend-rules lesson.
+
+        [Test]
+        public void CreateBrain_UpdateMethodAndChannelMask_Apply()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateBrainTool.Execute(new Tools.Cinemachine.CinemachineCreateBrainParams
+            {
+                UpdateMethod = "FixedUpdate", ChannelMask = (int)OutputChannels.Channel02,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("FixedUpdate", result.Data.UpdateMethod);
+            Assert.AreEqual((int)OutputChannels.Channel02, result.Data.ChannelMask);
+            var brain = _mainCameraGo.GetComponent<CinemachineBrain>();
+            Assert.AreEqual(CinemachineBrain.UpdateMethods.FixedUpdate, brain.UpdateMethod);
+        }
+
+        [Test]
+        public void CreateBrain_WorldUpOverride_SetsTransform()
+        {
+            var worldUpGo = new GameObject("WorldUpOverrideTarget");
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateBrainTool.Execute(new Tools.Cinemachine.CinemachineCreateBrainParams
+                {
+                    WorldUpOverrideName = "WorldUpOverrideTarget",
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual("WorldUpOverrideTarget", result.Data.WorldUpOverrideName);
+                var brain = _mainCameraGo.GetComponent<CinemachineBrain>();
+                Assert.AreEqual(worldUpGo.transform, brain.WorldUpOverride);
+            }
+            finally
+            {
+                Object.DestroyImmediate(worldUpGo);
+            }
+        }
+
+        [Test]
+        public void CreateBrain_CustomBlends_CreatesAssetAndAppendsBlend()
+        {
+            const string assetPath = "Assets/TestCustomBlends.asset";
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateBrainTool.Execute(new Tools.Cinemachine.CinemachineCreateBrainParams
+                {
+                    CustomBlendsAssetPath = assetPath,
+                    CustomBlends = new[]
+                    {
+                        new Tools.Cinemachine.CinemachineCustomBlendInput
+                        {
+                            From = "**ANY CAMERA**", To = "CamB", BlendType = "Cut", BlendTime = 0f,
+                        },
+                    },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual(assetPath, result.Data.CustomBlendsAssetPath);
+                Assert.AreEqual(1, result.Data.CustomBlendCount);
+
+                var asset = AssetDatabase.LoadAssetAtPath<CinemachineBlenderSettings>(assetPath);
+                Assert.IsNotNull(asset);
+                Assert.AreEqual(1, asset.CustomBlends.Length);
+                Assert.AreEqual("**ANY CAMERA**", asset.CustomBlends[0].From);
+                Assert.AreEqual("CamB", asset.CustomBlends[0].To);
+                Assert.AreEqual(CinemachineBlendDefinition.Styles.Cut, asset.CustomBlends[0].Blend.Style);
+
+                var brain = _mainCameraGo.GetComponent<CinemachineBrain>();
+                Assert.AreEqual(asset, brain.CustomBlends);
+            }
+            finally
+            {
+                if (AssetDatabase.LoadAssetAtPath<CinemachineBlenderSettings>(assetPath) != null)
+                    AssetDatabase.DeleteAsset(assetPath);
+            }
+        }
+
+        [Test]
+        public void CreateBrain_CustomBlends_MissingAssetPath_ReturnsInvalidParam()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateBrainTool.Execute(new Tools.Cinemachine.CinemachineCreateBrainParams
+            {
+                CustomBlends = new[] { new Tools.Cinemachine.CinemachineCustomBlendInput { From = "A", To = "B" } },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
     }
 }

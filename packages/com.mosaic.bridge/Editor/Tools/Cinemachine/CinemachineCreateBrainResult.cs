@@ -8,6 +8,11 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public float DefaultBlend { get; set; }
         public string BlendType { get; set; }
         public bool AlreadyExisted { get; set; }
+        public string UpdateMethod { get; set; }
+        public string WorldUpOverrideName { get; set; }
+        public int ChannelMask { get; set; }
+        public string CustomBlendsAssetPath { get; set; }
+        public int CustomBlendCount { get; set; }
     }
 }
 #endif

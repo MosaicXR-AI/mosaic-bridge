@@ -906,6 +906,170 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
+
+        // O4 §4.5 P2: manager cameras — "camera follows the animator state"; automatic best shot.
+
+        [Test]
+        public void CreateManager_StateDriven_ReparentsAndSetsInstructions()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam2" });
+            var animatedGo = new GameObject("StateDrivenAnimated");
+            animatedGo.AddComponent<Animator>();
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+                {
+                    ManagerType = "StateDriven", Name = "TestManager",
+                    ChildVCamNames = new[] { "TestVCam", "TestVCam2" },
+                    AnimatedTargetName = "StateDrivenAnimated", LayerIndex = 0,
+                    StateDrivenInstructions = new[]
+                    {
+                        new Tools.Cinemachine.CinemachineStateDrivenInstructionInput
+                        {
+                            StateName = "Base Layer.Idle", CameraIndex = 0, MinDuration = 0.5f,
+                        },
+                        new Tools.Cinemachine.CinemachineStateDrivenInstructionInput
+                        {
+                            StateName = "Base Layer.Run", CameraIndex = 1,
+                        },
+                    },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual(2, result.Data.ChildCount);
+                Assert.AreEqual(2, result.Data.InstructionCount);
+
+                var managerGo = GameObject.Find("TestManager");
+                var stateDriven = managerGo.GetComponent<CinemachineStateDrivenCamera>();
+                Assert.AreEqual(2, stateDriven.Instructions.Length);
+                Assert.AreEqual(Animator.StringToHash("Base Layer.Idle"), stateDriven.Instructions[0].FullHash);
+                Assert.AreEqual(GameObject.Find("TestVCam").GetComponent<CinemachineCamera>(), stateDriven.Instructions[0].Camera);
+                Assert.AreEqual(GameObject.Find("TestVCam").transform.parent, managerGo.transform);
+                Assert.AreEqual(GameObject.Find("TestVCam2").transform.parent, managerGo.transform);
+            }
+            finally
+            {
+                Object.DestroyImmediate(animatedGo);
+                var managerGo = GameObject.Find("TestManager");
+                if (managerGo != null) Object.DestroyImmediate(managerGo);
+            }
+        }
+
+        [Test]
+        public void CreateManager_Sequencer_SetsLoopAndInstructions()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam2" });
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+                {
+                    ManagerType = "Sequencer", Name = "TestManager",
+                    ChildVCamNames = new[] { "TestVCam", "TestVCam2" }, Loop = true,
+                    SequencerInstructions = new[]
+                    {
+                        new Tools.Cinemachine.CinemachineSequencerInstructionInput { CameraIndex = 0, Hold = 2f },
+                        new Tools.Cinemachine.CinemachineSequencerInstructionInput { CameraIndex = 1, Hold = 3f, BlendType = "Cut" },
+                    },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var managerGo = GameObject.Find("TestManager");
+                var sequencer = managerGo.GetComponent<CinemachineSequencerCamera>();
+                Assert.IsTrue(sequencer.Loop);
+                Assert.AreEqual(2, sequencer.Instructions.Count);
+                Assert.AreEqual(2f, sequencer.Instructions[0].Hold, 0.0001f);
+                Assert.AreEqual(CinemachineBlendDefinition.Styles.Cut, sequencer.Instructions[1].Blend.Style);
+            }
+            finally
+            {
+                var managerGo = GameObject.Find("TestManager");
+                if (managerGo != null) Object.DestroyImmediate(managerGo);
+            }
+        }
+
+        [Test]
+        public void CreateManager_ClearShot_SetsFields()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+                {
+                    ManagerType = "ClearShot", Name = "TestManager", ChildVCamNames = new[] { "TestVCam" },
+                    ActivateAfter = 1f, MinDuration = 2f, RandomizeChoice = true,
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var managerGo = GameObject.Find("TestManager");
+                var clearShot = managerGo.GetComponent<CinemachineClearShot>();
+                Assert.AreEqual(1f, clearShot.ActivateAfter, 0.0001f);
+                Assert.AreEqual(2f, clearShot.MinDuration, 0.0001f);
+                Assert.IsTrue(clearShot.RandomizeChoice);
+                Assert.AreEqual(managerGo.transform, GameObject.Find("TestVCam").transform.parent);
+            }
+            finally
+            {
+                var managerGo = GameObject.Find("TestManager");
+                if (managerGo != null) Object.DestroyImmediate(managerGo);
+            }
+        }
+
+        [Test]
+        public void CreateManager_Mixing_ReparentsChildren()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+                {
+                    ManagerType = "Mixing", Name = "TestManager", ChildVCamNames = new[] { "TestVCam" },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var managerGo = GameObject.Find("TestManager");
+                Assert.IsNotNull(managerGo.GetComponent<CinemachineMixingCamera>());
+                Assert.AreEqual(managerGo.transform, GameObject.Find("TestVCam").transform.parent);
+            }
+            finally
+            {
+                var managerGo = GameObject.Find("TestManager");
+                if (managerGo != null) Object.DestroyImmediate(managerGo);
+            }
+        }
+
+        [Test]
+        public void CreateManager_ChildVCamNotFound_ReturnsNotFound()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+            {
+                ManagerType = "Mixing", Name = "TestManager", ChildVCamNames = new[] { "NoSuchVCam" },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+            Assert.IsNull(GameObject.Find("TestManager"), "a failed create must not leave a partial manager behind");
+        }
+
+        [Test]
+        public void CreateManager_UnknownType_ReturnsInvalidParam()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineCreateManagerTool.Execute(new Tools.Cinemachine.CinemachineCreateManagerParams
+            {
+                ManagerType = "Bogus", Name = "TestManager", ChildVCamNames = new[] { "TestVCam" },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+            Assert.IsNull(GameObject.Find("TestManager"));
+        }
     }
 }
 #endif

@@ -488,6 +488,152 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             CollectionAssert.Contains(info.NoiseComponents, "BasicMultiChannelPerlin");
             Assert.AreEqual(3f, info.Dutch, 0.0001f);
         }
+
+        // O4 §4.5 P2: cinemachine/add-extension — 2D camera confined to level bounds is the
+        // standard 2D camera lesson; handheld shake/collision avoidance/storyboard, etc.
+
+        [Test]
+        public void AddExtension_Confiner2D_SetsBoundingShapeAndBakes()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+            var boundsGo = new GameObject("TestVCamBounds");
+            var polygon = boundsGo.AddComponent<PolygonCollider2D>();
+            polygon.points = new[] { new Vector2(-5, -5), new Vector2(5, -5), new Vector2(5, 5), new Vector2(-5, 5) };
+
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+                {
+                    VCamName = "TestVCam", ExtensionType = "Confiner2D",
+                    ConfinerBoundingShapeName = "TestVCamBounds", ConfinerDamping = 0.5f,
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var confiner = GameObject.Find("TestVCam").GetComponent<CinemachineConfiner2D>();
+                Assert.IsNotNull(confiner);
+                Assert.AreEqual(polygon, confiner.BoundingShape2D);
+                Assert.AreEqual(0.5f, confiner.Damping, 0.0001f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(boundsGo);
+            }
+        }
+
+        [Test]
+        public void AddExtension_Confiner2D_MissingBoundingShape_ReturnsFail()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "Confiner2D",
+                ConfinerBoundingShapeName = "NoSuchBoundsObject",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddExtension_ImpulseListener_SetsChannelAndGain()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "ImpulseListener", ImpulseChannelMask = 2, ImpulseGain = 1.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var listener = GameObject.Find("TestVCam").GetComponent<CinemachineImpulseListener>();
+            Assert.IsNotNull(listener);
+            Assert.AreEqual(2, listener.ChannelMask);
+            Assert.AreEqual(1.5f, listener.Gain, 0.0001f);
+        }
+
+        [Test]
+        public void AddExtension_CameraOffset_SetsOffset()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "CameraOffset", CameraOffsetValue = new float[] { 1, 2, 3 },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var offset = GameObject.Find("TestVCam").GetComponent<CinemachineCameraOffset>();
+            Assert.IsNotNull(offset);
+            Assert.AreEqual(new Vector3(1, 2, 3), offset.Offset);
+        }
+
+        [Test]
+        public void AddExtension_Recomposer_SetsFields()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "Recomposer",
+                RecomposerZoomScale = 2f, RecomposerTilt = 5f, RecomposerPan = -3f, RecomposerDutch = 1f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var recomposer = GameObject.Find("TestVCam").GetComponent<CinemachineRecomposer>();
+            Assert.IsNotNull(recomposer);
+            Assert.AreEqual(2f, recomposer.ZoomScale, 0.0001f);
+            Assert.AreEqual(5f, recomposer.Tilt, 0.0001f);
+            Assert.AreEqual(-3f, recomposer.Pan, 0.0001f);
+            Assert.AreEqual(1f, recomposer.Dutch, 0.0001f);
+        }
+
+        [Test]
+        public void AddExtension_PixelPerfect_AddsComponent()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "PixelPerfect",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsNotNull(GameObject.Find("TestVCam").GetComponent<CinemachinePixelPerfect>());
+        }
+
+        [Test]
+        public void AddExtension_UnknownType_ReturnsInvalidParam()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(
+                new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "TestVCam" });
+
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "TestVCam", ExtensionType = "Bogus",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddExtension_VCamNotFound_ReturnsNotFound()
+        {
+            var result = Tools.Cinemachine.CinemachineAddExtensionTool.Execute(new Tools.Cinemachine.CinemachineAddExtensionParams
+            {
+                VCamName = "NoSuchVCam", ExtensionType = "PixelPerfect",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
     }
 }
 #endif

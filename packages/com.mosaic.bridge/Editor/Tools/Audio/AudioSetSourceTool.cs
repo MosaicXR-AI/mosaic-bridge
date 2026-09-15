@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEditor;
 using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
@@ -16,11 +17,12 @@ namespace Mosaic.Bridge.Tools.Audio
         // actually provided are touched, same as audio/set-spatial — avoids the L16 class of bug
         // (assuming a property name/prefix instead of using the real one).
         [MosaicTool("audio/set-source",
-                    "Configures an existing AudioSource's properties (clip, volume, pitch, loop, playOnAwake, " +
-                    "priority, mute, bypassEffects, bypassListenerEffects, bypassReverbZones, panStereo, " +
-                    "reverbZoneMix, spatialize, spatializePostEffects). Only provided fields are changed. " +
-                    "Use audio/create-source to add a new AudioSource, audio/set-spatial for 3D " +
-                    "distance/rolloff/doppler/spread.",
+                    "Configures an existing AudioSource's properties (clip, resource, volume, pitch, loop, " +
+                    "playOnAwake, priority, mute, bypassEffects, bypassListenerEffects, bypassReverbZones, " +
+                    "panStereo, reverbZoneMix, spatialize, spatializePostEffects). ResourcePath (e.g. an " +
+                    "AudioRandomContainer from audio/create-random-container) sets AudioSource.resource. " +
+                    "Only provided fields are changed. Use audio/create-source to add a new AudioSource, " +
+                    "audio/set-spatial for 3D distance/rolloff/doppler/spread.",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<AudioSetSourceResult> Execute(AudioSetSourceParams p)
         {
@@ -47,6 +49,15 @@ namespace Mosaic.Bridge.Tools.Audio
                 source.clip = clip;
             }
 
+            if (!string.IsNullOrEmpty(p.ResourcePath))
+            {
+                var resource = AssetDatabase.LoadAssetAtPath<AudioResource>(p.ResourcePath);
+                if (resource == null)
+                    return ToolResult<AudioSetSourceResult>.Fail(
+                        $"AudioResource not found at path: '{p.ResourcePath}'", ErrorCodes.NOT_FOUND);
+                source.resource = resource;
+            }
+
             if (p.Volume.HasValue) source.volume = Mathf.Clamp01(p.Volume.Value);
             if (p.Pitch.HasValue) source.pitch = p.Pitch.Value;
             if (p.Loop.HasValue) source.loop = p.Loop.Value;
@@ -66,6 +77,7 @@ namespace Mosaic.Bridge.Tools.Audio
                 InstanceId = UnityIds.Of(go),
                 GameObjectName = go.name,
                 ClipName = source.clip != null ? source.clip.name : null,
+                ResourceName = source.resource != null ? source.resource.name : null,
                 Volume = source.volume,
                 Pitch = source.pitch,
                 Loop = source.loop,

@@ -5,6 +5,7 @@ namespace Mosaic.Bridge.Tools.Audio
         public int InstanceId { get; set; }
         public string GameObjectName { get; set; }
         public string ClipName { get; set; }
+        public string ResourceName { get; set; }
         public float Volume { get; set; }
         public float Pitch { get; set; }
         public bool Loop { get; set; }

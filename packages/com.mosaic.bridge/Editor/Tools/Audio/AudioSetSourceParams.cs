@@ -11,6 +11,11 @@ namespace Mosaic.Bridge.Tools.Audio
         /// <summary>Asset path of an AudioClip to assign, e.g. "Assets/Audio/footstep.wav".</summary>
         public string ClipPath { get; set; }
 
+        /// <summary>Asset path of an AudioResource (e.g. an AudioRandomContainer created via
+        /// audio/create-random-container) to assign to AudioSource.resource. Takes precedence
+        /// over ClipPath when both are set, per AudioSource's own resource/clip relationship.</summary>
+        public string ResourcePath { get; set; }
+
         public float? Volume { get; set; }
         public float? Pitch { get; set; }
         public bool? Loop { get; set; }

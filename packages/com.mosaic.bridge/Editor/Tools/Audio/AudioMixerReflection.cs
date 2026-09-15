@@ -71,6 +71,30 @@ namespace Mosaic.Bridge.Tools.Audio
         private static bool s_SnapshotResolved;
         private static string s_SnapshotMissing;
 
+        // -- effects (O4 §4.4, "build last" per the doc's own note — effect names are native
+        // registry strings, never hardcode). AudioMixerEffectController has a genuinely public
+        // constructor(string) and derives from the public UnityEngine.Object; AudioMixerGroupController
+        // .effects is a public get/set array (same array-reassign pattern as exposedParameters and
+        // snapshots) — confirmed via UnityCsReference source, which again showed the doc's cited
+        // InsertEffect does not exist. MixerEffectDefinitions (internal) is the actual effect-name
+        // and parameter-name registry.
+        private static Type s_EffectControllerType;
+        private static Type s_EffectDefinitionsType;
+        private static ConstructorInfo s_EffectCtor;
+        private static PropertyInfo s_Effects;
+        private static PropertyInfo s_SendTarget;
+        private static MethodInfo s_PreallocateGuids;
+        private static MethodInfo s_GetGuidForParameter;
+        private static MethodInfo s_GetValueForParameter;
+        private static MethodInfo s_SetValueForParameter;
+        private static MethodInfo s_GetGuidForMixLevel;
+        private static MethodInfo s_GetValueForMixLevel;
+        private static MethodInfo s_SetValueForMixLevel;
+        private static MethodInfo s_GetAudioEffectNames;
+        private static MethodInfo s_EffectCanBeSidechainTarget;
+        private static bool s_EffectResolved;
+        private static string s_EffectMissing;
+
         internal readonly struct ProbeResult
         {
             public readonly bool Ok;
@@ -430,6 +454,237 @@ namespace Mosaic.Bridge.Tools.Audio
             }
             catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
             catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static ProbeResult ProbeEffect()
+        {
+            ResolveEffect();
+            return new ProbeResult(s_EffectMissing == null, s_EffectMissing);
+        }
+
+        private static void ResolveEffect()
+        {
+            if (s_EffectResolved) return;
+            s_EffectResolved = true;
+
+            Resolve();
+            if (s_Missing != null) { s_EffectMissing = s_Missing; return; }
+
+            const BindingFlags pubInst = BindingFlags.Public | BindingFlags.Instance;
+
+            s_EffectControllerType = FindType("UnityEditor.Audio.AudioMixerEffectController");
+            if (s_EffectControllerType == null) { s_EffectMissing = "type UnityEditor.Audio.AudioMixerEffectController"; return; }
+
+            s_EffectDefinitionsType = FindType("UnityEditor.Audio.MixerEffectDefinitions");
+            if (s_EffectDefinitionsType == null) { s_EffectMissing = "type UnityEditor.Audio.MixerEffectDefinitions"; return; }
+
+            s_EffectCtor = s_EffectControllerType.GetConstructor(pubInst, null, new[] { typeof(string) }, null);
+            if (s_EffectCtor == null) { s_EffectMissing = "public AudioMixerEffectController(string)"; return; }
+
+            s_Effects = s_GroupControllerType.GetProperty("effects", pubInst);
+            if (s_Effects == null) { s_EffectMissing = "AudioMixerGroupController.effects"; return; }
+
+            s_SendTarget = s_EffectControllerType.GetProperty("sendTarget", pubInst);
+            if (s_SendTarget == null) { s_EffectMissing = "AudioMixerEffectController.sendTarget"; return; }
+
+            s_PreallocateGuids = s_EffectControllerType.GetMethod("PreallocateGUIDs", pubInst);
+            if (s_PreallocateGuids == null) { s_EffectMissing = "AudioMixerEffectController.PreallocateGUIDs()"; return; }
+
+            s_GetGuidForParameter = s_EffectControllerType.GetMethod("GetGUIDForParameter", pubInst);
+            if (s_GetGuidForParameter == null) { s_EffectMissing = "AudioMixerEffectController.GetGUIDForParameter(string)"; return; }
+
+            s_SetValueForParameter = s_EffectControllerType.GetMethod("SetValueForParameter", pubInst);
+            if (s_SetValueForParameter == null) { s_EffectMissing = "AudioMixerEffectController.SetValueForParameter(...)"; return; }
+
+            s_GetValueForParameter = s_EffectControllerType.GetMethod("GetValueForParameter", pubInst);
+            if (s_GetValueForParameter == null) { s_EffectMissing = "AudioMixerEffectController.GetValueForParameter(...)"; return; }
+
+            s_GetGuidForMixLevel = s_EffectControllerType.GetMethod("GetGUIDForMixLevel", pubInst);
+            if (s_GetGuidForMixLevel == null) { s_EffectMissing = "AudioMixerEffectController.GetGUIDForMixLevel()"; return; }
+
+            s_SetValueForMixLevel = s_EffectControllerType.GetMethod("SetValueForMixLevel", pubInst);
+            if (s_SetValueForMixLevel == null) { s_EffectMissing = "AudioMixerEffectController.SetValueForMixLevel(...)"; return; }
+
+            s_GetValueForMixLevel = s_EffectControllerType.GetMethod("GetValueForMixLevel", pubInst);
+            if (s_GetValueForMixLevel == null) { s_EffectMissing = "AudioMixerEffectController.GetValueForMixLevel(...)"; return; }
+
+            s_GetAudioEffectNames = s_EffectDefinitionsType.GetMethod("GetAudioEffectNames", BindingFlags.Public | BindingFlags.Static);
+            if (s_GetAudioEffectNames == null) { s_EffectMissing = "static MixerEffectDefinitions.GetAudioEffectNames()"; return; }
+
+            s_EffectCanBeSidechainTarget = s_EffectDefinitionsType.GetMethod(
+                "EffectCanBeSidechainTarget", BindingFlags.Public | BindingFlags.Static);
+            if (s_EffectCanBeSidechainTarget == null) { s_EffectMissing = "static MixerEffectDefinitions.EffectCanBeSidechainTarget(AudioMixerEffectController)"; return; }
+
+            s_EffectMissing = null;
+        }
+
+        internal static bool TryGetAudioEffectNames(out string[] names, out string error)
+        {
+            names = null;
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                names = (string[])s_GetAudioEffectNames.Invoke(null, null);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>Appends a new effect of the given type at the end of group's effect chain
+        /// (after any existing effects, before the group's own final Attenuation stage — matches
+        /// where Unity's own Add Effect UI places a newly added effect).</summary>
+        internal static bool TryAddEffect(AudioMixer mixer, AudioMixerGroup group, string effectType, out int index, out string error)
+        {
+            index = -1;
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var effect = s_EffectCtor.Invoke(new object[] { effectType });
+                s_PreallocateGuids.Invoke(effect, null);
+
+                var current = (Array)s_Effects.GetValue(group);
+                var next = Array.CreateInstance(s_EffectControllerType, current.Length + 1);
+                Array.Copy(current, next, current.Length);
+                next.SetValue(effect, current.Length);
+                s_Effects.SetValue(group, next);
+
+                UnityEditor.AssetDatabase.AddObjectToAsset((UnityEngine.Object)effect, mixer);
+                index = current.Length;
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryGetEffects(AudioMixerGroup group, out UnityEngine.Object[] effects, out string error)
+        {
+            effects = null;
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_Effects.GetValue(group);
+                effects = new UnityEngine.Object[current.Length];
+                for (int i = 0; i < current.Length; i++)
+                    effects[i] = (UnityEngine.Object)current.GetValue(i);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryRemoveEffect(AudioMixerGroup group, int effectIndex, out string error)
+        {
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_Effects.GetValue(group);
+                if (effectIndex < 0 || effectIndex >= current.Length)
+                {
+                    error = $"EffectIndex {effectIndex} out of range (0..{current.Length - 1})";
+                    return false;
+                }
+                var next = Array.CreateInstance(s_EffectControllerType, current.Length - 1);
+                int j = 0;
+                for (int i = 0; i < current.Length; i++)
+                    if (i != effectIndex) next.SetValue(current.GetValue(i), j++);
+                s_Effects.SetValue(group, next);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>paramName null/empty means the effect's overall "Mix Level" wet/dry knob.</summary>
+        internal static bool TrySetEffectValue(
+            AudioMixer mixer, AudioMixerGroup group, int effectIndex, AudioMixerSnapshot snapshot,
+            string paramName, float value, out string error)
+        {
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                if (!TryGetEffectAt(group, effectIndex, out var effect, out error)) return false;
+
+                var snapshotAsController = snapshot; // snapshot param already typed as public AudioMixerSnapshot
+                if (string.IsNullOrEmpty(paramName))
+                    s_SetValueForMixLevel.Invoke(effect, new object[] { mixer, snapshotAsController, value });
+                else
+                    s_SetValueForParameter.Invoke(effect, new object[] { mixer, snapshotAsController, paramName, value });
+
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryGetEffectValue(
+            AudioMixer mixer, AudioMixerGroup group, int effectIndex, AudioMixerSnapshot snapshot,
+            string paramName, out float value, out string error)
+        {
+            value = 0f;
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                if (!TryGetEffectAt(group, effectIndex, out var effect, out error)) return false;
+
+                value = string.IsNullOrEmpty(paramName)
+                    ? (float)s_GetValueForMixLevel.Invoke(effect, new object[] { mixer, snapshot })
+                    : (float)s_GetValueForParameter.Invoke(effect, new object[] { mixer, snapshot, paramName });
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TrySetSendTarget(AudioMixerGroup sourceGroup, int sourceEffectIndex,
+            AudioMixerGroup targetGroup, int targetEffectIndex, out string error)
+        {
+            var probe = ProbeEffect();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                if (!TryGetEffectAt(sourceGroup, sourceEffectIndex, out var source, out error)) return false;
+                if (!TryGetEffectAt(targetGroup, targetEffectIndex, out var target, out error)) return false;
+
+                var canReceive = (bool)s_EffectCanBeSidechainTarget.Invoke(null, new object[] { target });
+                if (!canReceive)
+                {
+                    error = "Target effect cannot be a sidechain target (must be a receive-capable effect, e.g. a Compressor's sidechain input).";
+                    return false;
+                }
+
+                s_SendTarget.SetValue(source, target);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        private static bool TryGetEffectAt(AudioMixerGroup group, int effectIndex, out object effect, out string error)
+        {
+            effect = null;
+            var current = (Array)s_Effects.GetValue(group);
+            if (effectIndex < 0 || effectIndex >= current.Length)
+            {
+                error = $"EffectIndex {effectIndex} out of range (0..{current.Length - 1})";
+                return false;
+            }
+            effect = current.GetValue(effectIndex);
+            error = null;
+            return true;
         }
 
         private static Type FindType(string fullName)

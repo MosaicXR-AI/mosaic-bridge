@@ -604,5 +604,149 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
             Assert.IsFalse(result.Success);
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
+
+        // ── audio/mixer-effect ───────────────────────────────────────────────
+
+        [Test]
+        public void Effect_ListTypes_ReturnsNonEmptyRegistry()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+
+            var result = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "list-types",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsNotEmpty(result.Data.AvailableEffectTypes);
+        }
+
+        [Test]
+        public void Effect_Add_AppearsInList()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+
+            var types = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list-types",
+            });
+            var effectType = types.Data.AvailableEffectTypes.First(t => t.IndexOf("Lowpass", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || t.IndexOf("low", System.StringComparison.OrdinalIgnoreCase) >= 0);
+
+            var result = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "add", EffectType = effectType,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+
+            var list = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list",
+            });
+            Assert.IsTrue(list.Success, list.Error);
+            Assert.AreEqual(result.Data.EffectIndex + 1, list.Data.EffectNames.Length);
+        }
+
+        [Test]
+        public void Effect_AddUnknownType_ReturnsInvalidParam()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+
+            var result = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "add",
+                EffectType = "Not A Real Effect Mosaic",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void Effect_Remove_ShrinksList()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+            var types = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list-types",
+            });
+            var added = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "add",
+                EffectType = types.Data.AvailableEffectTypes[0],
+            });
+            var before = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list",
+            });
+
+            var result = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "remove",
+                EffectIndex = added.Data.EffectIndex,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var after = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list",
+            });
+            Assert.AreEqual(before.Data.EffectNames.Length - 1, after.Data.EffectNames.Length);
+        }
+
+        [Test]
+        public void Effect_SetThenGetMixLevel_RoundTrips()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+            var types = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "list-types",
+            });
+            var added = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "add",
+                EffectType = types.Data.AvailableEffectTypes[0],
+            });
+
+            var setResult = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "set-value",
+                EffectIndex = added.Data.EffectIndex, SnapshotName = "Paused", Value = 0.5f,
+            });
+            Assert.IsTrue(setResult.Success, setResult.Error);
+
+            var getResult = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "get-value",
+                EffectIndex = added.Data.EffectIndex, SnapshotName = "Paused",
+            });
+
+            Assert.IsTrue(getResult.Success, getResult.Error);
+            Assert.AreEqual(0.5f, getResult.Data.Value, 0.01f);
+        }
+
+        [Test]
+        public void Effect_RemoveOutOfRange_ReturnsOutOfRange()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+
+            var result = AudioMixerEffectTool.Execute(new AudioMixerEffectParams
+            {
+                MixerAssetPath = TestMixerPath, GroupPath = "SFX", Operation = "remove", EffectIndex = 99,
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("OUT_OF_RANGE", result.ErrorCode);
+        }
     }
 }

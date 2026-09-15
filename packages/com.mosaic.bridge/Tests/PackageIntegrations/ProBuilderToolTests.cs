@@ -3,6 +3,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using Mosaic.Bridge.Tools.ProBuilder;
+using Mosaic.Bridge.Contracts.Compat;
 
 namespace Mosaic.Bridge.Tests.PackageIntegrations
 {
@@ -18,7 +19,7 @@ namespace Mosaic.Bridge.Tests.PackageIntegrations
                 var go = GameObject.Find(name);
                 if (go != null) Object.DestroyImmediate(go);
             }
-            foreach (var go in GameObject.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            foreach (var go in UnityIds.FindAll<GameObject>())
                 if (go.name == "Wall") Object.DestroyImmediate(go);
         }
 

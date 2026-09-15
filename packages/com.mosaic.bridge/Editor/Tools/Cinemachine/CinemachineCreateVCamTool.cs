@@ -12,7 +12,12 @@ namespace Mosaic.Bridge.Tools.Cinemachine
     public static class CinemachineCreateVCamTool
     {
         [MosaicTool("cinemachine/create-vcam",
-                    "Creates a new CinemachineCamera (virtual camera) with optional body/aim components and follow/look-at targets",
+                    "Creates a new CinemachineCamera (virtual camera). Body: ThirdPersonFollow, " +
+                    "OrbitalFollow, PositionComposer, Follow (the most common — FollowOffset), " +
+                    "HardLockToTarget. Aim: Composer, HardLookAt, GroupFraming, PanTilt (Pan/TiltAngle), " +
+                    "RotateWithFollowTarget. Noise: BasicMultiChannelPerlin (NoiseProfilePath or " +
+                    "NoiseProfilePresetName + Amplitude/FrequencyGain). Lens: Dutch, OrthographicSize, " +
+                    "LensModeOverride.",
                     isReadOnly: false)]
         public static ToolResult<CinemachineCreateVCamResult> Execute(CinemachineCreateVCamParams p)
         {
@@ -56,8 +61,23 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                         go.AddComponent<CinemachinePositionComposer>();
                         bodyAdded = "PositionComposer";
                         break;
+                    case "follow":
+                        var follow = go.AddComponent<CinemachineFollow>();
+                        if (p.FollowOffset != null)
+                        {
+                            if (p.FollowOffset.Length != 3)
+                                return Fail(go, "FollowOffset requires exactly [x, y, z]");
+                            follow.FollowOffset = new Vector3(p.FollowOffset[0], p.FollowOffset[1], p.FollowOffset[2]);
+                        }
+                        bodyAdded = "Follow";
+                        break;
+                    case "hardlocktotarget":
+                        go.AddComponent<CinemachineHardLockToTarget>();
+                        bodyAdded = "HardLockToTarget";
+                        break;
                     default:
-                        return Fail(go, $"Invalid BodyType '{p.BodyType}'. Valid: ThirdPersonFollow, OrbitalFollow, PositionComposer");
+                        return Fail(go, $"Invalid BodyType '{p.BodyType}'. Valid: ThirdPersonFollow, OrbitalFollow, " +
+                                         "PositionComposer, Follow, HardLockToTarget");
                 }
             }
 
@@ -79,9 +99,59 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                         go.AddComponent<CinemachineGroupFraming>();
                         aimAdded = "GroupFraming";
                         break;
+                    case "pantilt":
+                        var panTilt = go.AddComponent<CinemachinePanTilt>();
+                        if (p.PanAngle.HasValue) panTilt.PanAxis.Value = p.PanAngle.Value;
+                        if (p.TiltAngle.HasValue) panTilt.TiltAxis.Value = p.TiltAngle.Value;
+                        aimAdded = "PanTilt";
+                        break;
+                    case "rotatewithfollowtarget":
+                        go.AddComponent<CinemachineRotateWithFollowTarget>();
+                        aimAdded = "RotateWithFollowTarget";
+                        break;
                     default:
-                        return Fail(go, $"Invalid AimType '{p.AimType}'. Valid: Composer, HardLookAt, GroupFraming");
+                        return Fail(go, $"Invalid AimType '{p.AimType}'. Valid: Composer, HardLookAt, GroupFraming, " +
+                                         "PanTilt, RotateWithFollowTarget");
                 }
+            }
+
+            // Noise component
+            string noiseAdded = null;
+            if (!string.IsNullOrEmpty(p.NoiseType))
+            {
+                switch (p.NoiseType.ToLowerInvariant())
+                {
+                    case "basicmultichannelperlin":
+                        var perlin = go.AddComponent<CinemachineBasicMultiChannelPerlin>();
+                        if (!string.IsNullOrEmpty(p.NoiseProfilePath) || !string.IsNullOrEmpty(p.NoiseProfilePresetName))
+                        {
+                            if (!CinemachineToolHelpers.TryResolveNoiseProfile(
+                                    p.NoiseProfilePath, p.NoiseProfilePresetName, out var profile, out var profileError))
+                                return Fail(go, profileError);
+                            perlin.NoiseProfile = profile;
+                        }
+                        if (p.NoiseAmplitudeGain.HasValue) perlin.AmplitudeGain = p.NoiseAmplitudeGain.Value;
+                        if (p.NoiseFrequencyGain.HasValue) perlin.FrequencyGain = p.NoiseFrequencyGain.Value;
+                        noiseAdded = "BasicMultiChannelPerlin";
+                        break;
+                    default:
+                        return Fail(go, $"Invalid NoiseType '{p.NoiseType}'. Valid: BasicMultiChannelPerlin");
+                }
+            }
+
+            // Lens block
+            if (p.Dutch.HasValue || p.OrthographicSize.HasValue || !string.IsNullOrEmpty(p.LensModeOverride))
+            {
+                var lens = vcam.Lens;
+                if (p.Dutch.HasValue) lens.Dutch = p.Dutch.Value;
+                if (p.OrthographicSize.HasValue) lens.OrthographicSize = p.OrthographicSize.Value;
+                if (!string.IsNullOrEmpty(p.LensModeOverride))
+                {
+                    if (!CinemachineToolHelpers.TryParseLensModeOverride(p.LensModeOverride, out var modeOverride))
+                        return Fail(go, $"Invalid LensModeOverride '{p.LensModeOverride}'. Valid: None, Orthographic, Perspective, Physical");
+                    lens.ModeOverride = modeOverride;
+                }
+                vcam.Lens = lens;
             }
 
             Undo.RegisterCreatedObjectUndo(go, "Mosaic: Cinemachine Create VCam");
@@ -93,7 +163,11 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                 HierarchyPath = CinemachineToolHelpers.GetHierarchyPath(go.transform),
                 BodyType = bodyAdded,
                 AimType = aimAdded,
-                Priority = p.Priority
+                NoiseType = noiseAdded,
+                Priority = p.Priority,
+                Dutch = vcam.Lens.Dutch,
+                OrthographicSize = vcam.Lens.OrthographicSize,
+                LensModeOverride = vcam.Lens.ModeOverride.ToString(),
             });
         }
 

@@ -8,7 +8,11 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public string HierarchyPath { get; set; }
         public string BodyType { get; set; }
         public string AimType { get; set; }
+        public string NoiseType { get; set; }
         public int Priority { get; set; }
+        public float Dutch { get; set; }
+        public float OrthographicSize { get; set; }
+        public string LensModeOverride { get; set; }
     }
 }
 #endif

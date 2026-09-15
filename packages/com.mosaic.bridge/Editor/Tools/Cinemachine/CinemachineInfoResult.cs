@@ -19,6 +19,10 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public string HierarchyPath { get; set; }
         public string[] BodyComponents { get; set; }
         public string[] AimComponents { get; set; }
+        public string[] NoiseComponents { get; set; }
+        public float Dutch { get; set; }
+        public float OrthographicSize { get; set; }
+        public string LensModeOverride { get; set; }
     }
 
     public sealed class CinemachineBrainInfo

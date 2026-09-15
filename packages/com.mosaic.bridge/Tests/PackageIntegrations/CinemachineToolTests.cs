@@ -362,6 +362,132 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             var vcamGo = GameObject.Find("DollyVCam");
             Assert.IsNotNull(vcamGo.GetComponent<CinemachineSplineDolly>());
         }
+
+        // O4 §4.5 P2: bodies/aims/noise/lens — the "first vcam" lesson uses Follow, which was
+        // missing; PanTilt for a security-cam pan/tilt; noise for handheld shake.
+
+        [Test]
+        public void CreateVCam_BodyFollow_SetsFollowOffset()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", BodyType = "Follow", FollowOffset = new float[] { 1, 2, 3 },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Follow", result.Data.BodyType);
+            var follow = GameObject.Find("TestVCam").GetComponent<CinemachineFollow>();
+            Assert.IsNotNull(follow);
+            Assert.AreEqual(new Vector3(1, 2, 3), follow.FollowOffset);
+        }
+
+        [Test]
+        public void CreateVCam_BodyHardLockToTarget_AddsComponent()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", BodyType = "HardLockToTarget",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsNotNull(GameObject.Find("TestVCam").GetComponent<CinemachineHardLockToTarget>());
+        }
+
+        [Test]
+        public void CreateVCam_AimPanTilt_SetsPanAndTiltAngle()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", AimType = "PanTilt", PanAngle = 45f, TiltAngle = -10f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("PanTilt", result.Data.AimType);
+            var panTilt = GameObject.Find("TestVCam").GetComponent<CinemachinePanTilt>();
+            Assert.IsNotNull(panTilt);
+            Assert.AreEqual(45f, panTilt.PanAxis.Value, 0.0001f);
+            Assert.AreEqual(-10f, panTilt.TiltAxis.Value, 0.0001f);
+        }
+
+        [Test]
+        public void CreateVCam_AimRotateWithFollowTarget_AddsComponent()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", AimType = "RotateWithFollowTarget",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsNotNull(GameObject.Find("TestVCam").GetComponent<CinemachineRotateWithFollowTarget>());
+        }
+
+        [Test]
+        public void CreateVCam_NoiseBasicMultiChannelPerlin_SetsGains()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", NoiseType = "BasicMultiChannelPerlin",
+                NoiseAmplitudeGain = 2f, NoiseFrequencyGain = 0.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("BasicMultiChannelPerlin", result.Data.NoiseType);
+            var perlin = GameObject.Find("TestVCam").GetComponent<CinemachineBasicMultiChannelPerlin>();
+            Assert.IsNotNull(perlin);
+            Assert.AreEqual(2f, perlin.AmplitudeGain, 0.0001f);
+            Assert.AreEqual(0.5f, perlin.FrequencyGain, 0.0001f);
+        }
+
+        [Test]
+        public void CreateVCam_NoiseProfileNotFound_ReturnsFail()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", NoiseType = "BasicMultiChannelPerlin",
+                NoiseProfilePresetName = "NoSuchNoiseProfileAnywhere",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.IsNull(GameObject.Find("TestVCam"), "a failed create must not leave a partial GameObject behind");
+        }
+
+        [Test]
+        public void CreateVCam_LensBlock_SetsDutchAndOrthographicSizeAndModeOverride()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", Dutch = 5f, OrthographicSize = 8f, LensModeOverride = "Orthographic",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(5f, result.Data.Dutch, 0.0001f);
+            Assert.AreEqual(8f, result.Data.OrthographicSize, 0.0001f);
+            Assert.AreEqual("Orthographic", result.Data.LensModeOverride);
+            var vcam = GameObject.Find("TestVCam").GetComponent<CinemachineCamera>();
+            Assert.AreEqual(LensSettings.OverrideModes.Orthographic, vcam.Lens.ModeOverride);
+        }
+
+        [Test]
+        public void Info_ReportsNewBodyAimNoiseAndLensFields()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams
+            {
+                Name = "TestVCam", BodyType = "Follow", AimType = "PanTilt",
+                NoiseType = "BasicMultiChannelPerlin", Dutch = 3f,
+            });
+
+            var result = Tools.Cinemachine.CinemachineInfoTool.Execute(new Tools.Cinemachine.CinemachineInfoParams
+            {
+                VCamName = "TestVCam",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var info = result.Data.VirtualCameras[0];
+            CollectionAssert.Contains(info.BodyComponents, "Follow");
+            CollectionAssert.Contains(info.AimComponents, "PanTilt");
+            CollectionAssert.Contains(info.NoiseComponents, "BasicMultiChannelPerlin");
+            Assert.AreEqual(3f, info.Dutch, 0.0001f);
+        }
     }
 }
 #endif

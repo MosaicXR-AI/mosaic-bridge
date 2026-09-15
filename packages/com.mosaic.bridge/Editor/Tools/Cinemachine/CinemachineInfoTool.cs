@@ -38,6 +38,7 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
                 var bodyComponents = new List<string>();
                 var aimComponents = new List<string>();
+                var noiseComponents = new List<string>();
 
                 if (vcam.GetComponent<CinemachineThirdPersonFollow>() != null)
                     bodyComponents.Add("ThirdPersonFollow");
@@ -45,6 +46,10 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                     bodyComponents.Add("OrbitalFollow");
                 if (vcam.GetComponent<CinemachinePositionComposer>() != null)
                     bodyComponents.Add("PositionComposer");
+                if (vcam.GetComponent<CinemachineFollow>() != null)
+                    bodyComponents.Add("Follow");
+                if (vcam.GetComponent<CinemachineHardLockToTarget>() != null)
+                    bodyComponents.Add("HardLockToTarget");
 
                 if (vcam.GetComponent<CinemachineRotationComposer>() != null)
                     aimComponents.Add("Composer");
@@ -52,6 +57,13 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                     aimComponents.Add("HardLookAt");
                 if (vcam.GetComponent<CinemachineGroupFraming>() != null)
                     aimComponents.Add("GroupFraming");
+                if (vcam.GetComponent<CinemachinePanTilt>() != null)
+                    aimComponents.Add("PanTilt");
+                if (vcam.GetComponent<CinemachineRotateWithFollowTarget>() != null)
+                    aimComponents.Add("RotateWithFollowTarget");
+
+                if (vcam.GetComponent<CinemachineBasicMultiChannelPerlin>() != null)
+                    noiseComponents.Add("BasicMultiChannelPerlin");
 
                 vcamInfos.Add(new CinemachineVCamInfo
                 {
@@ -63,7 +75,11 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                     IsLive = liveCamNames.Contains(vcam.gameObject.name),
                     HierarchyPath = CinemachineToolHelpers.GetHierarchyPath(vcam.transform),
                     BodyComponents = bodyComponents.ToArray(),
-                    AimComponents = aimComponents.ToArray()
+                    AimComponents = aimComponents.ToArray(),
+                    NoiseComponents = noiseComponents.ToArray(),
+                    Dutch = vcam.Lens.Dutch,
+                    OrthographicSize = vcam.Lens.OrthographicSize,
+                    LensModeOverride = vcam.Lens.ModeOverride.ToString(),
                 });
             }
 

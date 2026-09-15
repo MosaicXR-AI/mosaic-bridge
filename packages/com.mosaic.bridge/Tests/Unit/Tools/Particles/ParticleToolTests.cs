@@ -288,6 +288,201 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
 
+        // ── particle/set-module ──────────────────────────────────────────────
+
+        [Test]
+        public void SetModule_ColorOverLifetime_AppliesGradient()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "ColorLifePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "ColorLifePS", Module = "colorOverLifetime",
+                ColorKeyTimes = new[] { 0f, 1f },
+                ColorKeyColors = new[] { 1f, 1f, 1f, 1f, 0.5f, 0f },
+                AlphaKeyTimes = new[] { 0f, 1f },
+                AlphaKeyValues = new[] { 1f, 0f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(result.Data.Enabled);
+            var module = _created.GetComponent<ParticleSystem>().colorOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(0f, module.color.gradient.Evaluate(1f).a, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_SizeOverLifetime_AppliesCurve()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "SizeLifePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "SizeLifePS", Module = "sizeOverLifetime",
+                CurveTimes = new[] { 0f, 1f }, CurveValues = new[] { 0.2f, 1f },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().sizeOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(1f, module.size.curve.Evaluate(1f), 0.01f);
+        }
+
+        [Test]
+        public void SetModule_VelocityOverLifetime_ConstantAndSpace_Apply()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "VelLifePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "VelLifePS", Module = "velocityOverLifetime",
+                XConstant = 1f, YConstant = 2f, ZConstant = 3f, Space = "World",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().velocityOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(ParticleSystemSimulationSpace.World, module.space);
+            Assert.AreEqual(2f, module.y.constant, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_VelocityOverLifetime_UnknownSpace_ReturnsInvalidParam()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "VelLifePS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "VelLifePS2", Module = "velocityOverLifetime", Space = "Sideways",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetModule_LimitVelocity_ConstantAndDampen_Apply()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "LimitVelPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "LimitVelPS", Module = "limitVelocity", LimitConstant = 5f, Dampen = 0.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().limitVelocityOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(5f, module.limit.constant, 0.01f);
+            Assert.AreEqual(0.5f, module.dampen, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_Noise_AppliesStrengthAndFrequency()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "NoisePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "NoisePS", Module = "noise", NoiseStrength = 2f, NoiseFrequency = 0.8f, NoiseOctaveCount = 3,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().noise;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(2f, module.strength.constant, 0.01f);
+            Assert.AreEqual(0.8f, module.frequency, 0.01f);
+            Assert.AreEqual(3, module.octaveCount);
+        }
+
+        [Test]
+        public void SetModule_ForceOverLifetime_RandomizedAndConstants_Apply()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "ForcePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "ForcePS", Module = "forceOverLifetime", XConstant = 0.5f, Randomized = true,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().forceOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.IsTrue(module.randomized);
+            Assert.AreEqual(0.5f, module.x.constant, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_RotationOverLifetime_AppliesCurve()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "RotLifePS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            // rotationOverLifetime.z is in RADIANS/sec even though the Inspector shows degrees.
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "RotLifePS", Module = "rotationOverLifetime", CurveScalar = Mathf.PI / 4f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().rotationOverLifetime;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(Mathf.PI / 4f, module.z.constant, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_EnabledFalse_DisablesModule()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "DisableModPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "DisableModPS", Module = "noise", NoiseStrength = 1f,
+            });
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "DisableModPS", Module = "noise", Enabled = false,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsFalse(result.Data.Enabled);
+            Assert.IsFalse(_created.GetComponent<ParticleSystem>().noise.enabled);
+        }
+
+        [Test]
+        public void SetModule_UnknownModule_ReturnsInvalidParam()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "UnknownModPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "UnknownModPS", Module = "sparkleOverLifetime",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────
 
         private static GameObject FindByInstanceId(int instanceId)

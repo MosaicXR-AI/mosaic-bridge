@@ -663,5 +663,133 @@ namespace Mosaic.Bridge.Tests.Physics
                 Object.DestroyImmediate(child);
             }
         }
+
+        // ── O4 §4.7: Character controller ────────────────────────────────────
+
+        [Test]
+        public void AddCharacterController_AutoFitsFromMesh()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerParams { Name = "PhysicsTestCube" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.Greater(result.Data.Height, 0f);
+            Assert.Greater(result.Data.Radius, 0f);
+            Assert.IsNotNull(_testGo.GetComponent<CharacterController>());
+        }
+
+        [Test]
+        public void AddCharacterController_WithRigidbody_ReturnsConflict()
+        {
+            Undo.AddComponent<Rigidbody>(_testGo);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerParams { Name = "PhysicsTestCube" });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("CONFLICT", result.ErrorCode);
+        }
+
+        [Test]
+        public void AddCharacterController_RemoveExistingRigidbody_Succeeds()
+        {
+            Undo.AddComponent<Rigidbody>(_testGo);
+
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerParams
+                {
+                    Name = "PhysicsTestCube", RemoveExistingRigidbody = true,
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(result.Data.RigidbodyRemoved);
+            Assert.IsNull(_testGo.GetComponent<Rigidbody>());
+            Assert.IsNotNull(_testGo.GetComponent<CharacterController>());
+        }
+
+        [Test]
+        public void AddCharacterController_ExplicitOverrides_Apply()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsAddCharacterControllerParams
+                {
+                    Name = "PhysicsTestCube", Radius = 0.3f, Height = 1.8f, SlopeLimit = 60f, StepOffset = 0.4f,
+                });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var controller = _testGo.GetComponent<CharacterController>();
+            Assert.AreEqual(0.3f, controller.radius, 0.001f);
+            Assert.AreEqual(1.8f, controller.height, 0.001f);
+            Assert.AreEqual(60f, controller.slopeLimit, 0.001f);
+            Assert.AreEqual(0.4f, controller.stepOffset, 0.001f);
+        }
+
+        // ── O4 §4.7: Layer collision matrix ──────────────────────────────────
+
+        [Test]
+        public void LayerCollision_SetThenGet_RoundTrips()
+        {
+            var original = UnityEngine.Physics.GetIgnoreLayerCollision(0, 4); // Default, Water
+            try
+            {
+                var setResult = Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionParams
+                    {
+                        Action = "set", LayerA = "Default", LayerB = "Water", CanCollide = false,
+                    });
+                Assert.IsTrue(setResult.Success, setResult.Error);
+
+                var getResult = Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionParams
+                    {
+                        Action = "get", LayerA = "Default", LayerB = "Water",
+                    });
+                Assert.IsTrue(getResult.Success, getResult.Error);
+                Assert.IsFalse(getResult.Data.CanCollide);
+            }
+            finally
+            {
+                UnityEngine.Physics.IgnoreLayerCollision(0, 4, original);
+            }
+        }
+
+        [Test]
+        public void LayerCollision_UnknownLayer_ReturnsInvalidParam()
+        {
+            var result = Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionTool.Execute(
+                new Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionParams
+                {
+                    Action = "get", LayerA = "NotARealLayer_Mosaic", LayerB = "Water",
+                });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void LayerCollision_Matrix_ReflectsSetPair()
+        {
+            var original = UnityEngine.Physics.GetIgnoreLayerCollision(0, 4);
+            try
+            {
+                Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionParams
+                    {
+                        Action = "set", LayerA = "Default", LayerB = "Water", CanCollide = false,
+                    });
+
+                var result = Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionTool.Execute(
+                    new Mosaic.Bridge.Tools.Physics.PhysicsLayerCollisionParams { Action = "matrix" });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.IsTrue(System.Array.Exists(result.Data.IgnoredPairs,
+                    pair => (pair.LayerA == "Default" && pair.LayerB == "Water") ||
+                            (pair.LayerA == "Water" && pair.LayerB == "Default")));
+            }
+            finally
+            {
+                UnityEngine.Physics.IgnoreLayerCollision(0, 4, original);
+            }
+        }
     }
 }

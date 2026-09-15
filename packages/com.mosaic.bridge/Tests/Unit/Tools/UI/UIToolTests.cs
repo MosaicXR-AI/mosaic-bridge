@@ -148,6 +148,7 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsNotNull(eventSystemGo.GetComponent<StandaloneInputModule>());
         }
 
+#if !MOSAIC_HAS_INPUT_SYSTEM
         [Test]
         public void CreateCanvas_InputModuleInputSystem_FailsCleanlyWhenPackageAbsent()
         {
@@ -160,6 +161,18 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.UI
             Assert.IsFalse(result.Success);
             StringAssert.Contains("com.unity.inputsystem", result.Error);
         }
+#else
+        [Test]
+        public void CreateCanvas_InputModuleInputSystem_AddsInputSystemUIInputModule()
+        {
+            var result = Mosaic.Bridge.Tools.UI.UICreateCanvasTool.Execute(
+                new Mosaic.Bridge.Tools.UI.UICreateCanvasParams { InputModule = "inputsystem" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var eventSystemGo = UnityIds.FindAll<EventSystem>().First().gameObject;
+            Assert.IsNotNull(eventSystemGo.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>());
+        }
+#endif
 
         [Test]
         public void CreateCanvas_InvalidInputModule_Fails()

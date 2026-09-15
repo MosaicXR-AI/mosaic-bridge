@@ -40,7 +40,7 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             var testObjects = new[]
             {
                 "TestMainCamera", "TestVCam", "TestVCam2", "FollowTarget",
-                "LookAtTarget", "TestDollyTrack", "DollyVCam"
+                "LookAtTarget", "TestDollyTrack", "DollyVCam", "TestCart"
             };
             foreach (var name in testObjects)
             {
@@ -1155,6 +1155,87 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             }
         }
 #endif
+
+        // O4 §4.5 P2: spline dolly params + cart — fly-through/rail camera; CameraPosition is
+        // what a Timeline track keys for a dolly move.
+
+        [Test]
+        public void CreateDolly_SplineDollyFields_Apply()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "DollyVCam" });
+
+            var result = Tools.Cinemachine.CinemachineCreateDollyTool.Execute(new Tools.Cinemachine.CinemachineCreateDollyParams
+            {
+                Name = "TestDollyTrack", Waypoints = new float[] { 0, 0, 0, 10, 0, 10 },
+                VCamName = "DollyVCam", CameraPosition = 5f, PositionUnits = "Distance",
+                SplineOffset = new[] { 1f, 2f, 0f }, CameraRotation = "FollowTarget",
+                DampingEnabled = true, DampingPosition = new[] { 0.5f, 0.5f, 0.5f }, DampingAngular = 2f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(5f, result.Data.CameraPosition, 0.0001f);
+            Assert.AreEqual("Distance", result.Data.PositionUnits);
+            Assert.AreEqual("FollowTarget", result.Data.CameraRotation);
+
+            var dolly = GameObject.Find("DollyVCam").GetComponent<CinemachineSplineDolly>();
+            Assert.AreEqual(new Vector3(1, 2, 0), dolly.SplineOffset);
+            Assert.IsTrue(dolly.Damping.Enabled);
+            Assert.AreEqual(2f, dolly.Damping.Angular, 0.0001f);
+            Assert.AreEqual(CinemachineSplineDolly.RotationMode.FollowTarget, dolly.CameraRotation);
+        }
+
+        [Test]
+        public void CreateDolly_AutoDollyFixedSpeed_SetsMethod()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "DollyVCam" });
+
+            var result = Tools.Cinemachine.CinemachineCreateDollyTool.Execute(new Tools.Cinemachine.CinemachineCreateDollyParams
+            {
+                Name = "TestDollyTrack", Waypoints = new float[] { 0, 0, 0, 10, 0, 10 },
+                VCamName = "DollyVCam", AutoDolly = true, AutoDollyMethod = "FixedSpeed", AutoDollySpeed = 3f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var dolly = GameObject.Find("DollyVCam").GetComponent<CinemachineSplineDolly>();
+            Assert.IsTrue(dolly.AutomaticDolly.Enabled);
+            var method = dolly.AutomaticDolly.Method as SplineAutoDolly.FixedSpeed;
+            Assert.IsNotNull(method);
+            Assert.AreEqual(3f, method.Speed, 0.0001f);
+        }
+
+        [Test]
+        public void CreateDolly_UnknownAutoDollyMethod_ReturnsInvalidParam()
+        {
+            Tools.Cinemachine.CinemachineCreateVCamTool.Execute(new Tools.Cinemachine.CinemachineCreateVCamParams { Name = "DollyVCam" });
+
+            var result = Tools.Cinemachine.CinemachineCreateDollyTool.Execute(new Tools.Cinemachine.CinemachineCreateDollyParams
+            {
+                Name = "TestDollyTrack", Waypoints = new float[] { 0, 0, 0, 10, 0, 10 },
+                VCamName = "DollyVCam", AutoDolly = true, AutoDollyMethod = "Bogus",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void CreateDolly_AddCart_CreatesCartOnSpline()
+        {
+            var result = Tools.Cinemachine.CinemachineCreateDollyTool.Execute(new Tools.Cinemachine.CinemachineCreateDollyParams
+            {
+                Name = "TestDollyTrack", Waypoints = new float[] { 0, 0, 0, 10, 0, 10 },
+                CartName = "TestCart", CartSplinePosition = 0.5f, CartPositionUnits = "Normalized",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("TestCart", result.Data.CartName);
+
+            var cart = GameObject.Find("TestCart").GetComponent<CinemachineSplineCart>();
+            Assert.IsNotNull(cart);
+            Assert.AreEqual(0.5f, cart.SplinePosition, 0.0001f);
+            Assert.AreEqual(UnityEngine.Splines.PathIndexUnit.Normalized, cart.PositionUnits);
+            Assert.AreEqual(GameObject.Find("TestDollyTrack").GetComponent<UnityEngine.Splines.SplineContainer>(), cart.Spline);
+        }
     }
 }
 #endif

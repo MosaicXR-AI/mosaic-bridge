@@ -14,7 +14,12 @@ namespace Mosaic.Bridge.Tools.Cinemachine
     public static class CinemachineCreateDollyTool
     {
         [MosaicTool("cinemachine/create-dolly",
-                    "Creates a dolly track (SplineContainer) with waypoints and optionally attaches a CinemachineSplineDolly to a virtual camera",
+                    "Creates a dolly track (SplineContainer) with waypoints. VCamName attaches a " +
+                    "CinemachineSplineDolly: CameraPosition/PositionUnits, SplineOffset, " +
+                    "CameraRotation, Damping*, and AutoDolly + AutoDollyMethod (FixedSpeed: " +
+                    "AutoDollySpeed; NearestPointToTarget: AutoDollyPositionOffset, needs a Follow " +
+                    "target). CartName additionally creates a CinemachineSplineCart riding the same " +
+                    "spline — a non-camera rider (moving platform) distinct from the camera dolly.",
                     isReadOnly: false)]
         public static ToolResult<CinemachineCreateDollyResult> Execute(CinemachineCreateDollyParams p)
         {
@@ -69,16 +74,101 @@ namespace Mosaic.Bridge.Tools.Cinemachine
 
                 dolly.Spline = splineContainer;
 
+                // PositionUnits must be set BEFORE CameraPosition — Cinemachine reinterprets the
+                // existing CameraPosition value under the new units when PositionUnits changes, so
+                // setting it after CameraPosition silently rescales the position the caller asked for.
+                if (!string.IsNullOrEmpty(p.PositionUnits))
+                {
+                    if (!TryParsePathIndexUnit(p.PositionUnits, out var units))
+                        return ToolResult<CinemachineCreateDollyResult>.Fail(
+                            $"Unknown PositionUnits '{p.PositionUnits}'. Valid: Distance, Normalized, Knot", ErrorCodes.INVALID_PARAM);
+                    dolly.PositionUnits = units;
+                }
+
+                if (p.CameraPosition.HasValue)
+                    dolly.CameraPosition = p.CameraPosition.Value;
+
+                if (p.SplineOffset != null)
+                {
+                    if (p.SplineOffset.Length != 3)
+                        return ToolResult<CinemachineCreateDollyResult>.Fail(
+                            "SplineOffset requires exactly [x, y, z]", ErrorCodes.INVALID_PARAM);
+                    dolly.SplineOffset = new Vector3(p.SplineOffset[0], p.SplineOffset[1], p.SplineOffset[2]);
+                }
+
+                if (!string.IsNullOrEmpty(p.CameraRotation))
+                {
+                    if (!TryParseRotationMode(p.CameraRotation, out var rotationMode))
+                        return ToolResult<CinemachineCreateDollyResult>.Fail(
+                            $"Unknown CameraRotation '{p.CameraRotation}'. Valid: Default, FollowTarget, " +
+                            "FollowTargetNoRoll, Spline, SplineNoRoll", ErrorCodes.INVALID_PARAM);
+                    dolly.CameraRotation = rotationMode;
+                }
+
+                if (p.DampingEnabled.HasValue || p.DampingPosition != null || p.DampingAngular.HasValue)
+                {
+                    var damping = dolly.Damping;
+                    if (p.DampingEnabled.HasValue) damping.Enabled = p.DampingEnabled.Value;
+                    if (p.DampingPosition != null)
+                    {
+                        if (p.DampingPosition.Length != 3)
+                            return ToolResult<CinemachineCreateDollyResult>.Fail(
+                                "DampingPosition requires exactly [x, y, z]", ErrorCodes.INVALID_PARAM);
+                        damping.Position = new Vector3(p.DampingPosition[0], p.DampingPosition[1], p.DampingPosition[2]);
+                    }
+                    if (p.DampingAngular.HasValue) damping.Angular = p.DampingAngular.Value;
+                    dolly.Damping = damping;
+                }
+
                 if (p.AutoDolly)
                 {
-                    dolly.AutomaticDolly = new SplineAutoDolly
+                    SplineAutoDolly.ISplineAutoDolly method = null;
+                    if (!string.IsNullOrEmpty(p.AutoDollyMethod))
                     {
-                        Enabled = true
-                    };
+                        switch (p.AutoDollyMethod.ToLowerInvariant())
+                        {
+                            case "fixedspeed":
+                                method = new SplineAutoDolly.FixedSpeed { Speed = p.AutoDollySpeed ?? 1f };
+                                break;
+                            case "nearestpointtotarget":
+                                method = new SplineAutoDolly.NearestPointToTarget { PositionOffset = p.AutoDollyPositionOffset ?? 0f };
+                                break;
+                            default:
+                                return ToolResult<CinemachineCreateDollyResult>.Fail(
+                                    $"Unknown AutoDollyMethod '{p.AutoDollyMethod}'. Valid: FixedSpeed, NearestPointToTarget",
+                                    ErrorCodes.INVALID_PARAM);
+                        }
+                    }
+                    dolly.AutomaticDolly = new SplineAutoDolly { Enabled = true, Method = method };
                 }
 
                 attachedTo = vcamGo.name;
             }
+
+            string cartName = null;
+            int cartInstanceId = 0;
+            if (!string.IsNullOrEmpty(p.CartName))
+            {
+                var cartGo = new GameObject(p.CartName);
+                var cart = cartGo.AddComponent<CinemachineSplineCart>();
+                cart.Spline = splineContainer;
+                // Same ordering requirement as the dolly above: units before position.
+                if (!string.IsNullOrEmpty(p.CartPositionUnits))
+                {
+                    if (!TryParsePathIndexUnit(p.CartPositionUnits, out var cartUnits))
+                        return ToolResult<CinemachineCreateDollyResult>.Fail(
+                            $"Unknown CartPositionUnits '{p.CartPositionUnits}'. Valid: Distance, Normalized, Knot",
+                            ErrorCodes.INVALID_PARAM);
+                    cart.PositionUnits = cartUnits;
+                }
+                if (p.CartSplinePosition.HasValue)
+                    cart.SplinePosition = p.CartSplinePosition.Value;
+                Undo.RegisterCreatedObjectUndo(cartGo, "Mosaic: Cinemachine Create Spline Cart");
+                cartName = cartGo.name;
+                cartInstanceId = UnityIds.Of(cartGo);
+            }
+
+            var vcamForResult = attachedTo != null ? GameObject.Find(attachedTo)?.GetComponent<CinemachineSplineDolly>() : null;
 
             return ToolResult<CinemachineCreateDollyResult>.Ok(new CinemachineCreateDollyResult
             {
@@ -86,8 +176,38 @@ namespace Mosaic.Bridge.Tools.Cinemachine
                 TrackName = trackGo.name,
                 WaypointCount = waypointCount,
                 AutoDollyEnabled = p.AutoDolly,
-                AttachedToVCam = attachedTo
+                AttachedToVCam = attachedTo,
+                CameraPosition = vcamForResult != null ? vcamForResult.CameraPosition : 0f,
+                PositionUnits = vcamForResult != null ? vcamForResult.PositionUnits.ToString() : null,
+                CameraRotation = vcamForResult != null ? vcamForResult.CameraRotation.ToString() : null,
+                AutoDollyMethod = p.AutoDollyMethod,
+                CartName = cartName,
+                CartInstanceId = cartInstanceId,
             });
+        }
+
+        private static bool TryParsePathIndexUnit(string value, out PathIndexUnit result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "distance":   result = PathIndexUnit.Distance;   return true;
+                case "normalized": result = PathIndexUnit.Normalized; return true;
+                case "knot":       result = PathIndexUnit.Knot;       return true;
+                default:           result = PathIndexUnit.Normalized; return false;
+            }
+        }
+
+        private static bool TryParseRotationMode(string value, out CinemachineSplineDolly.RotationMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "default":            result = CinemachineSplineDolly.RotationMode.Default;            return true;
+                case "followtarget":       result = CinemachineSplineDolly.RotationMode.FollowTarget;       return true;
+                case "followtargetnoroll": result = CinemachineSplineDolly.RotationMode.FollowTargetNoRoll; return true;
+                case "spline":             result = CinemachineSplineDolly.RotationMode.Spline;             return true;
+                case "splinenoroll":       result = CinemachineSplineDolly.RotationMode.SplineNoRoll;       return true;
+                default:                   result = CinemachineSplineDolly.RotationMode.Default;            return false;
+            }
         }
     }
 }

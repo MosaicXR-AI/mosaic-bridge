@@ -185,10 +185,14 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.InputSystem
                     AssetPath = TestAssetPath
                 });
             Assert.IsTrue(infoResult.Success);
-            Assert.AreEqual(1, infoResult.Data.Maps.Count);
-            Assert.AreEqual("Player", infoResult.Data.Maps[0].Name);
-            Assert.AreEqual(1, infoResult.Data.Maps[0].Actions.Count);
-            Assert.AreEqual("Jump", infoResult.Data.Maps[0].Actions[0].Name);
+            // InputCreateTool always seeds a "Default" map so InputActionAsset.ToJson() has a
+            // concrete collection to serialize — 2 maps total, "Default" + the "Player" map this
+            // test added itself.
+            Assert.AreEqual(2, infoResult.Data.Maps.Count);
+            var playerMap = infoResult.Data.Maps.Find(m => m.Name == "Player");
+            Assert.IsNotNull(playerMap, "expected a 'Player' map in the asset");
+            Assert.AreEqual(1, playerMap.Actions.Count);
+            Assert.AreEqual("Jump", playerMap.Actions[0].Name);
 
             // 6. Cleanup in TearDown
         }

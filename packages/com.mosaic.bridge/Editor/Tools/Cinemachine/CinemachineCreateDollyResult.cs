@@ -8,6 +8,12 @@ namespace Mosaic.Bridge.Tools.Cinemachine
         public int WaypointCount { get; set; }
         public bool AutoDollyEnabled { get; set; }
         public string AttachedToVCam { get; set; }
+        public float CameraPosition { get; set; }
+        public string PositionUnits { get; set; }
+        public string CameraRotation { get; set; }
+        public string AutoDollyMethod { get; set; }
+        public string CartName { get; set; }
+        public int CartInstanceId { get; set; }
     }
 }
 #endif

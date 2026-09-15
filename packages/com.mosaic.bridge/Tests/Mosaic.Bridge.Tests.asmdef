@@ -17,7 +17,9 @@
         "Mosaic.Bridge.Tools.VisualScripting",
         "Mosaic.Bridge.Tools.Sprite2D",
         "Unity.Cinemachine",
+        "Unity.Splines",
         "Unity.Timeline",
+        "Unity.InputSystem",
         "Unity.TextMeshPro",
         "Unity.TextMeshPro.Editor",
         "UnityEngine.TestRunner",
@@ -87,6 +89,11 @@
             "name": "com.unity.2d.sprite",
             "expression": "1.0.0",
             "define": "MOSAIC_HAS_2D_SPRITE"
+        },
+        {
+            "name": "com.unity.inputsystem",
+            "expression": "",
+            "define": "MOSAIC_HAS_INPUT_SYSTEM"
         }
     ],
     "noEngineReferences": false

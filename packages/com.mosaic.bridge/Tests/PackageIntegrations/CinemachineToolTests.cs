@@ -634,6 +634,94 @@ namespace Mosaic.Bridge.Tests.Cinemachine
             Assert.IsFalse(result.Success);
             Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
+
+        // O4 §4.5 P2: cinemachine/impulse — "camera shake on landing" is asked for in nearly
+        // every intro course.
+
+        [Test]
+        public void Impulse_AddSource_SetsShapeDurationAndChannel()
+        {
+            var target = new GameObject("TestVCam");
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineImpulseTool.Execute(new Tools.Cinemachine.CinemachineImpulseParams
+                {
+                    Action = "add-source", TargetName = "TestVCam",
+                    ImpulseShape = "Explosion", ImpulseDuration = 0.75f, ImpulseChannel = 3,
+                    DefaultVelocity = new float[] { 0, -1, 0 },
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual("Explosion", result.Data.ImpulseShape);
+                Assert.AreEqual(0.75f, result.Data.ImpulseDuration, 0.0001f);
+                Assert.AreEqual(3, result.Data.ImpulseChannel);
+
+                var source = target.GetComponent<CinemachineImpulseSource>();
+                Assert.IsNotNull(source);
+                Assert.AreEqual(new Vector3(0, -1, 0), source.DefaultVelocity);
+            }
+            finally
+            {
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void Impulse_AddCollisionSource_SetsScalingFlags()
+        {
+            var target = new GameObject("TestVCam");
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineImpulseTool.Execute(new Tools.Cinemachine.CinemachineImpulseParams
+                {
+                    Action = "add-collision-source", TargetName = "TestVCam",
+                    ScaleImpactWithSpeed = true, ScaleImpactWithMass = true, UseImpactDirection = false,
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                var source = target.GetComponent<CinemachineCollisionImpulseSource>();
+                Assert.IsNotNull(source);
+                Assert.IsTrue(source.ScaleImpactWithSpeed);
+                Assert.IsTrue(source.ScaleImpactWithMass);
+                Assert.IsFalse(source.UseImpactDirection);
+            }
+            finally
+            {
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void Impulse_UnknownAction_ReturnsInvalidParam()
+        {
+            var target = new GameObject("TestVCam");
+            try
+            {
+                var result = Tools.Cinemachine.CinemachineImpulseTool.Execute(new Tools.Cinemachine.CinemachineImpulseParams
+                {
+                    Action = "bogus", TargetName = "TestVCam",
+                });
+
+                Assert.IsFalse(result.Success);
+                Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+            }
+            finally
+            {
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
+        public void Impulse_TargetNotFound_ReturnsNotFound()
+        {
+            var result = Tools.Cinemachine.CinemachineImpulseTool.Execute(new Tools.Cinemachine.CinemachineImpulseParams
+            {
+                Action = "add-source", TargetName = "NoSuchTarget",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
     }
 }
 #endif

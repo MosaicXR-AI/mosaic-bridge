@@ -483,6 +483,183 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
 
+        // ── particle/set-module (batch 2: collision, subEmitters, trails, lights, textureSheetAnimation) ──
+
+        [Test]
+        public void SetModule_Collision_AppliesTypeAndDampenBounce()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "CollisionPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "CollisionPS", Module = "collision",
+                CollisionType = "World", CollisionMode = "Collision3D", Dampen = 0.3f, Bounce = 0.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().collision;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(ParticleSystemCollisionType.World, module.type);
+            Assert.AreEqual(0.3f, module.dampen.constant, 0.01f);
+            Assert.AreEqual(0.5f, module.bounce.constant, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_Collision_UnknownType_ReturnsInvalidParam()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "CollisionPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "CollisionPS2", Module = "collision", CollisionType = "Spheres",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetModule_SubEmitters_AddsChildAsSubEmitter()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "SubEmitParentPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var childResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "SubEmitChildPS" });
+            Assert.IsTrue(childResult.Success, childResult.Error);
+            var childGo = FindByInstanceId(childResult.Data.InstanceId);
+            childGo.transform.SetParent(_created.transform, false);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "SubEmitParentPS", Module = "subEmitters",
+                SubEmitterName = "SubEmitChildPS", SubEmitterType = "Death",
+                SubEmitterProperties = "InheritColor,InheritSize", SubEmitterEmitProbability = 0.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().subEmitters;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(1, module.subEmittersCount);
+            Assert.AreEqual(ParticleSystemSubEmitterType.Death, module.GetSubEmitterType(0));
+        }
+
+        [Test]
+        public void SetModule_SubEmitters_UnknownGameObject_ReturnsNotFound()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "SubEmitParentPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "SubEmitParentPS2", Module = "subEmitters", SubEmitterName = "NoSuchChild_Mosaic",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetModule_Trails_AppliesRatioAndMinVertexDistance()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "TrailsPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "TrailsPS", Module = "trails", TrailRatio = 0.5f, TrailMinVertexDistance = 0.1f,
+                TrailWorldSpace = true, TrailLifetimeConstant = 0.8f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().trails;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(0.5f, module.ratio, 0.01f);
+            Assert.AreEqual(0.1f, module.minVertexDistance, 0.01f);
+            Assert.IsTrue(module.worldSpace);
+            Assert.AreEqual(0.8f, module.lifetime.constant, 0.01f);
+        }
+
+        [Test]
+        public void SetModule_Lights_UnknownPrefab_ReturnsNotFound()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "LightsPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "LightsPS", Module = "lights", LightPrefabPath = "Assets/DoesNotExist.prefab",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetModule_Lights_RatioAndFlags_Apply()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "LightsPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "LightsPS2", Module = "lights", LightRatio = 0.2f, LightUseParticleColor = true, LightMaxLights = 10,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().lights;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(0.2f, module.ratio, 0.01f);
+            Assert.IsTrue(module.useParticleColor);
+            Assert.AreEqual(10, module.maxLights);
+        }
+
+        [Test]
+        public void SetModule_TextureSheetAnimation_AppliesTilesAndFps()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "TsaPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "TsaPS", Module = "textureSheetAnimation",
+                TilesX = 4, TilesY = 4, Fps = 12f, CycleCount = 2,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var module = _created.GetComponent<ParticleSystem>().textureSheetAnimation;
+            Assert.IsTrue(module.enabled);
+            Assert.AreEqual(4, module.numTilesX);
+            Assert.AreEqual(4, module.numTilesY);
+            Assert.AreEqual(12f, module.fps, 0.01f);
+            Assert.AreEqual(2, module.cycleCount);
+        }
+
+        [Test]
+        public void SetModule_TextureSheetAnimation_UnknownAnimation_ReturnsInvalidParam()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "TsaPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "TsaPS2", Module = "textureSheetAnimation", TsaAnimation = "Diagonal",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────
 
         private static GameObject FindByInstanceId(int instanceId)

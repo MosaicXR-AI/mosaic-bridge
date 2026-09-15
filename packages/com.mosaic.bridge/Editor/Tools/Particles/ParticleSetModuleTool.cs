@@ -21,7 +21,15 @@ namespace Mosaic.Bridge.Tools.Particles
                     "X/Y/ZCurveTimes/Values, Space), limitVelocity (LimitConstant or LimitCurveTimes/Values, " +
                     "Dampen), rotationOverLifetime (CurveScalar/Times/Values, RADIANS/sec — the Inspector " +
                     "displays degrees, but the underlying field is radians), noise " +
-                    "(NoiseStrength/Frequency/ScrollSpeed/Damping/OctaveCount/Multiplier/Scale).",
+                    "(NoiseStrength/Frequency/ScrollSpeed/Damping/OctaveCount/Multiplier/Scale), " +
+                    "collision (CollisionType/Mode, Dampen/Bounce/LifetimeLoss, Min/MaxKillSpeed, " +
+                    "CollidesWithLayers, SendCollisionMessages, RadiusScale), subEmitters (SubEmitterName " +
+                    "+ SubEmitterType + SubEmitterProperties + SubEmitterEmitProbability — the sub-emitter " +
+                    "must be a child ParticleSystem), trails (TrailRatio, TrailLifetimeConstant/CurveTimes/" +
+                    "Values, TrailMinVertexDistance, TrailWorldSpace, TrailDieWithParticles, " +
+                    "TrailSizeAffectsWidth), lights (LightPrefabPath, LightRatio, LightUseRandomDistribution/" +
+                    "ParticleColor, LightSizeAffectsRange, LightAlphaAffectsIntensity, LightMaxLights), " +
+                    "textureSheetAnimation (TilesX/Y, TsaAnimation, Fps, CycleCount, TsaStartFrameConstant).",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ParticleSetModuleResult> Execute(ParticleSetModuleParams p)
         {
@@ -50,10 +58,24 @@ namespace Mosaic.Bridge.Tools.Particles
                 case "forceoverlifetime": if (!TryApplyForceOverLifetime(ps, p, out enabled, out var forceErr))
                         return ToolResult<ParticleSetModuleResult>.Fail(forceErr, ErrorCodes.INVALID_PARAM);
                     break;
+                case "collision": if (!TryApplyCollision(ps, p, out enabled, out var collisionErr))
+                        return ToolResult<ParticleSetModuleResult>.Fail(collisionErr, ErrorCodes.INVALID_PARAM);
+                    break;
+                case "subemitters": if (!TryApplySubEmitters(ps, p, out enabled, out var subErr, out var subErrCode))
+                        return ToolResult<ParticleSetModuleResult>.Fail(subErr, subErrCode);
+                    break;
+                case "trails": enabled = ApplyTrails(ps, p); break;
+                case "lights": if (!TryApplyLights(ps, p, out enabled, out var lightsErr))
+                        return ToolResult<ParticleSetModuleResult>.Fail(lightsErr, ErrorCodes.NOT_FOUND);
+                    break;
+                case "texturesheetanimation": if (!TryApplyTextureSheetAnimation(ps, p, out enabled, out var tsaErr))
+                        return ToolResult<ParticleSetModuleResult>.Fail(tsaErr, ErrorCodes.INVALID_PARAM);
+                    break;
                 default:
                     return ToolResult<ParticleSetModuleResult>.Fail(
                         $"Unknown Module '{p.Module}'. Valid: colorOverLifetime, sizeOverLifetime, " +
-                        "velocityOverLifetime, limitVelocity, rotationOverLifetime, noise, forceOverLifetime",
+                        "velocityOverLifetime, limitVelocity, rotationOverLifetime, noise, forceOverLifetime, " +
+                        "collision, subEmitters, trails, lights, textureSheetAnimation",
                         ErrorCodes.INVALID_PARAM);
             }
 
@@ -216,6 +238,168 @@ namespace Mosaic.Bridge.Tools.Particles
                 error = $"Unknown Space '{value}'. Valid: Local, World, Custom";
                 return false;
             }
+            return true;
+        }
+
+        private static bool TryApplyCollision(ParticleSystem ps, ParticleSetModuleParams p, out bool enabled, out string error)
+        {
+            error = null;
+            var module = ps.collision;
+            enabled = p.Enabled ?? true;
+            module.enabled = enabled;
+            if (!enabled) return true;
+
+            if (!string.IsNullOrEmpty(p.CollisionType))
+            {
+                if (!System.Enum.TryParse<ParticleSystemCollisionType>(p.CollisionType, ignoreCase: true, out var type))
+                {
+                    error = $"Unknown CollisionType '{p.CollisionType}'. Valid: Planes, World";
+                    return false;
+                }
+                module.type = type;
+            }
+            if (!string.IsNullOrEmpty(p.CollisionMode))
+            {
+                if (!System.Enum.TryParse<ParticleSystemCollisionMode>(p.CollisionMode, ignoreCase: true, out var mode))
+                {
+                    error = $"Unknown CollisionMode '{p.CollisionMode}'. Valid: Collision3D, Collision2D";
+                    return false;
+                }
+                module.mode = mode;
+            }
+            if (p.Dampen.HasValue) module.dampen = p.Dampen.Value;
+            if (p.Bounce.HasValue) module.bounce = p.Bounce.Value;
+            if (p.LifetimeLoss.HasValue) module.lifetimeLoss = p.LifetimeLoss.Value;
+            if (p.MinKillSpeed.HasValue) module.minKillSpeed = p.MinKillSpeed.Value;
+            if (p.MaxKillSpeed.HasValue) module.maxKillSpeed = p.MaxKillSpeed.Value;
+            if (p.SendCollisionMessages.HasValue) module.sendCollisionMessages = p.SendCollisionMessages.Value;
+            if (p.RadiusScale.HasValue) module.radiusScale = p.RadiusScale.Value;
+            if (!string.IsNullOrEmpty(p.CollidesWithLayers))
+                module.collidesWith = LayerMask.GetMask(System.Array.ConvertAll(p.CollidesWithLayers.Split(','), s => s.Trim()));
+
+            return true;
+        }
+
+        private static bool TryApplySubEmitters(ParticleSystem ps, ParticleSetModuleParams p, out bool enabled, out string error, out string errorCode)
+        {
+            error = null;
+            errorCode = ErrorCodes.INVALID_PARAM;
+            var module = ps.subEmitters;
+            enabled = p.Enabled ?? true;
+            module.enabled = enabled;
+            if (!enabled) return true;
+
+            if (string.IsNullOrEmpty(p.SubEmitterName)) return true;
+
+            var subGo = GameObject.Find(p.SubEmitterName);
+            if (subGo == null)
+            {
+                error = $"No GameObject named '{p.SubEmitterName}' found";
+                errorCode = ErrorCodes.NOT_FOUND;
+                return false;
+            }
+            var subPs = subGo.GetComponent<ParticleSystem>();
+            if (subPs == null)
+            {
+                error = $"No ParticleSystem component on '{p.SubEmitterName}'";
+                errorCode = ErrorCodes.NOT_FOUND;
+                return false;
+            }
+
+            if (!System.Enum.TryParse<ParticleSystemSubEmitterType>(p.SubEmitterType ?? "Birth", ignoreCase: true, out var type))
+            {
+                error = $"Unknown SubEmitterType '{p.SubEmitterType}'. Valid: Birth, Collision, Death, Trigger, Manual";
+                return false;
+            }
+
+            var properties = ParticleSystemSubEmitterProperties.InheritNothing;
+            if (!string.IsNullOrEmpty(p.SubEmitterProperties))
+            {
+                foreach (var token in p.SubEmitterProperties.Split(','))
+                {
+                    if (!System.Enum.TryParse<ParticleSystemSubEmitterProperties>(token.Trim(), ignoreCase: true, out var prop))
+                    {
+                        error = $"Unknown SubEmitterProperties value '{token.Trim()}'. Valid: InheritNothing, " +
+                                "InheritEverything, InheritColor, InheritSize, InheritRotation, InheritLifetime, InheritDuration";
+                        return false;
+                    }
+                    properties |= prop;
+                }
+            }
+
+            module.AddSubEmitter(subPs, type, properties, p.SubEmitterEmitProbability ?? 1f);
+            return true;
+        }
+
+        private static bool ApplyTrails(ParticleSystem ps, ParticleSetModuleParams p)
+        {
+            var module = ps.trails;
+            bool enabled = p.Enabled ?? true;
+            module.enabled = enabled;
+            if (enabled)
+            {
+                if (p.TrailRatio.HasValue) module.ratio = p.TrailRatio.Value;
+                if (p.TrailMinVertexDistance.HasValue) module.minVertexDistance = p.TrailMinVertexDistance.Value;
+                if (p.TrailWorldSpace.HasValue) module.worldSpace = p.TrailWorldSpace.Value;
+                if (p.TrailDieWithParticles.HasValue) module.dieWithParticles = p.TrailDieWithParticles.Value;
+                if (p.TrailSizeAffectsWidth.HasValue) module.sizeAffectsWidth = p.TrailSizeAffectsWidth.Value;
+                if (p.TrailLifetimeCurveTimes != null)
+                    module.lifetime = BuildMinMaxCurve(p.TrailLifetimeConstant ?? 1f, p.TrailLifetimeCurveTimes, p.TrailLifetimeCurveValues);
+                else if (p.TrailLifetimeConstant.HasValue)
+                    module.lifetime = new ParticleSystem.MinMaxCurve(p.TrailLifetimeConstant.Value);
+            }
+            return enabled;
+        }
+
+        private static bool TryApplyLights(ParticleSystem ps, ParticleSetModuleParams p, out bool enabled, out string error)
+        {
+            error = null;
+            var module = ps.lights;
+            enabled = p.Enabled ?? true;
+            module.enabled = enabled;
+            if (!enabled) return true;
+
+            if (!string.IsNullOrEmpty(p.LightPrefabPath))
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(p.LightPrefabPath);
+                if (prefab == null) { error = $"Prefab not found at '{p.LightPrefabPath}'"; return false; }
+                var light = prefab.GetComponent<Light>();
+                if (light == null) { error = $"Prefab at '{p.LightPrefabPath}' has no Light component"; return false; }
+                module.light = light;
+            }
+            if (p.LightRatio.HasValue) module.ratio = p.LightRatio.Value;
+            if (p.LightUseRandomDistribution.HasValue) module.useRandomDistribution = p.LightUseRandomDistribution.Value;
+            if (p.LightUseParticleColor.HasValue) module.useParticleColor = p.LightUseParticleColor.Value;
+            if (p.LightSizeAffectsRange.HasValue) module.sizeAffectsRange = p.LightSizeAffectsRange.Value;
+            if (p.LightAlphaAffectsIntensity.HasValue) module.alphaAffectsIntensity = p.LightAlphaAffectsIntensity.Value;
+            if (p.LightMaxLights.HasValue) module.maxLights = p.LightMaxLights.Value;
+
+            return true;
+        }
+
+        private static bool TryApplyTextureSheetAnimation(ParticleSystem ps, ParticleSetModuleParams p, out bool enabled, out string error)
+        {
+            error = null;
+            var module = ps.textureSheetAnimation;
+            enabled = p.Enabled ?? true;
+            module.enabled = enabled;
+            if (!enabled) return true;
+
+            if (p.TilesX.HasValue) module.numTilesX = p.TilesX.Value;
+            if (p.TilesY.HasValue) module.numTilesY = p.TilesY.Value;
+            if (!string.IsNullOrEmpty(p.TsaAnimation))
+            {
+                if (!System.Enum.TryParse<ParticleSystemAnimationType>(p.TsaAnimation, ignoreCase: true, out var animation))
+                {
+                    error = $"Unknown TsaAnimation '{p.TsaAnimation}'. Valid: WholeSheet, SingleRow";
+                    return false;
+                }
+                module.animation = animation;
+            }
+            if (p.Fps.HasValue) module.fps = p.Fps.Value;
+            if (p.CycleCount.HasValue) module.cycleCount = p.CycleCount.Value;
+            if (p.TsaStartFrameConstant.HasValue) module.startFrame = new ParticleSystem.MinMaxCurve(p.TsaStartFrameConstant.Value);
+
             return true;
         }
 

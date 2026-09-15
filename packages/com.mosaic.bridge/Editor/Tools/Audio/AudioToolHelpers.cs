@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.Audio;
@@ -65,6 +66,41 @@ namespace Mosaic.Bridge.Tools.Audio
             group = matches[0];
             error = null;
             return true;
+        }
+
+        /// <summary>Writes a 16-bit PCM WAV file to an absolute filesystem path. samples are
+        /// interleaved per-channel, normalized -1..1. Shared by audio/synthesize-clip and any
+        /// future tool that needs to persist generated PCM as a real importable asset (AudioClip
+        /// itself cannot be written via AssetDatabase.CreateAsset).</summary>
+        internal static void WriteWavPcm16(string absolutePath, float[] interleavedSamples, int sampleRate, int channels)
+        {
+            const short bitsPerSample = 16;
+            int byteRate = sampleRate * channels * bitsPerSample / 8;
+            short blockAlign = (short)(channels * bitsPerSample / 8);
+            int dataSize = interleavedSamples.Length * (bitsPerSample / 8);
+
+            using var fs = new FileStream(absolutePath, FileMode.Create, FileAccess.Write);
+            using var w = new BinaryWriter(fs);
+
+            w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+            w.Write(36 + dataSize);
+            w.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+            w.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+            w.Write(16);
+            w.Write((short)1); // PCM
+            w.Write((short)channels);
+            w.Write(sampleRate);
+            w.Write(byteRate);
+            w.Write(blockAlign);
+            w.Write(bitsPerSample);
+            w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+            w.Write(dataSize);
+
+            foreach (var sample in interleavedSamples)
+            {
+                short pcm = (short)Mathf.Clamp(Mathf.RoundToInt(sample * short.MaxValue), short.MinValue, short.MaxValue);
+                w.Write(pcm);
+            }
         }
     }
 }

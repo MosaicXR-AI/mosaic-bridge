@@ -54,6 +54,23 @@ namespace Mosaic.Bridge.Tools.Audio
         private static bool s_ExposeParamResolved;
         private static string s_ExposeParamMissing;
 
+        // -- snapshots (O4 §4.4): AudioMixerSnapshotController : AudioMixerSnapshot has a genuinely
+        // PUBLIC constructor(AudioMixer owner) and public SetValue(GUID,float)/GetValue(GUID,out
+        // float) — confirmed via UnityCsReference source (the doc's cited
+        // CloneNewSnapshotFromTarget does not exist anywhere in the module; a fresh snapshot with
+        // default values, same as Unity's own "Add Snapshot" button, is the correct model). Because
+        // AudioMixerSnapshot itself is public, a created/resolved snapshot can be handled by
+        // callers as that public type directly (name, TransitionTo) — only construction and
+        // SetValue/GetValue (declared on the internal subclass) need reflection.
+        private static Type s_SnapshotControllerType;
+        private static ConstructorInfo s_SnapshotCtor;
+        private static PropertyInfo s_Snapshots;
+        private static PropertyInfo s_TargetSnapshot;
+        private static MethodInfo s_SnapshotSetValue;
+        private static MethodInfo s_SnapshotGetValue;
+        private static bool s_SnapshotResolved;
+        private static string s_SnapshotMissing;
+
         internal readonly struct ProbeResult
         {
             public readonly bool Ok;
@@ -262,6 +279,152 @@ namespace Mosaic.Bridge.Tools.Audio
                 names = new string[current.Length];
                 for (int i = 0; i < current.Length; i++)
                     names[i] = (string)s_ExposedParamNameField.GetValue(current.GetValue(i));
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static ProbeResult ProbeSnapshot()
+        {
+            ResolveSnapshot();
+            return new ProbeResult(s_SnapshotMissing == null, s_SnapshotMissing);
+        }
+
+        private static void ResolveSnapshot()
+        {
+            if (s_SnapshotResolved) return;
+            s_SnapshotResolved = true;
+
+            Resolve();
+            if (s_Missing != null) { s_SnapshotMissing = s_Missing; return; }
+
+            s_SnapshotControllerType = FindType("UnityEditor.Audio.AudioMixerSnapshotController");
+            if (s_SnapshotControllerType == null) { s_SnapshotMissing = "type UnityEditor.Audio.AudioMixerSnapshotController"; return; }
+
+            s_SnapshotCtor = s_SnapshotControllerType.GetConstructor(
+                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(AudioMixer) }, null);
+            if (s_SnapshotCtor == null) { s_SnapshotMissing = "public AudioMixerSnapshotController(AudioMixer)"; return; }
+
+            s_Snapshots = s_ControllerType.GetProperty("snapshots", BindingFlags.Public | BindingFlags.Instance);
+            if (s_Snapshots == null) { s_SnapshotMissing = "AudioMixerController.snapshots"; return; }
+
+            s_TargetSnapshot = s_ControllerType.GetProperty("TargetSnapshot", BindingFlags.Public | BindingFlags.Instance);
+            if (s_TargetSnapshot == null) { s_SnapshotMissing = "AudioMixerController.TargetSnapshot"; return; }
+
+            s_SnapshotSetValue = s_SnapshotControllerType.GetMethod("SetValue", BindingFlags.Public | BindingFlags.Instance);
+            if (s_SnapshotSetValue == null) { s_SnapshotMissing = "AudioMixerSnapshotController.SetValue(GUID, float)"; return; }
+
+            s_SnapshotGetValue = s_SnapshotControllerType.GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
+            if (s_SnapshotGetValue == null) { s_SnapshotMissing = "AudioMixerSnapshotController.GetValue(GUID, out float)"; return; }
+
+            s_SnapshotMissing = null;
+        }
+
+        internal static bool TryCreateSnapshot(AudioMixer mixer, string name, out AudioMixerSnapshot snapshot, out string error)
+        {
+            snapshot = null;
+            var probe = ProbeSnapshot();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var created = s_SnapshotCtor.Invoke(new object[] { mixer });
+                snapshot = (UnityEngine.Object)created as AudioMixerSnapshot;
+                if (snapshot == null) { error = "Created snapshot is not an AudioMixerSnapshot."; return false; }
+                snapshot.name = name;
+
+                var current = (Array)s_Snapshots.GetValue(mixer);
+                var next = Array.CreateInstance(s_SnapshotControllerType, current.Length + 1);
+                Array.Copy(current, next, current.Length);
+                next.SetValue(created, current.Length);
+                s_Snapshots.SetValue(mixer, next);
+
+                UnityEditor.AssetDatabase.AddObjectToAsset(snapshot, mixer);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryGetSnapshots(AudioMixer mixer, out AudioMixerSnapshot[] snapshots, out string error)
+        {
+            snapshots = null;
+            var probe = ProbeSnapshot();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_Snapshots.GetValue(mixer);
+                snapshots = new AudioMixerSnapshot[current.Length];
+                for (int i = 0; i < current.Length; i++)
+                    snapshots[i] = (UnityEngine.Object)current.GetValue(i) as AudioMixerSnapshot;
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TrySetTargetSnapshot(AudioMixer mixer, AudioMixerSnapshot snapshot, out string error)
+        {
+            var probe = ProbeSnapshot();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                s_TargetSnapshot.SetValue(mixer, snapshot);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>guid comes from GetGUIDForVolume/GetGUIDForPitch (a group's exposed value) —
+        /// the same GUID mixer-expose-param already resolves.</summary>
+        internal static bool TrySetSnapshotValue(AudioMixerSnapshot snapshot, object guid, float value, out string error)
+        {
+            var probe = ProbeSnapshot();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                s_SnapshotSetValue.Invoke(snapshot, new[] { guid, (object)value });
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryGetSnapshotValue(AudioMixerSnapshot snapshot, object guid, out float value, out string error)
+        {
+            value = 0f;
+            var probe = ProbeSnapshot();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var args = new[] { guid, (object)0f };
+                var found = (bool)s_SnapshotGetValue.Invoke(snapshot, args);
+                value = (float)args[1];
+                if (!found) { error = "GetValue returned false (no override for this parameter in this snapshot)."; return false; }
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>Public accessor to GetGUIDForVolume/GetGUIDForPitch — shared by mixer-expose-param
+        /// and mixer-set-value so both resolve the same GUID for a given group+kind.</summary>
+        internal static bool TryGetParamGuid(AudioMixerGroup group, string paramKind, out object guid, out string error)
+        {
+            guid = null;
+            var probe = ProbeExposeParam();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                MethodInfo getGuid = paramKind == "pitch" ? s_GetGUIDForPitch : s_GetGUIDForVolume;
+                guid = getGuid.Invoke(group, null);
                 error = null;
                 return true;
             }

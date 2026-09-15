@@ -376,5 +376,233 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
             Assert.IsFalse(result.Success);
             Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
+
+        // ── audio/mixer-snapshot ─────────────────────────────────────────────
+
+        [Test]
+        public void Snapshot_Add_CreatesWithDefaultValues()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+
+            var result = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual("Paused", result.Data.SnapshotName);
+        }
+
+        [Test]
+        public void Snapshot_List_ContainsDefaultAndNewSnapshot()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "list",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            CollectionAssert.Contains(result.Data.SnapshotNames, "Paused");
+        }
+
+        [Test]
+        public void Snapshot_Rename_UpdatesName()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "rename", Name = "Paused", NewName = "Underwater",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var list = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "list",
+            });
+            CollectionAssert.Contains(list.Data.SnapshotNames, "Underwater");
+            CollectionAssert.DoesNotContain(list.Data.SnapshotNames, "Paused");
+        }
+
+        [Test]
+        public void Snapshot_SetTarget_Succeeds()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "set-target", Name = "Paused",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+        }
+
+        [Test]
+        public void Snapshot_RenameUnknown_ReturnsNotFound()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+
+            var result = AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "rename", Name = "DoesNotExist", NewName = "Whatever",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        // ── audio/mixer-set-value ────────────────────────────────────────────
+
+        [Test]
+        public void SetValue_SetThenGet_RoundTrips()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "Music" });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var setResult = AudioMixerSetValueTool.Execute(new AudioMixerSetValueParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotName = "Paused", GroupPath = "Music",
+                ParamKind = "volume", Operation = "set", Value = -12f,
+            });
+            Assert.IsTrue(setResult.Success, setResult.Error);
+
+            var getResult = AudioMixerSetValueTool.Execute(new AudioMixerSetValueParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotName = "Paused", GroupPath = "Music",
+                ParamKind = "volume", Operation = "get",
+            });
+
+            Assert.IsTrue(getResult.Success, getResult.Error);
+            Assert.AreEqual(-12f, getResult.Data.Value, 0.01f);
+        }
+
+        [Test]
+        public void SetValue_UnknownParamKind_ReturnsInvalidParam()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "Music" });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerSetValueTool.Execute(new AudioMixerSetValueParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotName = "Paused", GroupPath = "Music",
+                ParamKind = "loudness", Value = -12f,
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetValue_UnknownSnapshot_ReturnsNotFound()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "Music" });
+
+            var result = AudioMixerSetValueTool.Execute(new AudioMixerSetValueParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotName = "DoesNotExist", GroupPath = "Music",
+                ParamKind = "volume", Value = -12f,
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        // ── audio/mixer-transition ───────────────────────────────────────────
+
+        [Test]
+        public void Transition_SingleSnapshot_Succeeds()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerTransitionTool.Execute(new AudioMixerTransitionParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotNames = new[] { "Paused" }, TimeToReach = 0.5f,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(0.5f, result.Data.TimeToReach, 0.001f);
+        }
+
+        [Test]
+        public void Transition_MultipleSnapshots_BlendsWithUniformWeights()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Underwater",
+            });
+
+            var result = AudioMixerTransitionTool.Execute(new AudioMixerTransitionParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotNames = new[] { "Paused", "Underwater" },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(0.5f, result.Data.Weights[0], 0.001f);
+            Assert.AreEqual(0.5f, result.Data.Weights[1], 0.001f);
+        }
+
+        [Test]
+        public void Transition_UnknownSnapshot_ReturnsNotFound()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+
+            var result = AudioMixerTransitionTool.Execute(new AudioMixerTransitionParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotNames = new[] { "DoesNotExist" },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
+        [Test]
+        public void Transition_MismatchedWeightsLength_ReturnsInvalidParam()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerSnapshotTool.Execute(new AudioMixerSnapshotParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "add", Name = "Paused",
+            });
+
+            var result = AudioMixerTransitionTool.Execute(new AudioMixerTransitionParams
+            {
+                MixerAssetPath = TestMixerPath, SnapshotNames = new[] { "Paused" }, Weights = new[] { 0.5f, 0.5f },
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
     }
 }

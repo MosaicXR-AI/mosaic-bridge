@@ -75,6 +75,49 @@ namespace Mosaic.Bridge.Tools.Animations
             return null;
         }
 
+        /// <summary>Walks "/"-separated sub-state-machine names (each level's own name) starting
+        /// from the layer's root, e.g. "Combat/Melee". Empty/null resolves to the root itself.
+        /// AnimatorStateMachine has no public parent-machine link and no reverse lookup, so
+        /// placing a new state/sub-machine inside a specific nested machine — rather than always
+        /// at the layer root, where every generated state used to land — needs an explicit path.</summary>
+        internal static UnityEditor.Animations.AnimatorStateMachine ResolveStateMachineByPath(
+            UnityEditor.Animations.AnimatorStateMachine root, string path, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(path)) return root;
+
+            var current = root;
+            foreach (var segment in path.Split('/'))
+            {
+                if (string.IsNullOrEmpty(segment)) continue;
+                var match = current.stateMachines.FirstOrDefault(cs => cs.stateMachine.name == segment);
+                if (match.stateMachine == null)
+                {
+                    error = $"No sub-state-machine named '{segment}' under ParentStateMachinePath '{path}'.";
+                    return null;
+                }
+                current = match.stateMachine;
+            }
+            return current;
+        }
+
+        /// <summary>Recursively finds the immediate AnimatorStateMachine that directly owns
+        /// <paramref name="state"/> (its states array contains it) — used to report IsDefault
+        /// against the state's own parent machine's defaultState rather than assuming the layer
+        /// root, now that states can live inside sub-machines.</summary>
+        internal static UnityEditor.Animations.AnimatorStateMachine FindOwningMachine(
+            UnityEditor.Animations.AnimatorStateMachine machine, UnityEditor.Animations.AnimatorState state)
+        {
+            if (machine.states.Any(cs => cs.state == state))
+                return machine;
+            foreach (var sub in machine.stateMachines)
+            {
+                var found = FindOwningMachine(sub.stateMachine, state);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         /// <summary>Ensure a directory exists for the given asset path.</summary>
         internal static void EnsureDirectoryExists(string assetPath)
         {

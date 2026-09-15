@@ -18,5 +18,23 @@ namespace Mosaic.Bridge.Tools.Animations
         // -- add --
         public float PositionX { get; set; }
         public float PositionY { get; set; }
+
+        // -- add-sub-machine --
+        public string SubMachineName { get; set; }
+
+        /// <summary>The "/"-separated path this state/sub-machine was resolved or created under.</summary>
+        public string ParentStateMachinePath { get; set; }
+
+        // -- set-settings / info -- (Speed above already covers AnimatorState.speed)
+        public string SpeedParameter { get; set; }
+        public bool SpeedParameterActive { get; set; }
+        public float CycleOffset { get; set; }
+        public string CycleOffsetParameter { get; set; }
+        public bool CycleOffsetParameterActive { get; set; }
+        public bool Mirror { get; set; }
+        public string MirrorParameter { get; set; }
+        public bool MirrorParameterActive { get; set; }
+        public bool IKOnFeet { get; set; }
+        public bool WriteDefaultValues { get; set; }
     }
 }

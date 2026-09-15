@@ -18,7 +18,8 @@ namespace Mosaic.Bridge.Tools.Particles
                     "MaxParticleSize (screen-space cap — 0.5 for visible rain, 0.005 makes particles invisible), " +
                     "MaterialPath (asset path to .mat file), " +
                     "UseUrpParticlesMaterial=true to auto-assign Universal Render Pipeline/Particles/Unlit material (required in URP projects). " +
-                    "IMPORTANT: For rain use RenderMode=Stretch, VelocityScale=0.8, LengthScale=3, MaxParticleSize=0.5, UseUrpParticlesMaterial=true.",
+                    "IMPORTANT: For rain use RenderMode=Stretch, VelocityScale=0.8, LengthScale=3, MaxParticleSize=0.5, UseUrpParticlesMaterial=true. " +
+                    "MeshPath (RenderMode=Mesh), TrailMaterialPath (for the Trails module), SortingLayer/SortingOrder (2D courses).",
                     isReadOnly: false, Context = ToolContext.Both)]
         public static ToolResult<ParticleSetRendererResult> Execute(ParticleSetRendererParams p)
         {
@@ -119,6 +120,29 @@ namespace Mosaic.Bridge.Tools.Particles
                 renderer.sharedMaterial = mat;
             }
 
+            if (!string.IsNullOrEmpty(p.MeshPath))
+            {
+                var mesh = AssetDatabase.LoadAssetAtPath<UnityEngine.Mesh>(p.MeshPath);
+                if (mesh == null)
+                    return ToolResult<ParticleSetRendererResult>.Fail(
+                        $"Mesh not found at '{p.MeshPath}'", ErrorCodes.NOT_FOUND);
+                renderer.mesh = mesh;
+            }
+
+            if (!string.IsNullOrEmpty(p.TrailMaterialPath))
+            {
+                var trailMat = AssetDatabase.LoadAssetAtPath<Material>(p.TrailMaterialPath);
+                if (trailMat == null)
+                    return ToolResult<ParticleSetRendererResult>.Fail(
+                        $"Trail material not found at '{p.TrailMaterialPath}'", ErrorCodes.NOT_FOUND);
+                renderer.trailMaterial = trailMat;
+            }
+
+            if (!string.IsNullOrEmpty(p.SortingLayer))
+                renderer.sortingLayerName = p.SortingLayer;
+            if (p.SortingOrder.HasValue)
+                renderer.sortingOrder = p.SortingOrder.Value;
+
             EditorUtility.SetDirty(renderer);
 
             string matPath = renderer.sharedMaterial != null
@@ -135,7 +159,11 @@ namespace Mosaic.Bridge.Tools.Particles
                 MaxParticleSize = renderer.maxParticleSize,
                 MinParticleSize = renderer.minParticleSize,
                 MaterialPath   = matPath,
-                SortMode       = renderer.sortMode.ToString()
+                SortMode       = renderer.sortMode.ToString(),
+                MeshPath       = renderer.mesh != null ? AssetDatabase.GetAssetPath(renderer.mesh) : null,
+                TrailMaterialPath = renderer.trailMaterial != null ? AssetDatabase.GetAssetPath(renderer.trailMaterial) : null,
+                SortingLayer   = renderer.sortingLayerName,
+                SortingOrder   = renderer.sortingOrder,
             });
         }
     }

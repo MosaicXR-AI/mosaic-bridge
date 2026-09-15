@@ -11,5 +11,9 @@ namespace Mosaic.Bridge.Tools.Particles
         public float MinParticleSize { get; set; }
         public string MaterialPath { get; set; }
         public string SortMode { get; set; }
+        public string MeshPath { get; set; }
+        public string TrailMaterialPath { get; set; }
+        public string SortingLayer { get; set; }
+        public int SortingOrder { get; set; }
     }
 }

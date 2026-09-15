@@ -221,6 +221,73 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             Assert.AreSame(firstMat, secondMat, "repeated calls must not create duplicate assets");
         }
 
+        // O4 §4.8: renderer gaps — MeshPath, TrailMaterialPath, SortingLayer, SortingOrder.
+        [Test]
+        public void SetRenderer_SortingLayerAndOrder_Apply()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "SortingPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+            {
+                Name = "SortingPS", SortingLayer = "Default", SortingOrder = 5,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.AreEqual(5, result.Data.SortingOrder);
+            var renderer = _created.GetComponent<ParticleSystemRenderer>();
+            Assert.AreEqual(5, renderer.sortingOrder);
+            Assert.AreEqual("Default", renderer.sortingLayerName);
+        }
+
+        [Test]
+        public void SetRenderer_MeshPath_Applies()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "MeshPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var mesh = cube.GetComponent<MeshFilter>().sharedMesh;
+            const string meshPath = "Assets/MosaicParticleTestMesh.asset";
+            UnityEditor.AssetDatabase.CreateAsset(Object.Instantiate(mesh), meshPath);
+            Object.DestroyImmediate(cube);
+
+            try
+            {
+                var result = ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+                {
+                    Name = "MeshPS", RenderMode = "Mesh", MeshPath = meshPath,
+                });
+
+                Assert.IsTrue(result.Success, result.Error);
+                Assert.AreEqual(meshPath, result.Data.MeshPath);
+                Assert.IsNotNull(_created.GetComponent<ParticleSystemRenderer>().mesh);
+            }
+            finally
+            {
+                if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Mesh>(meshPath) != null)
+                    UnityEditor.AssetDatabase.DeleteAsset(meshPath);
+            }
+        }
+
+        [Test]
+        public void SetRenderer_MeshPathNotFound_ReturnsNotFound()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "MeshPS2" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            var result = ParticleSetRendererTool.Execute(new ParticleSetRendererParams
+            {
+                Name = "MeshPS2", MeshPath = "Assets/DoesNotExist.asset",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────
 
         private static GameObject FindByInstanceId(int instanceId)

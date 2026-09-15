@@ -16,6 +16,10 @@ namespace Mosaic.Bridge.Tools.Terrains
         public bool   DrawTreesAndFoliage    { get; set; }
         public bool   AllowAutoConnect       { get; set; }
         public int    GroupingId             { get; set; }
+        public string MaterialTemplatePath   { get; set; }
+        public bool   DrawInstanced          { get; set; }
+        public float  TreeLodBiasMultiplier  { get; set; }
+        public uint   RenderingLayerMask     { get; set; }
         public string Message                { get; set; }
     }
 }

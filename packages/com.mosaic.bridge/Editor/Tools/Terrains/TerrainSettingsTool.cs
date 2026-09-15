@@ -10,7 +10,8 @@ namespace Mosaic.Bridge.Tools.Terrains
     public static class TerrainSettingsTool
     {
         [MosaicTool("terrain/settings",
-                    "Gets or sets terrain rendering and LOD settings",
+                    "Gets or sets terrain rendering and LOD settings, including material template, " +
+                    "GPU instancing, tree LOD bias, and rendering layer mask",
                     isReadOnly: false)]
         public static ToolResult<TerrainSettingsResult> Execute(TerrainSettingsParams p)
         {
@@ -84,6 +85,37 @@ namespace Mosaic.Bridge.Tools.Terrains
                 terrain.groupingID = p.GroupingId.Value;
                 changed = true;
             }
+            if (p.MaterialTemplatePath != null)
+            {
+                if (p.MaterialTemplatePath.Length == 0)
+                {
+                    terrain.materialTemplate = null;
+                }
+                else
+                {
+                    var material = AssetDatabase.LoadAssetAtPath<Material>(p.MaterialTemplatePath);
+                    if (material == null)
+                        return ToolResult<TerrainSettingsResult>.Fail(
+                            $"Material not found at '{p.MaterialTemplatePath}'", ErrorCodes.NOT_FOUND);
+                    terrain.materialTemplate = material;
+                }
+                changed = true;
+            }
+            if (p.DrawInstanced.HasValue)
+            {
+                terrain.drawInstanced = p.DrawInstanced.Value;
+                changed = true;
+            }
+            if (p.TreeLodBiasMultiplier.HasValue)
+            {
+                terrain.treeLODBiasMultiplier = p.TreeLodBiasMultiplier.Value;
+                changed = true;
+            }
+            if (p.RenderingLayerMask.HasValue)
+            {
+                terrain.renderingLayerMask = p.RenderingLayerMask.Value;
+                changed = true;
+            }
 
             if (changed)
                 EditorUtility.SetDirty(terrain);
@@ -104,6 +136,11 @@ namespace Mosaic.Bridge.Tools.Terrains
                 DrawTreesAndFoliage   = terrain.drawTreesAndFoliage,
                 AllowAutoConnect      = terrain.allowAutoConnect,
                 GroupingId            = terrain.groupingID,
+                MaterialTemplatePath  = terrain.materialTemplate != null
+                    ? AssetDatabase.GetAssetPath(terrain.materialTemplate) : string.Empty,
+                DrawInstanced         = terrain.drawInstanced,
+                TreeLodBiasMultiplier = terrain.treeLODBiasMultiplier,
+                RenderingLayerMask    = terrain.renderingLayerMask,
                 Message               = changed ? "Settings updated" : "No changes (read-only query)"
             });
         }

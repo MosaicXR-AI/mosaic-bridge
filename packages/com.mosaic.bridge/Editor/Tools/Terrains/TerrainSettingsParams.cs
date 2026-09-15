@@ -39,5 +39,17 @@ namespace Mosaic.Bridge.Tools.Terrains
         public bool? AllowAutoConnect { get; set; }
         /// <summary>Tiles with the same GroupingID auto-connect when AllowAutoConnect is true.</summary>
         public int? GroupingId { get; set; }
+
+        /// <summary>Asset path of a custom Material to render the terrain with. Empty string reverts to the built-in default.</summary>
+        public string MaterialTemplatePath { get; set; }
+
+        /// <summary>Enables the terrain instance renderer (GPU instancing for terrain patches).</summary>
+        public bool? DrawInstanced { get; set; }
+
+        /// <summary>Multiplier applied to the current LOD bias when rendering LOD trees (SpeedTree).</summary>
+        public float? TreeLodBiasMultiplier { get; set; }
+
+        /// <summary>Rendering layer mask bits (URP/HDRP Rendering Layers) this terrain's renderer lives on.</summary>
+        public uint? RenderingLayerMask { get; set; }
     }
 }

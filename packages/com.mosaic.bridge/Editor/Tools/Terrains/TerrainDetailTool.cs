@@ -11,7 +11,9 @@ namespace Mosaic.Bridge.Tools.Terrains
     public static class TerrainDetailTool
     {
         [MosaicTool("terrain/detail",
-                    "Detail/grass management: add-prototype, paint, scatter, clear",
+                    "Detail/grass management: add-prototype (RenderMode/UseInstancing/HealthyColor/DryColor/" +
+                    "NoiseSpread/AlignToGround), paint, scatter (tunable ScatterCoverage + masked by slope/" +
+                    "height/layer), clear, set-resolution, scatter-mode",
                     isReadOnly: false)]
         public static ToolResult<TerrainDetailResult> Execute(TerrainDetailParams p)
         {
@@ -35,9 +37,15 @@ namespace Mosaic.Bridge.Tools.Terrains
                 case "clear":
                     return ClearDetail(terrain, data, p);
 
+                case "set-resolution":
+                    return SetResolution(terrain, data, p);
+
+                case "scatter-mode":
+                    return SetScatterMode(terrain, data, p);
+
                 default:
                     return ToolResult<TerrainDetailResult>.Fail(
-                        $"Unknown action '{p.Action}'. Valid actions: add-prototype, paint, scatter, clear",
+                        $"Unknown action '{p.Action}'. Valid actions: add-prototype, paint, scatter, clear, set-resolution, scatter-mode",
                         ErrorCodes.INVALID_PARAM);
             }
         }
@@ -79,6 +87,31 @@ namespace Mosaic.Bridge.Tools.Terrains
                     "Either TexturePath or PrefabPath is required for add-prototype",
                     ErrorCodes.INVALID_PARAM);
             }
+
+            if (!string.IsNullOrEmpty(p.RenderMode))
+            {
+                if (!TryParseRenderMode(p.RenderMode, out var renderMode))
+                    return ToolResult<TerrainDetailResult>.Fail(
+                        $"Unknown RenderMode '{p.RenderMode}'. Valid: GrassBillboard, VertexLit, Grass", ErrorCodes.INVALID_PARAM);
+                prototype.renderMode = renderMode;
+            }
+            if (p.UseInstancing.HasValue) prototype.useInstancing = p.UseInstancing.Value;
+            if (p.HealthyColor != null)
+            {
+                if (p.HealthyColor.Length < 3)
+                    return ToolResult<TerrainDetailResult>.Fail("HealthyColor requires at least [r, g, b]", ErrorCodes.INVALID_PARAM);
+                prototype.healthyColor = new Color(p.HealthyColor[0], p.HealthyColor[1], p.HealthyColor[2],
+                    p.HealthyColor.Length >= 4 ? p.HealthyColor[3] : 1f);
+            }
+            if (p.DryColor != null)
+            {
+                if (p.DryColor.Length < 3)
+                    return ToolResult<TerrainDetailResult>.Fail("DryColor requires at least [r, g, b]", ErrorCodes.INVALID_PARAM);
+                prototype.dryColor = new Color(p.DryColor[0], p.DryColor[1], p.DryColor[2],
+                    p.DryColor.Length >= 4 ? p.DryColor[3] : 1f);
+            }
+            if (p.NoiseSpread.HasValue) prototype.noiseSpread = p.NoiseSpread.Value;
+            if (p.AlignToGround.HasValue) prototype.alignToGround = p.AlignToGround.Value;
 
             var prototypes = new List<DetailPrototype>(data.detailPrototypes);
             prototypes.Add(prototype);
@@ -166,13 +199,25 @@ namespace Mosaic.Bridge.Tools.Terrains
             int detailRes = data.detailResolution;
             var layer = data.GetDetailLayer(0, 0, detailRes, detailRes, p.PrototypeIndex);
             var rng = new System.Random(p.Seed);
+            bool masked = p.MinSlope.HasValue || p.MaxSlope.HasValue ||
+                          p.MinHeightWorld.HasValue || p.MaxHeightWorld.HasValue || p.RequiredLayerIndex.HasValue;
+            int placedCount = 0;
 
             for (int y = 0; y < detailRes; y++)
             {
                 for (int x = 0; x < detailRes; x++)
                 {
-                    if (rng.NextDouble() < 0.3)
-                        layer[y, x] = Mathf.Clamp(p.Density, 0, 16);
+                    if (rng.NextDouble() >= p.ScatterCoverage) continue;
+
+                    if (masked)
+                    {
+                        float nx = (float)x / (detailRes - 1);
+                        float ny = (float)y / (detailRes - 1);
+                        if (!PassesMask(data, nx, ny, p)) continue;
+                    }
+
+                    layer[y, x] = Mathf.Clamp(p.Density, 0, 16);
+                    placedCount++;
                 }
             }
 
@@ -185,8 +230,104 @@ namespace Mosaic.Bridge.Tools.Terrains
                 InstanceId     = UnityIds.Of(terrain.gameObject),
                 Name           = terrain.gameObject.name,
                 PrototypeCount = data.detailPrototypes.Length,
-                Message        = $"Scattered detail {p.PrototypeIndex} across terrain with seed {p.Seed}"
+                PlacedCount    = placedCount,
+                Message        = $"Scattered detail {p.PrototypeIndex} across terrain with seed {p.Seed} " +
+                                  $"(coverage {p.ScatterCoverage:P0}{(masked ? ", masked" : "")}, placed {placedCount} cells)"
             });
+        }
+
+        private static bool PassesMask(TerrainData data, float x, float z, TerrainDetailParams p)
+        {
+            if (p.MinSlope.HasValue || p.MaxSlope.HasValue)
+            {
+                var slope = data.GetSteepness(x, z);
+                if (p.MinSlope.HasValue && slope < p.MinSlope.Value) return false;
+                if (p.MaxSlope.HasValue && slope > p.MaxSlope.Value) return false;
+            }
+            if (p.MinHeightWorld.HasValue || p.MaxHeightWorld.HasValue)
+            {
+                var height = data.GetInterpolatedHeight(x, z);
+                if (p.MinHeightWorld.HasValue && height < p.MinHeightWorld.Value) return false;
+                if (p.MaxHeightWorld.HasValue && height > p.MaxHeightWorld.Value) return false;
+            }
+            if (p.RequiredLayerIndex.HasValue)
+            {
+                if (p.RequiredLayerIndex.Value < 0 || p.RequiredLayerIndex.Value >= data.terrainLayers.Length)
+                    return false;
+                int alphaRes = data.alphamapResolution;
+                int ax = Mathf.Clamp(Mathf.RoundToInt(x * (alphaRes - 1)), 0, alphaRes - 1);
+                int az = Mathf.Clamp(Mathf.RoundToInt(z * (alphaRes - 1)), 0, alphaRes - 1);
+                var alphas = data.GetAlphamaps(ax, az, 1, 1);
+                if (alphas[0, 0, p.RequiredLayerIndex.Value] < p.MinLayerWeight) return false;
+            }
+            return true;
+        }
+
+        private static ToolResult<TerrainDetailResult> SetResolution(
+            UnityEngine.Terrain terrain, TerrainData data, TerrainDetailParams p)
+        {
+            if (p.DetailResolution <= 0)
+                return ToolResult<TerrainDetailResult>.Fail("DetailResolution must be > 0", ErrorCodes.INVALID_PARAM);
+            if (p.ResolutionPerPatch <= 0)
+                return ToolResult<TerrainDetailResult>.Fail("ResolutionPerPatch must be > 0", ErrorCodes.INVALID_PARAM);
+
+            Undo.RegisterCompleteObjectUndo(data, "Mosaic: Terrain Set Detail Resolution");
+            data.SetDetailResolution(p.DetailResolution, p.ResolutionPerPatch);
+            terrain.Flush();
+
+            return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
+            {
+                Action             = "set-resolution",
+                InstanceId         = UnityIds.Of(terrain.gameObject),
+                Name               = terrain.gameObject.name,
+                PrototypeCount     = data.detailPrototypes.Length,
+                DetailResolution   = data.detailResolution,
+                ResolutionPerPatch = data.detailResolutionPerPatch,
+                Message            = $"Set detail resolution to {p.DetailResolution} ({p.ResolutionPerPatch} per patch)"
+            });
+        }
+
+        private static ToolResult<TerrainDetailResult> SetScatterMode(
+            UnityEngine.Terrain terrain, TerrainData data, TerrainDetailParams p)
+        {
+            if (!TryParseScatterMode(p.ScatterMode, out var scatterMode))
+                return ToolResult<TerrainDetailResult>.Fail(
+                    $"Unknown ScatterMode '{p.ScatterMode}'. Valid: CoverageMode, InstanceCountMode", ErrorCodes.INVALID_PARAM);
+
+            Undo.RegisterCompleteObjectUndo(data, "Mosaic: Terrain Set Detail Scatter Mode");
+            data.SetDetailScatterMode(scatterMode);
+            terrain.Flush();
+
+            return ToolResult<TerrainDetailResult>.Ok(new TerrainDetailResult
+            {
+                Action         = "scatter-mode",
+                InstanceId     = UnityIds.Of(terrain.gameObject),
+                Name           = terrain.gameObject.name,
+                PrototypeCount = data.detailPrototypes.Length,
+                ScatterMode    = scatterMode.ToString(),
+                Message        = $"Set detail scatter mode to {scatterMode}"
+            });
+        }
+
+        private static bool TryParseRenderMode(string value, out DetailRenderMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "grassbillboard": result = DetailRenderMode.GrassBillboard; return true;
+                case "vertexlit":      result = DetailRenderMode.VertexLit;      return true;
+                case "grass":          result = DetailRenderMode.Grass;          return true;
+                default:               result = DetailRenderMode.VertexLit;      return false;
+            }
+        }
+
+        private static bool TryParseScatterMode(string value, out DetailScatterMode result)
+        {
+            switch (value?.Trim().ToLowerInvariant())
+            {
+                case "coveragemode":      result = DetailScatterMode.CoverageMode;      return true;
+                case "instancecountmode": result = DetailScatterMode.InstanceCountMode; return true;
+                default:                  result = DetailScatterMode.CoverageMode;      return false;
+            }
         }
 
         private static ToolResult<TerrainDetailResult> ClearDetail(

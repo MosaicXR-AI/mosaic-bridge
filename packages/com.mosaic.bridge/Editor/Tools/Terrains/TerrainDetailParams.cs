@@ -7,7 +7,7 @@ namespace Mosaic.Bridge.Tools.Terrains
         public int    InstanceId { get; set; }
         public string Name       { get; set; }
 
-        [Required] public string Action { get; set; } // add-prototype, paint, scatter, clear
+        [Required] public string Action { get; set; } // add-prototype, paint, scatter, clear, set-resolution, scatter-mode
 
         /// <summary>Texture asset path for grass detail prototype.</summary>
         public string TexturePath { get; set; }
@@ -44,5 +44,36 @@ namespace Mosaic.Bridge.Tools.Terrains
 
         /// <summary>Max height for detail prototype.</summary>
         public float MaxHeight { get; set; } = 1.5f;
+
+        // -- add-prototype: full config --
+
+        /// <summary>"GrassBillboard", "VertexLit", or "Grass". Null leaves Unity's default.</summary>
+        public string RenderMode { get; set; }
+        public bool? UseInstancing { get; set; }
+        /// <summary>[r,g,b] or [r,g,b,a], 0..1.</summary>
+        public float[] HealthyColor { get; set; }
+        public float[] DryColor { get; set; }
+        public float? NoiseSpread { get; set; }
+        /// <summary>0..1 blend toward aligning with terrain normal (Unity's alignToGround is a float, not a toggle).</summary>
+        public float? AlignToGround { get; set; }
+
+        // -- set-resolution --
+        public int DetailResolution { get; set; }
+        public int ResolutionPerPatch { get; set; } = 16;
+
+        // -- scatter-mode --
+        /// <summary>"CoverageMode" or "InstanceCountMode".</summary>
+        public string ScatterMode { get; set; }
+
+        // -- scatter: tunable coverage + masked scatter --
+
+        /// <summary>Fraction (0..1) of samples that receive Density. Default 0.3 (the prior hardcoded value).</summary>
+        public float ScatterCoverage { get; set; } = 0.3f;
+        public float? MinSlope { get; set; }
+        public float? MaxSlope { get; set; }
+        public float? MinHeightWorld { get; set; }
+        public float? MaxHeightWorld { get; set; }
+        public int? RequiredLayerIndex { get; set; }
+        public float MinLayerWeight { get; set; } = 0.5f;
     }
 }

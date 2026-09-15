@@ -41,6 +41,19 @@ namespace Mosaic.Bridge.Tools.Audio
         private static bool s_Resolved;
         private static string s_Missing;
 
+        // -- expose-param (O4 §4.4): AudioMixerController.exposedParameters is a public property
+        // but its element type ExposedAudioParameter is an internal struct {GUID guid; string name;}
+        // in the same UnityEditor.Audio namespace — confirmed via UnityCsReference source (the doc's
+        // own AddExposedParameter method name does not exist; direct array manipulation is correct).
+        private static Type s_ExposedParamType;
+        private static PropertyInfo s_ExposedParameters;
+        private static FieldInfo s_ExposedParamGuidField;
+        private static FieldInfo s_ExposedParamNameField;
+        private static MethodInfo s_GetGUIDForVolume;
+        private static MethodInfo s_GetGUIDForPitch;
+        private static bool s_ExposeParamResolved;
+        private static string s_ExposeParamMissing;
+
         internal readonly struct ProbeResult
         {
             public readonly bool Ok;
@@ -112,6 +125,148 @@ namespace Mosaic.Bridge.Tools.Audio
             s_Children = s_GroupControllerType.GetProperty("children", BindingFlags.Public | BindingFlags.Instance);
 
             s_Missing = null;
+        }
+
+        internal static ProbeResult ProbeExposeParam()
+        {
+            ResolveExposeParam();
+            return new ProbeResult(s_ExposeParamMissing == null, s_ExposeParamMissing);
+        }
+
+        private static void ResolveExposeParam()
+        {
+            if (s_ExposeParamResolved) return;
+            s_ExposeParamResolved = true;
+
+            Resolve();
+            if (s_Missing != null) { s_ExposeParamMissing = s_Missing; return; }
+
+            const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+            s_ExposedParameters = s_ControllerType.GetProperty("exposedParameters", BindingFlags.Public | BindingFlags.Instance);
+            if (s_ExposedParameters == null) { s_ExposeParamMissing = "AudioMixerController.exposedParameters"; return; }
+
+            s_ExposedParamType = s_ExposedParameters.PropertyType.GetElementType();
+            if (s_ExposedParamType == null) { s_ExposeParamMissing = "ExposedAudioParameter element type"; return; }
+
+            s_ExposedParamGuidField = s_ExposedParamType.GetField("guid", all);
+            if (s_ExposedParamGuidField == null) { s_ExposeParamMissing = "ExposedAudioParameter.guid"; return; }
+
+            s_ExposedParamNameField = s_ExposedParamType.GetField("name", all);
+            if (s_ExposedParamNameField == null) { s_ExposeParamMissing = "ExposedAudioParameter.name"; return; }
+
+            s_GetGUIDForVolume = s_GroupControllerType.GetMethod("GetGUIDForVolume", BindingFlags.Public | BindingFlags.Instance);
+            if (s_GetGUIDForVolume == null) { s_ExposeParamMissing = "AudioMixerGroupController.GetGUIDForVolume()"; return; }
+
+            s_GetGUIDForPitch = s_GroupControllerType.GetMethod("GetGUIDForPitch", BindingFlags.Public | BindingFlags.Instance);
+            if (s_GetGUIDForPitch == null) { s_ExposeParamMissing = "AudioMixerGroupController.GetGUIDForPitch()"; return; }
+
+            s_ExposeParamMissing = null;
+        }
+
+        /// <summary>Appends a new exposed parameter bound to a group's volume or pitch GUID.
+        /// exposedName becomes the string AudioMixer.SetFloat/GetFloat use at runtime.</summary>
+        internal static bool TryExposeParameter(AudioMixer mixer, AudioMixerGroup group, string paramKind, string exposedName, out string error)
+        {
+            var probe = ProbeExposeParam();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                MethodInfo getGuid = paramKind == "pitch" ? s_GetGUIDForPitch : s_GetGUIDForVolume;
+                object guid = getGuid.Invoke(group, null);
+
+                var current = (Array)s_ExposedParameters.GetValue(mixer);
+                var next = Array.CreateInstance(s_ExposedParamType, current.Length + 1);
+                Array.Copy(current, next, current.Length);
+
+                var entry = Activator.CreateInstance(s_ExposedParamType);
+                s_ExposedParamGuidField.SetValue(entry, guid);
+                s_ExposedParamNameField.SetValue(entry, exposedName);
+                next.SetValue(entry, current.Length);
+
+                s_ExposedParameters.SetValue(mixer, next);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>Renames the first exposed parameter matching oldName. Returns false with a
+        /// NOT_FOUND-shaped message (not a reflection error) if no entry matches.</summary>
+        internal static bool TryRenameExposedParameter(AudioMixer mixer, string oldName, string newName, out string error)
+        {
+            var probe = ProbeExposeParam();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_ExposedParameters.GetValue(mixer);
+                for (int i = 0; i < current.Length; i++)
+                {
+                    var entry = current.GetValue(i);
+                    if ((string)s_ExposedParamNameField.GetValue(entry) == oldName)
+                    {
+                        s_ExposedParamNameField.SetValue(entry, newName);
+                        current.SetValue(entry, i);
+                        s_ExposedParameters.SetValue(mixer, current);
+                        error = null;
+                        return true;
+                    }
+                }
+                error = $"No exposed parameter named '{oldName}'.";
+                return false;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryRemoveExposedParameter(AudioMixer mixer, string name, out string error)
+        {
+            var probe = ProbeExposeParam();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_ExposedParameters.GetValue(mixer);
+                int keepCount = 0;
+                bool found = false;
+                for (int i = 0; i < current.Length; i++)
+                    if ((string)s_ExposedParamNameField.GetValue(current.GetValue(i)) == name) found = true;
+                    else keepCount++;
+
+                if (!found) { error = $"No exposed parameter named '{name}'."; return false; }
+
+                var next = Array.CreateInstance(s_ExposedParamType, keepCount);
+                int j = 0;
+                for (int i = 0; i < current.Length; i++)
+                {
+                    var entry = current.GetValue(i);
+                    if ((string)s_ExposedParamNameField.GetValue(entry) != name)
+                        next.SetValue(entry, j++);
+                }
+                s_ExposedParameters.SetValue(mixer, next);
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        internal static bool TryListExposedParameters(AudioMixer mixer, out string[] names, out string error)
+        {
+            names = null;
+            var probe = ProbeExposeParam();
+            if (!probe.Ok) { error = NotReachable(probe.Missing); return false; }
+            try
+            {
+                var current = (Array)s_ExposedParameters.GetValue(mixer);
+                names = new string[current.Length];
+                for (int i = 0; i < current.Length; i++)
+                    names[i] = (string)s_ExposedParamNameField.GetValue(current.GetValue(i));
+                error = null;
+                return true;
+            }
+            catch (TargetInvocationException e) { error = (e.InnerException ?? e).Message; return false; }
+            catch (Exception e) { error = e.Message; return false; }
         }
 
         private static Type FindType(string fullName)

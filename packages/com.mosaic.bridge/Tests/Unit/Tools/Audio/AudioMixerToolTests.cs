@@ -262,5 +262,119 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Audio
 
             Assert.IsFalse(result.Success);
         }
+
+        // ── audio/mixer-expose-param ─────────────────────────────────────────
+
+        [Test]
+        public void ExposeParam_Volume_IsReadableViaPublicGetFloat()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "expose",
+                GroupPath = "SFX", ParamKind = "volume", Name = "SFXVolume",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+
+            var mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(TestMixerPath);
+            Assert.IsTrue(mixer.GetFloat("SFXVolume", out float value));
+            Assert.AreEqual(0f, value, 0.001f);
+        }
+
+        [Test]
+        public void ExposeParam_UnknownKind_ReturnsInvalidParam()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "expose",
+                GroupPath = "SFX", ParamKind = "loudness", Name = "SFXVolume",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void ExposeParam_ListAfterExpose_ContainsName()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+            AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "expose",
+                GroupPath = "SFX", ParamKind = "volume", Name = "SFXVolume",
+            });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "list",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            CollectionAssert.Contains(result.Data.ExposedParameterNames, "SFXVolume");
+        }
+
+        [Test]
+        public void ExposeParam_Rename_UpdatesNameAndOldNameStopsWorking()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+            AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "expose",
+                GroupPath = "SFX", ParamKind = "volume", Name = "SFXVolume",
+            });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "rename", Name = "SFXVolume", NewName = "EffectsVolume",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(TestMixerPath);
+            Assert.IsTrue(mixer.GetFloat("EffectsVolume", out _));
+            Assert.IsFalse(mixer.GetFloat("SFXVolume", out _));
+        }
+
+        [Test]
+        public void ExposeParam_Remove_ClearsIt()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+            AudioMixerGroupTool.Execute(new AudioMixerGroupParams { MixerAssetPath = TestMixerPath, Operation = "add", Name = "SFX" });
+            AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "expose",
+                GroupPath = "SFX", ParamKind = "volume", Name = "SFXVolume",
+            });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "remove", Name = "SFXVolume",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var mixer = AssetDatabase.LoadAssetAtPath<AudioMixer>(TestMixerPath);
+            Assert.IsFalse(mixer.GetFloat("SFXVolume", out _));
+        }
+
+        [Test]
+        public void ExposeParam_RenameUnknown_ReturnsNotFound()
+        {
+            AudioCreateMixerTool.Execute(new AudioCreateMixerParams { AssetPath = TestMixerPath });
+
+            var result = AudioMixerExposeParamTool.Execute(new AudioMixerExposeParamParams
+            {
+                MixerAssetPath = TestMixerPath, Operation = "rename", Name = "DoesNotExist", NewName = "Whatever",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("NOT_FOUND", result.ErrorCode);
+        }
     }
 }

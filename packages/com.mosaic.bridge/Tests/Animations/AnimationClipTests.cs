@@ -314,5 +314,125 @@ namespace Mosaic.Bridge.Tests.Animations
             Assert.IsFalse(result.Success);
             Assert.AreEqual("NOT_FOUND", result.ErrorCode);
         }
+
+        // O4 §4.5 P2: clip settings, curve quality, remove-curve, object-reference event params.
+
+        [Test]
+        public void SetSettings_AppliesMirrorAndCycleOffsetAndHeightFromFeet()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-settings", Path = ClipPath,
+                Mirror = true, CycleOffset = 0.25f, HeightFromFeet = true, LoopTime = true,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsTrue(result.Data.Mirror);
+            Assert.AreEqual(0.25f, result.Data.CycleOffset, 0.001f);
+            Assert.IsTrue(result.Data.HeightFromFeet);
+            Assert.IsTrue(result.Data.IsLooping);
+
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.IsTrue(info.Data.Mirror, "must persist to disk, not just the in-memory result");
+        }
+
+        [Test]
+        public void SetCurve_TangentMode_AppliesToEveryKey()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-curve", Path = ClipPath, ComponentType = "Transform",
+                PropertyName = "localPosition.x", KeyframeTimes = new[] { 0f, 1f },
+                KeyframeValues = new[] { 0f, 5f }, TangentMode = "Linear",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+
+            var clip = AssetDatabase.LoadAssetAtPath<UnityEngine.AnimationClip>(ClipPath);
+            var binding = new EditorCurveBinding { path = "", type = typeof(UnityEngine.Transform), propertyName = "localPosition.x" };
+            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+            Assert.AreEqual(AnimationUtility.TangentMode.Linear, AnimationUtility.GetKeyLeftTangentMode(curve, 0));
+        }
+
+        [Test]
+        public void SetCurve_UnknownTangentMode_ReturnsFail()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-curve", Path = ClipPath, ComponentType = "Transform",
+                PropertyName = "localPosition.x", KeyframeTimes = new[] { 0f },
+                KeyframeValues = new[] { 0f }, TangentMode = "Bogus",
+            });
+
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
+        }
+
+        [Test]
+        public void SetCurve_Batch_AppliesMultipleCurvesInOneCall()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-curve", Path = ClipPath,
+                Curves = new[]
+                {
+                    new CurveSpec { ComponentType = "Transform", PropertyName = "localPosition.x", KeyframeTimes = new[] { 0f, 1f }, KeyframeValues = new[] { 0f, 1f } },
+                    new CurveSpec { ComponentType = "Transform", PropertyName = "localPosition.y", KeyframeTimes = new[] { 0f, 1f }, KeyframeValues = new[] { 0f, 2f } },
+                },
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.AreEqual(2, info.Data.CurveCount);
+        }
+
+        [Test]
+        public void RemoveCurve_RemovesAnExistingCurve()
+        {
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "set-curve", Path = ClipPath, ComponentType = "Transform",
+                PropertyName = "localPosition.x", KeyframeTimes = new[] { 0f }, KeyframeValues = new[] { 0f },
+            });
+
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "remove-curve", Path = ClipPath, ComponentType = "Transform",
+                PropertyName = "localPosition.x",
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.AreEqual(0, info.Data.CurveCount);
+        }
+
+        [Test]
+        public void AddEvent_WithObjectReferenceParam_ResolvesAndPersists()
+        {
+            const string audioClipPath = TestDir + "/TestBeep.asset";
+            var audioClip = UnityEngine.AudioClip.Create("TestBeep", 100, 1, 44100, false);
+            AssetDatabase.CreateAsset(audioClip, audioClipPath);
+            AssetDatabase.SaveAssets();
+
+            AnimationClipTool.Execute(new AnimationClipParams { Action = "create", Path = ClipPath });
+            var result = AnimationClipTool.Execute(new AnimationClipParams
+            {
+                Action = "add-event", Path = ClipPath, EventTime = 0.5f, EventFunction = "PlaySound",
+                EventObjectReferenceParam = audioClipPath,
+            });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var info = AnimationClipTool.Execute(new AnimationClipParams { Action = "info", Path = ClipPath });
+            Assert.AreEqual(audioClipPath, info.Data.Events[0].ObjectReferenceParameterPath);
+        }
     }
 }

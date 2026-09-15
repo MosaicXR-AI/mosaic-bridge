@@ -15,6 +15,20 @@ namespace Mosaic.Bridge.Tools.Animations
         public int EventCount { get; set; }
         public AnimationCurveInfo[] Curves { get; set; }
         public AnimationEventInfo[] Events { get; set; }
+
+        // -- set-settings / info (AnimationClipSettings) --
+        public bool LoopBlend { get; set; }
+        public bool LoopBlendOrientation { get; set; }
+        public bool LoopBlendPositionY { get; set; }
+        public bool LoopBlendPositionXZ { get; set; }
+        public bool KeepOriginalOrientation { get; set; }
+        public bool KeepOriginalPositionY { get; set; }
+        public bool KeepOriginalPositionXZ { get; set; }
+        public bool HeightFromFeet { get; set; }
+        public bool Mirror { get; set; }
+        public float CycleOffset { get; set; }
+        public float StartTime { get; set; }
+        public float StopTime { get; set; }
     }
 
     public sealed class AnimationCurveInfo
@@ -37,5 +51,6 @@ namespace Mosaic.Bridge.Tools.Animations
         public string StringParameter { get; set; }
         public float FloatParameter { get; set; }
         public int IntParameter { get; set; }
+        public string ObjectReferenceParameterPath { get; set; }
     }
 }

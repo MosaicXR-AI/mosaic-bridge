@@ -12,10 +12,13 @@ namespace Mosaic.Bridge.Tools.Animations
 {
     public static class AnimationClipTool
     {
-        private const string ValidActions = "create, info, set-curve, set-sprite-curve, add-event";
+        private const string ValidActions = "create, info, set-curve, set-sprite-curve, add-event, set-settings, remove-curve";
 
         [MosaicTool("animation/clip",
-                    "Manages AnimationClip assets: create, inspect, set curves, add events. set-sprite-curve " +
+                    "Manages AnimationClip assets: create, inspect, set/remove curves (batch via Curves[], " +
+                    "TangentMode per curve), add events (EventObjectReferenceParam for an Object-typed event " +
+                    "argument), and clip settings (set-settings: loop/mirror/cycleOffset/startTime-stopTime/" +
+                    "heightFromFeet — root-motion vs in-place, mirrored strafes). set-sprite-curve " +
                     "(D7 — 'four clips, 64 keyframes had to be scripted') builds a sprite flipbook animation: " +
                     "Sprites (asset paths, optionally 'Assets/sheet.png#Run_03' sub-addressed) + KeyframeTimes, " +
                     "ComponentType/PropertyName default to SpriteRenderer/m_Sprite but the same mechanism " +
@@ -30,6 +33,8 @@ namespace Mosaic.Bridge.Tools.Animations
                 case "set-curve":         return SetCurve(p);
                 case "set-sprite-curve":  return SetSpriteCurve(p);
                 case "add-event":         return AddEvent(p);
+                case "set-settings":      return SetSettings(p);
+                case "remove-curve":      return RemoveCurve(p);
                 default:
                     return ToolResult<AnimationClipResult>.Fail(
                         $"Unknown action '{p.Action}'. Valid actions: {ValidActions}",
@@ -122,7 +127,9 @@ namespace Mosaic.Bridge.Tools.Animations
                 FunctionName    = e.functionName,
                 StringParameter = e.stringParameter,
                 FloatParameter  = e.floatParameter,
-                IntParameter    = e.intParameter
+                IntParameter    = e.intParameter,
+                ObjectReferenceParameterPath = e.objectReferenceParameter != null
+                    ? AssetDatabase.GetAssetPath(e.objectReferenceParameter) : null,
             }).ToArray();
 
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
@@ -140,7 +147,73 @@ namespace Mosaic.Bridge.Tools.Animations
                 CurveCount = allCurves.Length,
                 EventCount = eventInfos.Length,
                 Curves     = allCurves,
-                Events     = eventInfos
+                Events     = eventInfos,
+                LoopBlend               = settings.loopBlend,
+                LoopBlendOrientation    = settings.loopBlendOrientation,
+                LoopBlendPositionY      = settings.loopBlendPositionY,
+                LoopBlendPositionXZ     = settings.loopBlendPositionXZ,
+                KeepOriginalOrientation = settings.keepOriginalOrientation,
+                KeepOriginalPositionY   = settings.keepOriginalPositionY,
+                KeepOriginalPositionXZ  = settings.keepOriginalPositionXZ,
+                HeightFromFeet          = settings.heightFromFeet,
+                Mirror                  = settings.mirror,
+                CycleOffset             = settings.cycleOffset,
+                StartTime               = settings.startTime,
+                StopTime                = settings.stopTime,
+            });
+        }
+
+        private static ToolResult<AnimationClipResult> SetSettings(AnimationClipParams p)
+        {
+            if (string.IsNullOrEmpty(p.Path))
+                return ToolResult<AnimationClipResult>.Fail(
+                    "Path is required for 'set-settings' action", ErrorCodes.INVALID_PARAM);
+
+            var clip = AnimationToolHelpers.LoadClip(p.Path);
+            if (clip == null)
+                return ToolResult<AnimationClipResult>.Fail(
+                    $"AnimationClip not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
+
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (p.LoopTime.HasValue) settings.loopTime = p.LoopTime.Value;
+            if (p.LoopBlend.HasValue) settings.loopBlend = p.LoopBlend.Value;
+            if (p.LoopBlendOrientation.HasValue) settings.loopBlendOrientation = p.LoopBlendOrientation.Value;
+            if (p.LoopBlendPositionY.HasValue) settings.loopBlendPositionY = p.LoopBlendPositionY.Value;
+            if (p.LoopBlendPositionXZ.HasValue) settings.loopBlendPositionXZ = p.LoopBlendPositionXZ.Value;
+            if (p.KeepOriginalOrientation.HasValue) settings.keepOriginalOrientation = p.KeepOriginalOrientation.Value;
+            if (p.KeepOriginalPositionY.HasValue) settings.keepOriginalPositionY = p.KeepOriginalPositionY.Value;
+            if (p.KeepOriginalPositionXZ.HasValue) settings.keepOriginalPositionXZ = p.KeepOriginalPositionXZ.Value;
+            if (p.HeightFromFeet.HasValue) settings.heightFromFeet = p.HeightFromFeet.Value;
+            if (p.Mirror.HasValue) settings.mirror = p.Mirror.Value;
+            if (p.CycleOffset.HasValue) settings.cycleOffset = p.CycleOffset.Value;
+            if (p.StartTime.HasValue) settings.startTime = p.StartTime.Value;
+            if (p.StopTime.HasValue) settings.stopTime = p.StopTime.Value;
+
+            Undo.RecordObject(clip, "Mosaic: Set Animation Clip Settings");
+            AnimationUtility.SetAnimationClipSettings(clip, settings);
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssets();
+
+            var guid = AssetDatabase.AssetPathToGUID(p.Path);
+            return ToolResult<AnimationClipResult>.Ok(new AnimationClipResult
+            {
+                Action    = "set-settings",
+                Path      = p.Path,
+                Guid      = guid,
+                ClipName  = clip.name,
+                IsLooping = settings.loopTime,
+                LoopBlend               = settings.loopBlend,
+                LoopBlendOrientation    = settings.loopBlendOrientation,
+                LoopBlendPositionY      = settings.loopBlendPositionY,
+                LoopBlendPositionXZ     = settings.loopBlendPositionXZ,
+                KeepOriginalOrientation = settings.keepOriginalOrientation,
+                KeepOriginalPositionY   = settings.keepOriginalPositionY,
+                KeepOriginalPositionXZ  = settings.keepOriginalPositionXZ,
+                HeightFromFeet          = settings.heightFromFeet,
+                Mirror                  = settings.mirror,
+                CycleOffset             = settings.cycleOffset,
+                StartTime               = settings.startTime,
+                StopTime                = settings.stopTime,
             });
         }
 
@@ -150,27 +223,106 @@ namespace Mosaic.Bridge.Tools.Animations
                 return ToolResult<AnimationClipResult>.Fail(
                     "Path is required for 'set-curve' action", ErrorCodes.INVALID_PARAM);
 
+            var clip = AnimationToolHelpers.LoadClip(p.Path);
+            if (clip == null)
+                return ToolResult<AnimationClipResult>.Fail(
+                    $"AnimationClip not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
+
+            // Batch form: several curves in one call. Falls back to the single-curve fields when
+            // Curves isn't supplied, so existing callers are unaffected.
+            var specs = p.Curves != null && p.Curves.Length > 0
+                ? p.Curves
+                : new[] { new CurveSpec
+                    {
+                        PropertyPath = p.PropertyPath, ComponentType = p.ComponentType,
+                        PropertyName = p.PropertyName, KeyframeTimes = p.KeyframeTimes,
+                        KeyframeValues = p.KeyframeValues, TangentMode = p.TangentMode,
+                    } };
+
+            Undo.RecordObject(clip, "Mosaic: Set Animation Curve");
+            foreach (var spec in specs)
+            {
+                var error = ApplyOneCurve(clip, spec);
+                if (error != null) return ToolResult<AnimationClipResult>.Fail(error, ErrorCodes.INVALID_PARAM);
+            }
+            EditorUtility.SetDirty(clip);
+            AssetDatabase.SaveAssets();
+
+            var guid = AssetDatabase.AssetPathToGUID(p.Path);
+
+            return ToolResult<AnimationClipResult>.Ok(new AnimationClipResult
+            {
+                Action    = "set-curve",
+                Path      = p.Path,
+                Guid      = guid,
+                ClipName  = clip.name,
+                CurveCount = specs.Length,
+            });
+        }
+
+        /// <summary>Applies one curve spec to <paramref name="clip"/>. Returns an error message on
+        /// failure (missing fields, unknown component/tangent mode), or null on success.</summary>
+        private static string ApplyOneCurve(AnimationClip clip, CurveSpec spec)
+        {
+            if (string.IsNullOrEmpty(spec.PropertyName))
+                return "PropertyName is required for each curve";
+            if (spec.KeyframeTimes == null || spec.KeyframeValues == null)
+                return "KeyframeTimes and KeyframeValues arrays are required for each curve";
+            if (spec.KeyframeTimes.Length != spec.KeyframeValues.Length)
+                return "KeyframeTimes and KeyframeValues must have the same length";
+
+            var componentType = ResolveComponentType(spec.ComponentType);
+            if (componentType == null)
+                return $"Component type '{spec.ComponentType}' not found. Use full type name (e.g. 'Transform', 'SpriteRenderer')";
+
+            AnimationUtility.TangentMode? tangentMode = null;
+            if (!string.IsNullOrEmpty(spec.TangentMode))
+            {
+                if (!Enum.TryParse<AnimationUtility.TangentMode>(spec.TangentMode, true, out var parsed))
+                    return $"Unknown TangentMode '{spec.TangentMode}'. Valid: Free, Auto, Linear, Constant, ClampedAuto";
+                tangentMode = parsed;
+            }
+
+            var binding = new EditorCurveBinding
+            {
+                path         = spec.PropertyPath ?? "",
+                type         = componentType,
+                propertyName = spec.PropertyName
+            };
+
+            var keyframes = new Keyframe[spec.KeyframeTimes.Length];
+            for (int i = 0; i < keyframes.Length; i++)
+                keyframes[i] = new Keyframe(spec.KeyframeTimes[i], spec.KeyframeValues[i]);
+
+            var curve = new AnimationCurve(keyframes);
+            if (tangentMode.HasValue)
+            {
+                for (int i = 0; i < curve.length; i++)
+                {
+                    AnimationUtility.SetKeyLeftTangentMode(curve, i, tangentMode.Value);
+                    AnimationUtility.SetKeyRightTangentMode(curve, i, tangentMode.Value);
+                }
+            }
+
+            AnimationUtility.SetEditorCurve(clip, binding, curve);
+            return null;
+        }
+
+        private static ToolResult<AnimationClipResult> RemoveCurve(AnimationClipParams p)
+        {
+            if (string.IsNullOrEmpty(p.Path))
+                return ToolResult<AnimationClipResult>.Fail(
+                    "Path is required for 'remove-curve' action", ErrorCodes.INVALID_PARAM);
             if (string.IsNullOrEmpty(p.PropertyName))
                 return ToolResult<AnimationClipResult>.Fail(
-                    "PropertyName is required for 'set-curve' action", ErrorCodes.INVALID_PARAM);
-
-            if (p.KeyframeTimes == null || p.KeyframeValues == null)
-                return ToolResult<AnimationClipResult>.Fail(
-                    "KeyframeTimes and KeyframeValues arrays are required for 'set-curve' action",
-                    ErrorCodes.INVALID_PARAM);
-
-            if (p.KeyframeTimes.Length != p.KeyframeValues.Length)
-                return ToolResult<AnimationClipResult>.Fail(
-                    "KeyframeTimes and KeyframeValues must have the same length",
-                    ErrorCodes.INVALID_PARAM);
+                    "PropertyName is required for 'remove-curve' action", ErrorCodes.INVALID_PARAM);
 
             var clip = AnimationToolHelpers.LoadClip(p.Path);
             if (clip == null)
                 return ToolResult<AnimationClipResult>.Fail(
                     $"AnimationClip not found at '{p.Path}'", ErrorCodes.NOT_FOUND);
 
-            // Resolve component type
-            Type componentType = ResolveComponentType(p.ComponentType);
+            var componentType = ResolveComponentType(p.ComponentType);
             if (componentType == null)
                 return ToolResult<AnimationClipResult>.Fail(
                     $"Component type '{p.ComponentType}' not found. Use full type name (e.g. 'Transform', 'SpriteRenderer')",
@@ -183,25 +335,20 @@ namespace Mosaic.Bridge.Tools.Animations
                 propertyName = p.PropertyName
             };
 
-            var keyframes = new Keyframe[p.KeyframeTimes.Length];
-            for (int i = 0; i < keyframes.Length; i++)
-                keyframes[i] = new Keyframe(p.KeyframeTimes[i], p.KeyframeValues[i]);
-
-            var curve = new AnimationCurve(keyframes);
-
-            Undo.RecordObject(clip, "Mosaic: Set Animation Curve");
-            AnimationUtility.SetEditorCurve(clip, binding, curve);
+            Undo.RecordObject(clip, "Mosaic: Remove Animation Curve");
+            // Assigning a null curve to a binding is AnimationUtility's own documented way to
+            // remove it — there is no separate RemoveCurve API.
+            AnimationUtility.SetEditorCurve(clip, binding, null);
             EditorUtility.SetDirty(clip);
             AssetDatabase.SaveAssets();
 
             var guid = AssetDatabase.AssetPathToGUID(p.Path);
-
             return ToolResult<AnimationClipResult>.Ok(new AnimationClipResult
             {
-                Action    = "set-curve",
-                Path      = p.Path,
-                Guid      = guid,
-                ClipName  = clip.name
+                Action   = "remove-curve",
+                Path     = p.Path,
+                Guid     = guid,
+                ClipName = clip.name,
             });
         }
 
@@ -292,6 +439,14 @@ namespace Mosaic.Bridge.Tools.Animations
                 floatParameter  = p.EventFloatParam ?? 0f,
                 intParameter    = p.EventIntParam ?? 0
             };
+            if (!string.IsNullOrEmpty(p.EventObjectReferenceParam))
+            {
+                if (!ObjectReferenceResolver.TryResolveAsset(p.EventObjectReferenceParam, typeof(UnityEngine.Object),
+                        out var resolved, out var refError))
+                    return ToolResult<AnimationClipResult>.Fail(
+                        $"EventObjectReferenceParam: {refError}", ErrorCodes.NOT_FOUND);
+                evt.objectReferenceParameter = resolved;
+            }
             eventList.Add(evt);
 
             AnimationUtility.SetAnimationEvents(clip, eventList.ToArray());

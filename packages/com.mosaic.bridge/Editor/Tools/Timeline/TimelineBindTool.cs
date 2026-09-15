@@ -8,22 +8,26 @@ using Mosaic.Bridge.Contracts.Attributes;
 using Mosaic.Bridge.Contracts.Envelopes;
 using Mosaic.Bridge.Contracts.Errors;
 using Mosaic.Bridge.Contracts.Compat;
+using Mosaic.Bridge.Core.Scenes;
 
 namespace Mosaic.Bridge.Tools.Timeline
 {
     public static class TimelineBindTool
     {
         [MosaicTool("timeline/bind",
-                    "Binds a track in a PlayableDirector to a target object",
+                    "bind (default): binds a track in a PlayableDirector to a target — by " +
+                    "InstanceId or by name/path (O4 §3.3 GameObjectResolver). When the track's own " +
+                    "TrackBindingTypeAttribute names a Component type and the target resolves to a " +
+                    "GameObject, the matching component is bound automatically (e.g. an AnimationTrack " +
+                    "auto-picks the target's Animator). set-reference: sets an ExposedReference field " +
+                    "on a clip's PlayableAsset — currently ControlPlayableAsset.sourceGameObject " +
+                    "(ClipIndex + ReferenceInstanceId/ReferencePath) — the #1 reported cause of an " +
+                    "unbound/inert timeline.",
                     isReadOnly: false)]
         public static ToolResult<TimelineBindResult> Bind(TimelineBindParams p)
         {
-            // Resolve the director
-            var directorObj = UnityIds.Resolve(p.DirectorInstanceId) as GameObject;
-            if (directorObj == null)
-                return ToolResult<TimelineBindResult>.Fail(
-                    $"GameObject with InstanceId {p.DirectorInstanceId} not found",
-                    ErrorCodes.NOT_FOUND);
+            if (!GameObjectResolver.TryResolve(p.DirectorInstanceId, p.DirectorPath, out var directorObj, out var directorError))
+                return ToolResult<TimelineBindResult>.Fail(directorError, ErrorCodes.NOT_FOUND);
 
             var director = directorObj.GetComponent<PlayableDirector>();
             if (director == null)
@@ -37,7 +41,6 @@ namespace Mosaic.Bridge.Tools.Timeline
                     "PlayableDirector has no TimelineAsset assigned",
                     ErrorCodes.NOT_FOUND);
 
-            // Resolve the track
             var tracks = timeline.GetOutputTracks().ToList();
             if (p.TrackIndex < 0 || p.TrackIndex >= tracks.Count)
                 return ToolResult<TimelineBindResult>.Fail(
@@ -46,26 +49,87 @@ namespace Mosaic.Bridge.Tools.Timeline
 
             var track = tracks[p.TrackIndex];
 
-            // Resolve the target
-            var target = UnityIds.Resolve(p.TargetInstanceId);
-            if (target == null)
-                return ToolResult<TimelineBindResult>.Fail(
-                    $"Target object with InstanceId {p.TargetInstanceId} not found",
-                    ErrorCodes.NOT_FOUND);
+            switch (p.Action?.ToLowerInvariant())
+            {
+                case "set-reference":
+                    return SetReference(p, director, track);
+                case "bind":
+                case null:
+                case "":
+                    return DoBind(p, director, track);
+                default:
+                    return ToolResult<TimelineBindResult>.Fail(
+                        $"Unknown Action '{p.Action}'. Valid: bind, set-reference", ErrorCodes.INVALID_PARAM);
+            }
+        }
+
+        private static ToolResult<TimelineBindResult> DoBind(TimelineBindParams p, PlayableDirector director, TrackAsset track)
+        {
+            if (!GameObjectResolver.TryResolve(p.TargetInstanceId, p.TargetPath, out var targetGo, out var targetError))
+                return ToolResult<TimelineBindResult>.Fail(targetError, ErrorCodes.NOT_FOUND);
+
+            Object target = targetGo;
+            string boundComponentType = null;
+
+            var bindingAttr = track.GetType().GetCustomAttributes(typeof(TrackBindingTypeAttribute), true)
+                .Cast<TrackBindingTypeAttribute>().FirstOrDefault();
+            if (bindingAttr != null && bindingAttr.type != null && !typeof(GameObject).IsAssignableFrom(bindingAttr.type))
+            {
+                var component = targetGo.GetComponent(bindingAttr.type);
+                if (component == null)
+                    return ToolResult<TimelineBindResult>.Fail(
+                        $"'{targetGo.name}' has no {bindingAttr.type.Name} component — required by " +
+                        $"{track.GetType().Name}'s binding type.", ErrorCodes.NOT_FOUND);
+                target = component;
+                boundComponentType = bindingAttr.type.Name;
+            }
 
             Undo.RecordObject(director, "Mosaic: Bind Timeline Track");
             director.SetGenericBinding(track, target);
             EditorUtility.SetDirty(director);
 
-            string targetName = target is GameObject go ? go.name : target.name;
+            return ToolResult<TimelineBindResult>.Ok(new TimelineBindResult
+            {
+                Action = "bind",
+                DirectorInstanceId = director.gameObject.GetInstanceID(),
+                TrackIndex = p.TrackIndex,
+                TrackName = track.name,
+                TargetInstanceId = targetGo.GetInstanceID(),
+                TargetName = targetGo.name,
+                BoundComponentType = boundComponentType,
+            });
+        }
+
+        private static ToolResult<TimelineBindResult> SetReference(TimelineBindParams p, PlayableDirector director, TrackAsset track)
+        {
+            var clips = track.GetClips().ToList();
+            if (p.ClipIndex < 0 || p.ClipIndex >= clips.Count)
+                return ToolResult<TimelineBindResult>.Fail(
+                    $"ClipIndex {p.ClipIndex} is out of range (0..{clips.Count - 1})", ErrorCodes.OUT_OF_RANGE);
+
+            var clip = clips[p.ClipIndex];
+            if (!(clip.asset is ControlPlayableAsset controlAsset))
+                return ToolResult<TimelineBindResult>.Fail(
+                    $"set-reference only supports ControlPlayableAsset.sourceGameObject currently " +
+                    $"— clip {p.ClipIndex} on track {p.TrackIndex} is a {clip.asset?.GetType().Name ?? "null"}.",
+                    ErrorCodes.INVALID_PARAM);
+
+            if (!GameObjectResolver.TryResolve(p.ReferenceInstanceId, p.ReferencePath, out var referenceGo, out var referenceError))
+                return ToolResult<TimelineBindResult>.Fail(referenceError, ErrorCodes.NOT_FOUND);
+
+            Undo.RecordObject(director, "Mosaic: Set Timeline ExposedReference");
+            director.SetReferenceValue(controlAsset.sourceGameObject.exposedName, referenceGo);
+            EditorUtility.SetDirty(director);
 
             return ToolResult<TimelineBindResult>.Ok(new TimelineBindResult
             {
-                DirectorInstanceId = p.DirectorInstanceId,
+                Action = "set-reference",
+                DirectorInstanceId = director.gameObject.GetInstanceID(),
                 TrackIndex = p.TrackIndex,
                 TrackName = track.name,
-                TargetInstanceId = p.TargetInstanceId,
-                TargetName = targetName
+                ClipIndex = p.ClipIndex,
+                ReferenceField = "sourceGameObject",
+                ReferenceTargetName = referenceGo.name,
             });
         }
     }

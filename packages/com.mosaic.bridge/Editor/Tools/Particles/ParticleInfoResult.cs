@@ -35,5 +35,27 @@ namespace Mosaic.Bridge.Tools.Particles
         public string Shape { get; set; }
         public float ShapeRadius { get; set; }
         public float ShapeAngle { get; set; }
+
+        // O4 §4.8: per-module enabled state — QA verdicts ("does this system have noise on?")
+        // without having to separately query every module.
+        public ParticleModuleFlags Modules { get; set; }
+    }
+
+    public sealed class ParticleModuleFlags
+    {
+        public bool Emission { get; set; }
+        public bool Shape { get; set; }
+        public bool ColorOverLifetime { get; set; }
+        public bool SizeOverLifetime { get; set; }
+        public bool VelocityOverLifetime { get; set; }
+        public bool LimitVelocityOverLifetime { get; set; }
+        public bool RotationOverLifetime { get; set; }
+        public bool Noise { get; set; }
+        public bool ForceOverLifetime { get; set; }
+        public bool Collision { get; set; }
+        public bool SubEmitters { get; set; }
+        public bool Trails { get; set; }
+        public bool Lights { get; set; }
+        public bool TextureSheetAnimation { get; set; }
     }
 }

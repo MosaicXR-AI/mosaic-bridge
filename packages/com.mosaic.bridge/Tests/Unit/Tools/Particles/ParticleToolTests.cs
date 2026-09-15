@@ -660,6 +660,29 @@ namespace Mosaic.Bridge.Tests.Unit.Tools.Particles
             Assert.AreEqual("INVALID_PARAM", result.ErrorCode);
         }
 
+        // ── particle/info per-module Enabled flags ───────────────────────────
+
+        [Test]
+        public void Info_ReportsPerModuleEnabledFlags()
+        {
+            var createResult = ParticleCreateTool.Execute(new ParticleCreateParams { Name = "InfoModulesPS" });
+            Assert.IsTrue(createResult.Success, createResult.Error);
+            _created = FindByInstanceId(createResult.Data.InstanceId);
+
+            ParticleSetModuleTool.Execute(new ParticleSetModuleParams
+            {
+                Name = "InfoModulesPS", Module = "noise", NoiseStrength = 1f,
+            });
+
+            var result = ParticleInfoTool.Execute(new ParticleInfoParams { Name = "InfoModulesPS" });
+
+            Assert.IsTrue(result.Success, result.Error);
+            var entry = result.Data.ParticleSystems[0];
+            Assert.IsTrue(entry.Modules.Noise);
+            Assert.IsFalse(entry.Modules.Collision);
+            Assert.IsTrue(entry.Modules.Emission);
+        }
+
         // ── Helpers ─────────────────────────────────────────────────────────
 
         private static GameObject FindByInstanceId(int instanceId)

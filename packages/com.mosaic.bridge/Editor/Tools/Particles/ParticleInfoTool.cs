@@ -10,7 +10,8 @@ namespace Mosaic.Bridge.Tools.Particles
     public static class ParticleInfoTool
     {
         [MosaicTool("particle/info",
-                    "Queries ParticleSystem properties. Specify InstanceId or Name for one, or omit both for all in scene",
+                    "Queries ParticleSystem properties, including per-module Enabled flags (Modules.*) for " +
+                    "QA verdicts. Specify InstanceId or Name for one, or omit both for all in scene",
                     isReadOnly: true, Context = ToolContext.Both)]
         public static ToolResult<ParticleInfoResult> Execute(ParticleInfoParams p)
         {
@@ -73,7 +74,24 @@ namespace Mosaic.Bridge.Tools.Particles
                 BurstCount        = emission.burstCount,
                 Shape             = shape.shapeType.ToString(),
                 ShapeRadius       = shape.radius,
-                ShapeAngle        = shape.angle
+                ShapeAngle        = shape.angle,
+                Modules           = new ParticleModuleFlags
+                {
+                    Emission                  = emission.enabled,
+                    Shape                     = shape.enabled,
+                    ColorOverLifetime         = ps.colorOverLifetime.enabled,
+                    SizeOverLifetime          = ps.sizeOverLifetime.enabled,
+                    VelocityOverLifetime      = ps.velocityOverLifetime.enabled,
+                    LimitVelocityOverLifetime = ps.limitVelocityOverLifetime.enabled,
+                    RotationOverLifetime      = ps.rotationOverLifetime.enabled,
+                    Noise                     = ps.noise.enabled,
+                    ForceOverLifetime         = ps.forceOverLifetime.enabled,
+                    Collision                 = ps.collision.enabled,
+                    SubEmitters               = ps.subEmitters.enabled,
+                    Trails                    = ps.trails.enabled,
+                    Lights                    = ps.lights.enabled,
+                    TextureSheetAnimation     = ps.textureSheetAnimation.enabled,
+                },
             };
         }
     }

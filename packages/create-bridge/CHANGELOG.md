@@ -2,6 +2,16 @@
 
 All notable changes to this package will be documented in this file.
 
+## [1.0.0-beta.13] — 2026-09-16
+
+### Security
+
+- **A `hono` advisory fix that landed on `main` but was never published.** `beta.12` has
+  been live on npm since it merged (2026-09-10), so anyone installing `@latest` was still
+  getting the vulnerable dependency tree. `npm audit --omit=dev --audit-level=moderate`
+  now reports 0 vulnerabilities. No source changes — dependency lockfile only. All 38
+  tests pass.
+
 ## [1.0.0-beta.10] — 2026-08-08
 
 ### Changed
